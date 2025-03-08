@@ -2,20 +2,21 @@
 const CACHE_NAME = 'food-delivery-v1';
 
 // Assets to cache for offline access
-const CACHE_ASSETS = [
+const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/offline.html',
   '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/offline.html',
+  '/favicon.ico',
+  '/img/icons/icon-192x192.png',
+  '/img/icons/icon-512x512.png'
 ];
 
 // Install event - cache assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(CACHE_ASSETS))
+      .then((cache) => cache.addAll(STATIC_ASSETS))
       .then(() => self.skipWaiting())
   );
 });
@@ -39,27 +40,43 @@ self.addEventListener('activate', (event) => {
 
 // Fetch event - serve cached content when offline
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  
+  // Skip chrome-extension URLs and non-GET requests
+  if (request.url.startsWith('chrome-extension://') || request.method !== 'GET') {
+    return;
+  }
+
+  // Static assets and other requests
   event.respondWith(
-    caches.match(event.request)
+    caches.match(request)
       .then((response) => {
         if (response) {
           return response;
         }
-        return fetch(event.request)
+
+        return fetch(request.clone())
           .then((response) => {
-            // Cache important assets
-            if (event.request.url.includes('/api/')) {
+            // Don't cache non-successful responses or non-GET requests
+            if (!response || response.status !== 200 || request.method !== 'GET') {
               return response;
             }
-            return caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, response.clone());
-                return response;
-              });
+            
+            // Only cache same-origin requests
+            const url = new URL(request.url);
+            if (url.origin === location.origin) {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(request, responseToCache);
+                });
+            }
+            
+            return response;
           })
           .catch(() => {
             // Return offline page for navigation requests
-            if (event.request.mode === 'navigate') {
+            if (request.mode === 'navigate') {
               return caches.match('/offline.html');
             }
             return null;
@@ -71,35 +88,25 @@ self.addEventListener('fetch', (event) => {
 // Push event - handle incoming push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return;
-
+  
   try {
     const data = event.data.json();
-    const options = createNotificationOptions(data);
-    
+
+    const options = {
+      body: data.message,
+      icon: '/img/icons/icon-192x192.png',
+      badge: '/img/icons/icon-192x192.png',
+      vibrate: [100, 50, 100],
+      data: {
+        url: data.url
+      }
+    };
+
     event.waitUntil(
-      // Show notification
       self.registration.showNotification(data.title, options)
-        .then(() => {
-          // Notify clients about push received
-          return self.clients.matchAll()
-            .then((clients) => {
-              clients.forEach((client) => {
-                client.postMessage({
-                  type: 'PUSH_RECEIVED',
-                  data: {
-                    id: data.id,
-                    type: data.type,
-                    title: data.title,
-                    message: data.message,
-                    data: data.data
-                  }
-                });
-              });
-            });
-        })
     );
-  } catch (error) {
-    console.error('Error processing push event:', error);
+  } catch (e) {
+    console.error('Error showing notification:', e);
   }
 });
 
@@ -107,25 +114,11 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const data = event.notification.data;
-  if (!data) return;
-
-  // Handle notification click based on type
-  event.waitUntil(
-    handleNotificationClick(data)
-      .then(() => {
-        // Notify clients about notification click
-        return self.clients.matchAll()
-          .then((clients) => {
-            clients.forEach((client) => {
-              client.postMessage({
-                type: 'NOTIFICATION_CLICKED',
-                data
-              });
-            });
-          });
-      })
-  );
+  if (event.notification.data && event.notification.data.url) {
+    event.waitUntil(
+      clients.openWindow(event.notification.data.url)
+    );
+  }
 });
 
 // Notification close event

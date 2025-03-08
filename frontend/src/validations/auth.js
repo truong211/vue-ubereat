@@ -6,6 +6,16 @@ const phoneRegex = /^\+?[1-9]\d{1,14}$/;
 // Password must contain at least 1 uppercase, 1 lowercase, 1 number, and 1 special character
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
+// Function to validate password
+export const validatePassword = (password) => {
+  if (!password) return 'Password is required';
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!passwordRegex.test(password)) {
+    return 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character';
+  }
+  return true;
+};
+
 export const registerSchema = yup.object({
   firstName: yup
     .string()

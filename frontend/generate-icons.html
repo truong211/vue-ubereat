@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generate Icons</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #ff5252;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Generate Icons</h1>
+  <div>
+    <canvas id="icon192" width="192" height="192"></canvas>
+    <canvas id="icon512" width="512" height="512"></canvas>
+  </div>
+  <div>
+    <button id="generateBtn">Generate Icons</button>
+    <button id="downloadBtn">Download Icons</button>
+  </div>
+
+  <script>
+    function drawIcon(canvas, size) {
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = '#ff5252';
+      ctx.fillRect(0, 0, size, size);
+      
+      // Inner circle
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size*0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Text
+      ctx.fillStyle = '#ff5252';
+      ctx.font = `bold ${size*0.3}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('UE', size/2, size/2);
+    }
+    
+    function generateIcons() {
+      drawIcon(document.getElementById('icon192'), 192);
+      drawIcon(document.getElementById('icon512'), 512);
+    }
+    
+    function downloadIcons() {
+      // Download 192x192 icon
+      const link192 = document.createElement('a');
+      link192.download = 'icon-192x192.png';
+      link192.href = document.getElementById('icon192').toDataURL('image/png');
+      link192.click();
+      
+      // Download 512x512 icon
+      const link512 = document.createElement('a');
+      link512.download = 'icon-512x512.png';
+      link512.href = document.getElementById('icon512').toDataURL('image/png');
+      link512.click();
+    }
+    
+    document.getElementById('generateBtn').addEventListener('click', generateIcons);
+    document.getElementById('downloadBtn').addEventListener('click', downloadIcons);
+    
+    // Generate icons on page load
+    window.onload = generateIcons;
+  </script>
+</body>
+</html> 

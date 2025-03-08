@@ -255,4 +255,3 @@ INSERT INTO reviews (user_id, order_id, product_id, rating, comment) VALUES
 (8, 8, 8, 5, 'Perfect dessert'),
 (9, 9, 9, 2, 'Not fresh enough'),
 (10, 10, 10, 4, 'Refreshing drink');
-

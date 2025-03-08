@@ -22,69 +22,113 @@ const DYNAMIC_CACHE_PATTERNS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) => {
+        // Try to cache assets but don't fail if some are missing
+        return cache.addAll(STATIC_ASSETS.map(url => {
+          return new Request(url, { cache: 'reload' });
+        })).catch(err => console.warn('Some assets failed to cache:', err));
+      })
       .then(() => self.skipWaiting())
-  )
-})
+  );
+});
 
 // Activate Service Worker
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName)
-          }
-        })
-      )
-    }).then(() => self.clients.claim())
-  )
-})
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
+            return Promise.resolve();
+          })
+        );
+      })
+      .then(() => self.clients.claim())
+  );
+});
 
 // Fetch Event Handler
 self.addEventListener('fetch', (event) => {
-  const { request } = event
-
-  // API requests
-  if (request.url.includes('/api/')) {
-    // Handle based on request type
-    if (request.method === 'GET') {
-      event.respondWith(handleApiGet(request))
-    } else {
-      event.respondWith(handleApiMutation(request))
-    }
-    return
+  const { request } = event;
+  
+  // Skip non-GET requests and chrome-extension URLs
+  if (request.method !== 'GET' || request.url.startsWith('chrome-extension://')) {
+    return;
   }
 
-  // Static assets and other requests
+  // Handle API requests
+  if (request.url.includes('/api/')) {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          return response;
+        })
+        .catch(() => {
+          return new Response(
+            JSON.stringify({ error: 'Network error', offline: true }),
+            { 
+              status: 503,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        })
+    );
+    return;
+  }
+
+  // Handle other requests
   event.respondWith(
     caches.match(request)
-      .then((response) => {
-        if (response) {
-          return response
+      .then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
         }
 
-        return fetch(request).then((response) => {
-          // Cache assets that match dynamic patterns
-          if (shouldCacheDynamically(request.url)) {
-            return caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, response.clone())
-              return response
-            })
-          }
-          return response
-        })
+        return fetch(request)
+          .then((networkResponse) => {
+            // Check if we received a valid response
+            if (!networkResponse || networkResponse.status !== 200) {
+              return networkResponse;
+            }
+
+            // Cache the response
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(request, responseToCache);
+              })
+              .catch(err => console.warn('Failed to cache response:', err));
+
+            return networkResponse;
+          })
+          .catch(() => {
+            // Return offline page for navigation requests
+            if (request.mode === 'navigate') {
+              return caches.match('/offline.html')
+                .then(response => response || new Response('Offline page not found', {
+                  status: 503,
+                  headers: { 'Content-Type': 'text/plain' }
+                }));
+            }
+            
+            // Return error response for other requests
+            return new Response(
+              JSON.stringify({ error: 'Network error' }),
+              { 
+                status: 503,
+                headers: { 'Content-Type': 'application/json' }
+              }
+            );
+          });
       })
-      .catch(() => {
-        // Return offline page for navigation requests
-        if (request.mode === 'navigate') {
-          return caches.match('/offline.html')
-        }
-        return null
-      })
-  )
-})
+  );
+});
 
 // Background Sync
 self.addEventListener('sync', (event) => {

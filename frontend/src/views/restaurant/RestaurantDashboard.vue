@@ -1,263 +1,144 @@
 <template>
-  <v-container>
-    <v-row>
-      <v-col cols="12">
-        <h1 class="text-h4 mb-6">Restaurant Dashboard</h1>
+  <div class="dashboard">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Today's Orders</h3>
+        <p class="value">{{ stats.todayOrders }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Total Revenue</h3>
+        <p class="value">${{ stats.totalRevenue }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Average Rating</h3>
+        <p class="value">{{ stats.avgRating }}/5</p>
+      </div>
+    </div>
 
-        <!-- Date Range Selector -->
-        <v-card class="mb-6">
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" sm="4">
-                <v-select
-                  v-model="dateRange"
-                  :items="dateRangeOptions"
-                  label="Date Range"
-                  @update:model-value="fetchAnalytics"
-                />
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model="customStartDate"
-                  type="date"
-                  label="Start Date"
-                  :disabled="dateRange !== 'custom'"
-                  @update:model-value="fetchAnalytics"
-                />
-              </v-col>
-              <v-col cols="12" sm="4">
-                <v-text-field
-                  v-model="customEndDate"
-                  type="date"
-                  label="End Date"
-                  :disabled="dateRange !== 'custom'"
-                  @update:model-value="fetchAnalytics"
-                />
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
+    <div class="charts">
+      <div class="chart-container">
+        <h3>Revenue Last 7 Days</h3>
+        <LineChart :data="revenueData" />
+      </div>
+      <div class="chart-container">
+        <h3>Order Status Distribution</h3>
+        <DoughnutChart :data="orderStatusData" />
+      </div>
+    </div>
 
-        <!-- Revenue Statistics -->
-        <v-row>
-          <v-col cols="12" md="8">
-            <v-card class="mb-6">
-              <v-card-title>Revenue Statistics</v-card-title>
-              <v-card-text>
-                <v-chart class="chart" :option="revenueChartOption" autoresize />
-              </v-card-text>
-            </v-card>
-          </v-col>
-
-          <v-col cols="12" md="4">
-            <v-card class="mb-6">
-              <v-card-title>Summary</v-card-title>
-              <v-card-text>
-                <v-list>
-                  <v-list-item>
-                    <v-list-item-title>Total Revenue</v-list-item-title>
-                    <v-list-item-subtitle>{{ formatCurrency(totalRevenue) }}</v-list-item-subtitle>
-                  </v-list-item>
-                  <v-list-item>
-                    <v-list-item-title>Total Orders</v-list-item-title>
-                    <v-list-item-subtitle>{{ totalOrders }}</v-list-item-subtitle>
-                  </v-list-item>
-                  <v-list-item>
-                    <v-list-item-title>Average Order Value</v-list-item-title>
-                    <v-list-item-subtitle>{{ formatCurrency(averageOrderValue) }}</v-list-item-subtitle>
-                  </v-list-item>
-                </v-list>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
-
-        <!-- Best Selling Items -->
-        <v-card class="mb-6">
-          <v-card-title class="d-flex align-center">
-            Best Selling Items
-            <v-spacer />
-            <v-btn
-              prepend-icon="mdi-download"
-              variant="outlined"
-              @click="exportReport"
-            >
-              Export Report
-            </v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-table>
-              <thead>
-                <tr>
-                  <th>Item Name</th>
-                  <th>Quantity Sold</th>
-                  <th>Revenue</th>
-                  <th>Average Rating</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="item in bestSellingItems" :key="item.id">
-                  <td>{{ item.name }}</td>
-                  <td>{{ item.quantitySold }}</td>
-                  <td>{{ formatCurrency(item.revenue) }}</td>
-                  <td>
-                    <v-rating
-                      :model-value="item.rating"
-                      density="compact"
-                      size="small"
-                      readonly
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </v-table>
-          </v-card-text>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+    <div class="recent-orders">
+      <h3>Recent Orders</h3>
+      <OrderList :orders="recentOrders" />
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { useStore } from 'vuex'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
-import VChart from 'vue-echarts'
-import analyticsService from '@/services/analytics.service'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { fetchRestaurantStats } from '@/services/analytics.service'
+import LineChart from '@/components/charts/LineChart.vue'
+import DoughnutChart from '@/components/charts/DoughnutChart.vue'
+import OrderList from '@/components/orders/OrderList.vue'
 
-// Initialize ECharts
-use([
-  CanvasRenderer,
-  LineChart,
-  BarChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent
-])
+const route = useRoute()
+const restaurantId = route.params.id
 
-const store = useStore()
-const dateRange = ref('last30days')
-const customStartDate = ref('')
-const customEndDate = ref('')
-const totalRevenue = ref(0)
-const totalOrders = ref(0)
-const averageOrderValue = ref(0)
-const bestSellingItems = ref([])
-
-const dateRangeOptions = [
-  { title: 'Last 7 Days', value: 'last7days' },
-  { title: 'Last 30 Days', value: 'last30days' },
-  { title: 'Last 90 Days', value: 'last90days' },
-  { title: 'Custom Range', value: 'custom' }
-]
-
-const revenueChartOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis'
-  },
-  legend: {
-    data: ['Revenue', 'Orders']
-  },
-  xAxis: {
-    type: 'category',
-    data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  },
-  yAxis: [
-    {
-      type: 'value',
-      name: 'Revenue',
-      axisLabel: {
-        formatter: '{value} đ'
-      }
-    },
-    {
-      type: 'value',
-      name: 'Orders',
-      axisLabel: {
-        formatter: '{value}'
-      }
-    }
-  ],
-  series: [
-    {
-      name: 'Revenue',
-      type: 'bar',
-      data: [10000, 15000, 12000, 18000, 20000, 25000, 22000]
-    },
-    {
-      name: 'Orders',
-      type: 'line',
-      yAxisIndex: 1,
-      data: [20, 30, 25, 35, 40, 50, 45]
-    }
-  ]
-}))
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND'
-  }).format(value)
-}
-
-const fetchAnalytics = async () => {
-  try {
-    const restaurantId = store.state.auth.user.restaurantId
-    const options = {
-      startDate: customStartDate.value || undefined,
-      endDate: customEndDate.value || undefined
-    }
-
-    const [salesData, menuData] = await Promise.all([
-      analyticsService.getSalesAnalytics(restaurantId, options),
-      analyticsService.getMenuAnalytics(restaurantId, options)
-    ])
-
-    // Update the data
-    totalRevenue.value = salesData.totalRevenue
-    totalOrders.value = salesData.totalOrders
-    averageOrderValue.value = salesData.averageOrderValue
-    bestSellingItems.value = menuData.items
-
-    // Update chart data here...
-  } catch (error) {
-    console.error('Failed to fetch analytics:', error)
-  }
-}
-
-const exportReport = async () => {
-  try {
-    const restaurantId = store.state.auth.user.restaurantId
-    const format = 'pdf' // or 'excel'
-    const response = await analyticsService.exportReport(restaurantId, {
-      startDate: customStartDate.value,
-      endDate: customEndDate.value,
-      format
-    })
-
-    // Handle the response - typically downloading the file
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `restaurant-report.${format}`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  } catch (error) {
-    console.error('Failed to export report:', error)
-  }
-}
-
-onMounted(() => {
-  fetchAnalytics()
+const stats = ref({
+  todayOrders: 0,
+  totalRevenue: 0,
+  avgRating: 0
 })
+
+const revenueData = ref({
+  labels: [],
+  datasets: [{
+    label: 'Revenue',
+    data: []
+  }]
+})
+
+const orderStatusData = ref({
+  labels: ['Pending', 'Preparing', 'Delivering', 'Delivered'],
+  datasets: [{
+    data: [0, 0, 0, 0],
+    backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0']
+  }]
+})
+
+const recentOrders = ref([])
+
+onMounted(async () => {
+  const data = await fetchRestaurantStats(restaurantId)
+  stats.value = data.stats
+  revenueData.value = transformRevenueData(data.revenue)
+  orderStatusData.value.datasets[0].data = data.orderStatus
+  recentOrders.value = data.recentOrders
+})
+
+function transformRevenueData(rawData) {
+  return {
+    labels: rawData.map(d => d.date),
+    datasets: [{
+      label: 'Revenue',
+      data: rawData.map(d => d.amount),
+      borderColor: '#4bc0c0',
+      tension: 0.1
+    }]
+  }
+}
 </script>
 
 <style scoped>
-.chart {
-  height: 400px;
+.dashboard {
+  padding: 2rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.stat-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  color: #666;
+}
+
+.stat-card .value {
+  font-size: 2rem;
+  margin: 0;
+  font-weight: bold;
+  color: #333;
+}
+
+.charts {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.chart-container {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.recent-orders {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 </style>

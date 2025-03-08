@@ -44,6 +44,57 @@ export default {
     );
   },
 
+  // Setup axios interceptor for automatic token refresh
+  setupInterceptors(
+    getRefreshToken,
+    onRefreshSuccess,
+    onRefreshError
+  ) {
+    axios.interceptors.response.use(
+      response => response,
+      async error => {
+        const originalRequest = error.config;
+
+        // If the error is not 401 or the request was for refresh, reject
+        if (
+          error.response?.status !== 401 ||
+          originalRequest.url?.includes('/auth/refresh') ||
+          originalRequest._retry
+        ) {
+          return Promise.reject(error);
+        }
+
+        originalRequest._retry = true;
+
+        try {
+          const refreshToken = getRefreshToken();
+          if (!refreshToken) {
+            throw new Error('No refresh token available');
+          }
+
+          const newAccessToken = await this.refreshToken();
+          onRefreshSuccess(newAccessToken);
+          this.setAuthHeader(newAccessToken);
+          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+          
+          return axios(originalRequest);
+        } catch (refreshError) {
+          onRefreshError();
+          return Promise.reject(refreshError);
+        }
+      }
+    );
+  },
+
+  // Set auth header
+  setAuthHeader(token) {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  },
+
   // Set tokens in localStorage
   setTokens(token, refreshToken) {
     localStorage.setItem(TOKEN_KEY, token);

@@ -182,6 +182,57 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- Sales by Category -->
+    <v-row class="mt-6">
+      <v-col cols="12" md="6">
+        <v-card>
+          <v-card-title>Sales by Category</v-card-title>
+          <v-card-text>
+            <v-chart class="chart" :option="categoryChartOption" autoresize />
+          </v-card-text>
+        </v-card>
+      </v-col>
+      
+      <!-- Delivery Performance -->
+      <v-col cols="12" md="6">
+        <v-card>
+          <v-card-title>Delivery Performance</v-card-title>
+          <v-card-text>
+            <v-row>
+              <v-col cols="12">
+                <div class="text-subtitle-2 mb-2">Average Delivery Times</div>
+                <v-table density="compact">
+                  <thead>
+                    <tr>
+                      <th>Delivery Zone</th>
+                      <th class="text-center">Avg. Time</th>
+                      <th class="text-center">Target</th>
+                      <th class="text-center">Performance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="zone in deliveryPerformance" :key="zone.name">
+                      <td>{{ zone.name }}</td>
+                      <td class="text-center">{{ zone.avgTime }} min</td>
+                      <td class="text-center">{{ zone.target }} min</td>
+                      <td class="text-center">
+                        <v-progress-linear
+                          :model-value="calculatePerformance(zone)"
+                          height="8"
+                          :color="getPerformanceColor(zone)"
+                          class="mt-1"
+                        ></v-progress-linear>
+                      </td>
+                    </tr>
+                  </tbody>
+                </v-table>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
   </div>
 </template>
 
@@ -200,6 +251,8 @@ import {
   GridComponent,
   TooltipComponent,
   LegendComponent,
+  TitleComponent,
+  DataZoomComponent,
   VisualMapComponent
 } from 'echarts/components'
 import VChart from 'vue-echarts'
@@ -213,6 +266,8 @@ use([
   GridComponent,
   TooltipComponent,
   LegendComponent,
+  TitleComponent,
+  DataZoomComponent,
   VisualMapComponent
 ])
 
@@ -370,6 +425,83 @@ export default {
       return `$${Number(price).toFixed(2)}`
     }
 
+    // Delivery performance data
+    const deliveryPerformance = ref([
+      { name: 'Zone 1 (0-3 km)', avgTime: 18, target: 20 },
+      { name: 'Zone 2 (3-5 km)', avgTime: 25, target: 30 },
+      { name: 'Zone 3 (5-8 km)', avgTime: 32, target: 35 },
+      { name: 'Zone 4 (8+ km)', avgTime: 42, target: 40 }
+    ])
+
+    // Calculate delivery performance percentage
+    const calculatePerformance = (zone) => {
+      // Lower is better, so if avgTime is less than target, performance is good
+      if (zone.avgTime <= zone.target) {
+        return 100
+      } else {
+        // Calculate how much over target (as a percentage of target)
+        const overTarget = ((zone.avgTime - zone.target) / zone.target) * 100
+        return Math.max(0, 100 - overTarget * 5) // Reduce score by 5% for each 1% over target
+      }
+    }
+
+    // Get color based on performance
+    const getPerformanceColor = (zone) => {
+      const performance = calculatePerformance(zone)
+      if (performance >= 90) return 'success'
+      if (performance >= 70) return 'warning'
+      return 'error'
+    }
+
+    // Category sales chart
+    const categoryChartOption = computed(() => {
+      const categories = ['Burgers', 'Pizza', 'Salads', 'Desserts', 'Beverages', 'Sides']
+      const sales = [12500, 9800, 5400, 4200, 7600, 3800]
+      
+      return {
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'shadow'
+          }
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'value',
+          axisLabel: {
+            formatter: (value) => `$${value}`
+          }
+        },
+        yAxis: {
+          type: 'category',
+          data: categories
+        },
+        series: [
+          {
+            name: 'Sales',
+            type: 'bar',
+            data: sales,
+            itemStyle: {
+              color: function(params) {
+                const colorList = ['#ff9800', '#f44336', '#4caf50', '#9c27b0', '#2196f3', '#607d8b']
+                return colorList[params.dataIndex]
+              }
+            },
+            label: {
+              show: true,
+              position: 'right',
+              formatter: (params) => `$${params.value}`
+            }
+          }
+        ]
+      }
+    })
+
     // Fetch data
     onMounted(async () => {
       try {
@@ -393,7 +525,11 @@ export default {
       ratings,
       popularItems,
       getRatingPercentage,
-      formatPrice
+      formatPrice,
+      categoryChartOption,
+      deliveryPerformance,
+      calculatePerformance,
+      getPerformanceColor
     }
   }
 }

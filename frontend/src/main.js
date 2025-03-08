@@ -11,7 +11,7 @@ import * as directives from 'vuetify/directives'
 import '@mdi/font/css/materialdesignicons.css'
 import 'vuetify/styles'
 import socialAuth from './services/social-auth'
-import jwtAuth from './services/jwt-auth'
+import jwtAuth from './services/jwt-auth.js'
 import i18n from './i18n'
 import './assets/styles/global.css'
 
@@ -63,20 +63,38 @@ if (token) {
 }
 
 // Initialize social auth SDKs
-socialAuth.initSocialAuth().catch(error => {
-  console.warn('Failed to initialize social auth:', error)
-  // Non-blocking error - social login will attempt re-init when used
-})
+const initSocialAuth = async () => {
+  try {
+    await socialAuth.initSocialAuth();
+    console.log('Social auth initialized successfully');
+  } catch (error) {
+    console.warn('Failed to initialize social auth:', error);
+  }
+};
 
 // Create and mount app
 const app = createApp(App)
 
 app.use(Toast, {
-  // ... existing plugin options
+  position: 'top-right',
+  timeout: 3000,
+  closeOnClick: true,
+  pauseOnFocusLoss: true,
+  pauseOnHover: true,
+  draggable: true,
+  draggablePercent: 0.6,
+  showCloseButtonOnHover: false,
+  hideProgressBar: true,
+  closeButton: 'button',
+  icon: true,
+  rtl: false
 })
 
 app.use(store)
 app.use(router)
 app.use(vuetify)
 app.use(i18n)
+
+// Initialize social auth after app is mounted
 app.mount('#app')
+initSocialAuth()

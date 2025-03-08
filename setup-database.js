@@ -25,7 +25,7 @@ const config = {
 };
 
 // Path to schema file
-const schemaFilePath = path.join(__dirname, 'backend', 'src', 'config', 'schema.sql');
+const schemaFilePath = path.join(__dirname, 'food_Delivery.sql');
 
 // Create a connection without database selected
 const connection = mysql.createConnection({

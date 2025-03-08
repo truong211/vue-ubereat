@@ -189,7 +189,7 @@
           >
             <v-card>
               <v-img
-                :src="restaurant.image"
+                :src="restaurant.image_url || '/images/restaurant-placeholder.jpg'"
                 height="200"
                 cover
               ></v-img>
@@ -205,7 +205,7 @@
               </v-card-title>
               
               <v-card-subtitle>
-                {{ restaurant.cuisines.join(', ') }}
+                {{ restaurant.cuisine || 'Various Cuisines' }}
               </v-card-subtitle>
               
               <v-card-text>
@@ -219,18 +219,14 @@
                   ></v-rating>
                   <span class="text-body-2 ml-2">
                     {{ restaurant.rating.toFixed(1) }}
-                    ({{ restaurant.reviewCount }})
+                    ({{ restaurant.reviewCount || 0 }})
                   </span>
                 </div>
                 
                 <div class="d-flex align-center mt-2">
-                  <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-                  <span class="text-body-2">
-                    {{ restaurant.deliveryTime }} min
-                  </span>
-                  <v-icon size="small" class="mx-1">mdi-circle-small</v-icon>
-                  <span class="text-body-2">
-                    {{ restaurant.distance }} km
+                  <v-icon size="small" class="mr-1">mdi-map-marker</v-icon>
+                  <span class="text-body-2 text-truncate">
+                    {{ restaurant.address }}
                   </span>
                 </div>
               </v-card-text>
@@ -485,304 +481,308 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
+import { mapState, mapActions } from 'vuex';
 
 export default {
   name: 'UserProfile',
-
-  setup() {
-    const store = useStore()
-    
-    // State
-    const activeTab = ref('profile')
-    const updating = ref(false)
-    const savingAddress = ref(false)
-    const deletingAddress = ref(false)
-    const savingPreferences = ref(false)
-    const showAddressDialog = ref(false)
-    const showDeleteDialog = ref(false)
-    
-    // Forms
-    const profileForm = ref(null)
-    const addressForm = ref(null)
-    const imageInput = ref(null)
-    
-    // Profile data
-    const profile = ref({
-      firstName: '',
-      lastName: '',
-      email: '',
-      phone: '',
-      photo: null
-    })
-    
-    // Address data
-    const addresses = ref([])
-    const editingAddress = ref(null)
-    const addressToDelete = ref(null)
-    
-    const addressForm = ref({
-      name: '',
-      street: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      type: 'home',
-      instructions: '',
-      setDefault: false
-    })
-    
-    const addressTypes = [
-      { text: 'Home', value: 'home' },
-      { text: 'Work', value: 'work' },
-      { text: 'Other', value: 'other' }
-    ]
-    
-    // Favorites
-    const favoriteRestaurants = ref([])
-    
-    // Preferences
-    const preferences = ref({
-      dietary: [],
-      cuisines: [],
-      notifications: {
-        orderUpdates: true,
-        promotions: true,
-        newsletter: false
+  
+  data() {
+    return {
+      activeTab: 'profile',
+      updating: false,
+      savingAddress: false,
+      deletingAddress: false,
+      savingPreferences: false,
+      showAddressDialog: false,
+      showDeleteDialog: false,
+      editingAddress: null,
+      addressToDelete: null,
+      profile: {
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        photo: null
+      },
+      addressForm: {
+        name: '',
+        street: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        type: 'home',
+        instructions: '',
+        setDefault: false
+      },
+      addressTypes: [
+        { title: 'Home', value: 'home' },
+        { title: 'Work', value: 'work' },
+        { title: 'Other', value: 'other' }
+      ],
+      preferences: {
+        dietary: [],
+        cuisines: [],
+        notifications: {
+          orderUpdates: true,
+          promotions: true,
+          newsletter: false
+        }
+      },
+      dietaryOptions: [
+        { label: 'Vegetarian', value: 'vegetarian', icon: 'mdi-leaf' },
+        { label: 'Vegan', value: 'vegan', icon: 'mdi-sprout' },
+        { label: 'Gluten Free', value: 'gluten_free', icon: 'mdi-grain-off' },
+        { label: 'Halal', value: 'halal', icon: 'mdi-food-halal' }
+      ],
+      cuisineOptions: [
+        { label: 'Italian', value: 'italian', icon: 'mdi-pizza' },
+        { label: 'Japanese', value: 'japanese', icon: 'mdi-food-sushi' },
+        { label: 'Chinese', value: 'chinese', icon: 'mdi-noodles' },
+        { label: 'Indian', value: 'indian', icon: 'mdi-food-curry' },
+        { label: 'Thai', value: 'thai', icon: 'mdi-bowl-mix' },
+        { label: 'Mexican', value: 'mexican', icon: 'mdi-taco' }
+      ],
+      rules: {
+        required: v => !!v || 'Required',
+        email: v => /.+@.+\..+/.test(v) || 'Invalid email',
+        phone: v => /^\+?[\d\s-]{10,}$/.test(v) || 'Invalid phone number',
+        zipCode: v => /^\d{5}(-\d{4})?$/.test(v) || 'Invalid ZIP code'
       }
-    })
+    };
+  },
+  
+  computed: {
+    ...mapState({
+      user: state => state.auth.user,
+      addresses: state => state.profile.addresses,
+      favoriteRestaurants: state => state.profile.favorites
+    }),
     
-    const dietaryOptions = [
-      { label: 'Vegetarian', value: 'vegetarian', icon: 'mdi-leaf' },
-      { label: 'Vegan', value: 'vegan', icon: 'mdi-sprout' },
-      { label: 'Gluten Free', value: 'gluten_free', icon: 'mdi-grain-off' },
-      { label: 'Halal', value: 'halal', icon: 'mdi-food-halal' }
-    ]
+    profileImage() {
+      return this.profile.photo || this.user?.photo || null;
+    }
+  },
+  
+  methods: {
+    ...mapActions({
+      fetchUserProfile: 'profile/fetchUserProfile',
+      updateUserProfile: 'profile/updateProfile',
+      uploadProfileImage: 'profile/uploadProfileImage',
+      fetchAddresses: 'profile/fetchAddresses',
+      addAddress: 'profile/addAddress',
+      updateAddress: 'profile/updateAddress',
+      deleteAddressAction: 'profile/deleteAddress',
+      setDefaultAddressAction: 'profile/setDefaultAddress',
+      fetchFavorites: 'profile/fetchFavorites',
+      removeFavorite: 'profile/removeFromFavorites',
+      fetchPreferences: 'profile/fetchPreferences',
+      updatePreferencesAction: 'profile/updatePreferences'
+    }),
     
-    const cuisineOptions = [
-      { label: 'Italian', value: 'italian', icon: 'mdi-pizza' },
-      { label: 'Japanese', value: 'japanese', icon: 'mdi-food-sushi' },
-      { label: 'Chinese', value: 'chinese', icon: 'mdi-noodles' },
-      { label: 'Indian', value: 'indian', icon: 'mdi-food-curry' },
-      { label: 'Thai', value: 'thai', icon: 'mdi-bowl-mix' },
-      { label: 'Mexican', value: 'mexican', icon: 'mdi-taco' }
-    ]
-    
-    // Load user data
-    const loadUserData = async () => {
+    async loadUserData() {
       try {
         // Load profile
-        const userData = await store.dispatch('profile/fetchUserProfile')
-        profile.value = {
-          firstName: userData.firstName,
-          lastName: userData.lastName,
-          email: userData.email,
-          phone: userData.phone,
-          photo: userData.photo
-        }
+        const userData = await this.fetchUserProfile();
+        this.profile = {
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          email: userData.email || '',
+          phone: userData.phone || '',
+          photo: userData.photo || null
+        };
         
         // Load addresses
-        addresses.value = await store.dispatch('profile/fetchAddresses')
+        await this.fetchAddresses();
         
         // Load favorites
-        favoriteRestaurants.value = await store.dispatch('profile/fetchFavorites')
+        await this.fetchFavorites();
         
         // Load preferences
-        const userPrefs = await store.dispatch('profile/fetchPreferences')
-        preferences.value = {
-          dietary: userPrefs.dietary || [],
-          cuisines: userPrefs.cuisines || [],
-          notifications: {
-            ...preferences.value.notifications,
-            ...userPrefs.notifications
-          }
+        const userPrefs = await this.fetchPreferences();
+        if (userPrefs) {
+          this.preferences = {
+            dietary: userPrefs.dietary || [],
+            cuisines: userPrefs.cuisines || [],
+            notifications: {
+              ...this.preferences.notifications,
+              ...userPrefs.notifications
+            }
+          };
         }
       } catch (error) {
-        console.error('Failed to load user data:', error)
+        this.$toast.error('Failed to load user data');
+        console.error('Failed to load user data:', error);
       }
-    }
+    },
     
-    // Profile methods
-    const updateProfile = async () => {
-      if (!profileForm.value.validate()) return
+    async updateProfile() {
+      if (!this.$refs.profileForm.validate()) return;
       
-      updating.value = true
+      this.updating = true;
       try {
-        await store.dispatch('profile/updateProfile', profile.value)
+        await this.updateUserProfile(this.profile);
+        this.$toast.success('Profile updated successfully');
       } catch (error) {
-        console.error('Failed to update profile:', error)
+        this.$toast.error('Failed to update profile');
+        console.error('Failed to update profile:', error);
       } finally {
-        updating.value = false
+        this.updating = false;
       }
-    }
+    },
     
-    const triggerImageUpload = () => {
-      imageInput.value?.click()
-    }
+    triggerImageUpload() {
+      this.$refs.imageInput.click();
+    },
     
-    const handleImageUpload = async (event) => {
-      const file = event.target.files?.[0]
-      if (!file) return
+    async handleImageUpload(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
       
       try {
-        const imageUrl = await store.dispatch('profile/uploadProfileImage', file)
-        profile.value.photo = imageUrl
+        const imageUrl = await this.uploadProfileImage(file);
+        this.profile.photo = imageUrl;
+        this.$toast.success('Profile image updated');
       } catch (error) {
-        console.error('Failed to upload image:', error)
+        this.$toast.error('Failed to upload image');
+        console.error('Failed to upload image:', error);
       }
-    }
+    },
     
-    // Address methods
-    const editAddress = (address) => {
-      editingAddress.value = address
-      addressForm.value = {
+    editAddress(address) {
+      this.editingAddress = address;
+      this.addressForm = {
         name: address.name,
         street: address.street,
         city: address.city,
         state: address.state,
         zipCode: address.zipCode,
         type: address.type,
-        instructions: address.instructions
-      }
-      showAddressDialog.value = true
-    }
+        instructions: address.instructions || ''
+      };
+      this.showAddressDialog = true;
+    },
     
-    const saveAddress = async () => {
-      if (!addressForm.value?.validate()) return
+    async saveAddress() {
+      if (!this.$refs.addressForm.validate()) return;
       
-      savingAddress.value = true
+      this.savingAddress = true;
       try {
-        if (editingAddress.value) {
-          await store.dispatch('profile/updateAddress', {
-            id: editingAddress.value.id,
-            ...addressForm.value
-          })
+        if (this.editingAddress) {
+          await this.updateAddress({
+            id: this.editingAddress.id,
+            ...this.addressForm
+          });
+          this.$toast.success('Address updated successfully');
         } else {
-          await store.dispatch('profile/addAddress', addressForm.value)
+          await this.addAddress(this.addressForm);
+          this.$toast.success('Address added successfully');
         }
         
-        showAddressDialog.value = false
-        await loadUserData()
+        this.showAddressDialog = false;
+        this.editingAddress = null;
+        this.addressForm = {
+          name: '',
+          street: '',
+          city: '',
+          state: '',
+          zipCode: '',
+          type: 'home',
+          instructions: '',
+          setDefault: false
+        };
+        
+        // Refresh addresses
+        await this.fetchAddresses();
       } catch (error) {
-        console.error('Failed to save address:', error)
+        this.$toast.error(this.editingAddress ? 'Failed to update address' : 'Failed to add address');
+        console.error('Failed to save address:', error);
       } finally {
-        savingAddress.value = false
+        this.savingAddress = false;
       }
-    }
+    },
     
-    const confirmDeleteAddress = (address) => {
-      addressToDelete.value = address
-      showDeleteDialog.value = true
-    }
+    confirmDeleteAddress(address) {
+      this.addressToDelete = address;
+      this.showDeleteDialog = true;
+    },
     
-    const deleteAddress = async () => {
-      if (!addressToDelete.value) return
+    async deleteAddress() {
+      if (!this.addressToDelete) return;
       
-      deletingAddress.value = true
+      this.deletingAddress = true;
       try {
-        await store.dispatch('profile/deleteAddress', addressToDelete.value.id)
-        showDeleteDialog.value = false
-        await loadUserData()
+        await this.deleteAddressAction(this.addressToDelete.id);
+        this.$toast.success('Address deleted successfully');
+        this.showDeleteDialog = false;
+        
+        // Refresh addresses
+        await this.fetchAddresses();
       } catch (error) {
-        console.error('Failed to delete address:', error)
+        this.$toast.error('Failed to delete address');
+        console.error('Failed to delete address:', error);
       } finally {
-        deletingAddress.value = false
-        addressToDelete.value = null
+        this.deletingAddress = false;
+        this.addressToDelete = null;
       }
-    }
+    },
     
-    const setDefaultAddress = async (address) => {
+    async setDefaultAddress(address) {
       try {
-        await store.dispatch('profile/setDefaultAddress', address.id)
-        await loadUserData()
+        await this.setDefaultAddressAction(address.id);
+        this.$toast.success('Default address updated');
+        
+        // Refresh addresses
+        await this.fetchAddresses();
       } catch (error) {
-        console.error('Failed to set default address:', error)
+        this.$toast.error('Failed to set default address');
+        console.error('Failed to set default address:', error);
       }
-    }
+    },
     
-    // Favorites methods
-    const removeFromFavorites = async (restaurant) => {
+    async removeFromFavorites(restaurant) {
       try {
-        await store.dispatch('profile/removeFromFavorites', restaurant.id)
-        await loadUserData()
+        await this.removeFavorite(restaurant.id);
+        this.$toast.success('Restaurant removed from favorites');
+        
+        // Refresh favorites
+        await this.fetchFavorites();
       } catch (error) {
-        console.error('Failed to remove from favorites:', error)
+        this.$toast.error('Failed to remove from favorites');
+        console.error('Failed to remove from favorites:', error);
       }
-    }
+    },
     
-    // Preferences methods
-    const savePreferences = async () => {
-      savingPreferences.value = true
+    async savePreferences() {
+      this.savingPreferences = true;
       try {
-        await store.dispatch('profile/updatePreferences', preferences.value)
+        await this.updatePreferencesAction(this.preferences);
+        this.$toast.success('Preferences saved successfully');
       } catch (error) {
-        console.error('Failed to save preferences:', error)
+        this.$toast.error('Failed to save preferences');
+        console.error('Failed to save preferences:', error);
       } finally {
-        savingPreferences.value = false
+        this.savingPreferences = false;
       }
-    }
+    },
     
-    // Utility methods
-    const getAddressIcon = (type) => {
+    getAddressIcon(type) {
       const icons = {
         home: 'mdi-home',
         work: 'mdi-office-building',
         other: 'mdi-map-marker'
-      }
-      return icons[type] || 'mdi-map-marker'
-    }
+      };
+      return icons[type] || 'mdi-map-marker';
+    },
     
-    const formatAddress = (address) => {
-      return `${address.street}, ${address.city}, ${address.state} ${address.zipCode}`
+    formatAddress(address) {
+      return `${address.street}, ${address.city}, ${address.state} ${address.zipCode}`;
     }
-    
-    // Validation rules
-    const rules = {
-      required: v => !!v || 'Required',
-      email: v => /.+@.+\..+/.test(v) || 'Invalid email',
-      phone: v => /^\+?[\d\s-]{10,}$/.test(v) || 'Invalid phone number',
-      zipCode: v => /^\d{5}(-\d{4})?$/.test(v) || 'Invalid ZIP code'
-    }
-    
-    // Initialize
-    loadUserData()
-    
-    return {
-      activeTab,
-      profile,
-      updating,
-      profileForm,
-      addresses,
-      showAddressDialog,
-      showDeleteDialog,
-      savingAddress,
-      deletingAddress,
-      editingAddress,
-      addressForm,
-      addressTypes,
-      favoriteRestaurants,
-      preferences,
-      savingPreferences,
-      dietaryOptions,
-      cuisineOptions,
-      imageInput,
-      rules,
-      updateProfile,
-      triggerImageUpload,
-      handleImageUpload,
-      editAddress,
-      saveAddress,
-      confirmDeleteAddress,
-      deleteAddress,
-      setDefaultAddress,
-      removeFromFavorites,
-      savePreferences,
-      getAddressIcon,
-      formatAddress
-    }
+  },
+  
+  async mounted() {
+    await this.loadUserData();
   }
-}
+};
 </script>
 
 <style scoped>

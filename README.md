@@ -1,82 +1,180 @@
-# UberEat Clone - Spring Boot + Vue.js
+# Vue UberEat - Food Delivery Website
 
-This project is a food delivery application similar to UberEats, built with Vue.js for the frontend and Spring Boot for the backend.
+A comprehensive food delivery platform built with Vue.js, Node.js, and MySQL.
+
+## Project Overview
+
+This project is a food delivery website that connects restaurants with customers, allowing for online food ordering and delivery tracking. The system serves both restaurants for managing their menus and orders, and customers for ordering food and tracking deliveries.
+
+## Features
+
+### For Restaurants:
+- Restaurant registration and profile management
+- Menu management (add, edit, delete items)
+- Order processing and delivery tracking
+- Promotion and discount management
+- Customer review monitoring
+- Revenue reports and analytics
+
+### For Customers:
+- User registration and profile management
+- Restaurant browsing and food ordering
+- Order tracking
+- Food rating and reviews
+- Saved delivery addresses and payment methods
+- Order history and favorites
+
+## Technology Stack
+
+### Frontend:
+- Vue.js 3
+- Vuex for state management
+- Vue Router for navigation
+- Vuetify for UI components
+- Axios for API requests
+- Socket.io for real-time updates
+
+### Backend:
+- Node.js
+- Express.js
+- MySQL for database
+- JWT for authentication
+- Socket.io for real-time communication
 
 ## Project Structure
 
-- **Frontend**: Vue.js application with Vuex for state management
-- **Backend**: Spring Boot application with JWT authentication
+```
+vue-ubereat/
+├── frontend/               # Vue.js frontend application
+│   ├── public/             # Static files
+│   │   ├── assets/         # Images, fonts, etc.
+│   │   ├── src/            # Source files
+│   │   │   ├── components/     # Reusable Vue components
+│   │   │   ├── composables/    # Vue 3 composables
+│   │   │   ├── i18n/           # Internationalization
+│   │   │   ├── layouts/        # Layout components
+│   │   │   ├── router/         # Vue Router configuration
+│   │   │   ├── services/       # API and other services
+│   │   │   ├── store/          # Vuex store modules
+│   │   │   ├── types/          # TypeScript type definitions
+│   │   │   ├── validations/    # Form validation rules
+│   │   │   ├── views/          # Page components
+│   │   │   ├── App.vue         # Root component
+│   │   │   └── main.js         # Application entry point
+│   │   ├── .env                # Environment variables
+│   │   └── package.json        # Dependencies and scripts
+│   ├── .env                # Environment variables
+│   └── package.json        # Dependencies and scripts
+├── backend/                # Node.js backend application
+│   ├── src/                # Source files
+│   │   ├── config/         # Configuration files
+│   │   ├── controllers/    # Request handlers
+│   │   ├── middleware/     # Express middleware
+│   │   ├── models/         # Database models
+│   │   ├── routes/         # API routes
+│   │   ├── services/       # Business logic
+│   │   ├── utils/          # Utility functions
+│   │   └── app.js          # Application entry point
+│   ├── .env                # Environment variables
+│   └── package.json        # Dependencies and scripts
+├── food_Delivery.sql       # Database schema
+└── setup-database.js       # Database setup script
+```
 
-## Prerequisites
+## Getting Started
 
-- Java 17 or higher
-- Node.js 16 or higher
-- MySQL database
+### Prerequisites
+- Node.js (v14 or higher)
+- MySQL (v8 or higher)
+- npm or yarn
 
-## Setup Instructions
+### Installation
 
-1. **Database Setup**
-   - Create a MySQL database named `food_delivery`
-   - Configure database connection in `backend/src/main/resources/application.properties`
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/vue-ubereat.git
+cd vue-ubereat
+```
 
-2. **Backend Setup**
-   ```bash
-   cd backend
-   mvn clean install
-   mvn spring-boot:run
-   ```
+2. Set up the database:
+```bash
+node setup-database.js
+```
 
-3. **Frontend Setup**
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+3. Install backend dependencies:
+```bash
+cd backend
+npm install
+```
 
-4. **Quick Start Scripts**
-   - Windows: `start-dev.bat`
-   - macOS/Linux: `chmod +x start-dev.sh && ./start-dev.sh`
+4. Install frontend dependencies:
+```bash
+cd ../frontend
+npm install
+```
 
-## Default User Accounts
+### Running the Application
 
-- Admin: `admin/admin123`
+1. Start the backend server:
+```bash
+cd backend
+npm run dev
+```
 
-## API Endpoints
+2. Start the frontend development server:
+```bash
+cd frontend
+npm run dev
+```
 
-### Authentication
-- `POST /api/auth/login`: Authenticate a user
-- `POST /api/auth/register`: Register a new user
+3. Open your browser and navigate to `http://localhost:5173`
 
-### Restaurants
-- `GET /api/restaurants`: Get all restaurants
-- `GET /api/restaurants/{id}`: Get restaurant by ID
-- `GET /api/restaurants/{id}/menu`: Get restaurant menu
+## Implementation Plan
 
-### Health Check
-- `GET /api/health`: System health check
+1. **Phase 1: Setup and Authentication**
+   - Project structure setup
+   - Database configuration
+   - User authentication (login, register, forgot password)
+   - User profile management
 
-## Spring Boot and Vue.js Integration
+2. **Phase 2: Restaurant Management**
+   - Restaurant registration and profile
+   - Menu management
+   - Category management
+   - Food item management
 
-This project integrates Spring Boot with Vue.js by:
+3. **Phase 3: Customer Features**
+   - Restaurant browsing and searching
+   - Food ordering
+   - Cart functionality
+   - Checkout process
 
-1. **Authentication**: JWT token-based authentication using Spring Security
-2. **CORS Configuration**: Configured to allow requests from Vue.js frontend
-3. **API Structure**: RESTful API design that matches the Vue.js service layer
+4. **Phase 4: Order Management**
+   - Order processing for restaurants
+   - Order tracking for customers
+   - Delivery status updates
+   - Order history
 
-## Development
+5. **Phase 5: Reviews and Ratings**
+   - Customer reviews
+   - Restaurant ratings
+   - Food item ratings
 
-- Backend runs on `http://localhost:8080`
-- Frontend runs on `http://localhost:5173`
-- Frontend connects to backend using environment variables in `.env`
+6. **Phase 6: Promotions and Discounts**
+   - Coupon management
+   - Special offers
+   - Loyalty programs
 
-## Security Features
+7. **Phase 7: Analytics and Reporting**
+   - Restaurant sales reports
+   - Customer order analytics
+   - Performance metrics
 
-- JWT-based authentication
-- Password encryption
-- Role-based access control
-- CORS protection
-- Spring Security for endpoint protection
+8. **Phase 8: Optimization and Deployment**
+   - Performance optimization
+   - Security enhancements
+   - Production deployment
 
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.

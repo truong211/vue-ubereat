@@ -20,37 +20,46 @@ const config = {
 
 /**
  * Initialize social auth SDKs
+ * @returns {Promise<void>} Promise that resolves when SDKs are loaded
  */
 export const initSocialAuth = () => {
-  // Initialize Google SDK
-  window.onGoogleLibraryLoad = () => {
-    console.log('Google SDK loaded');
-  };
+  return new Promise((resolve) => {
+    // Initialize Google SDK
+    window.onGoogleLibraryLoad = () => {
+      console.log('Google SDK loaded');
+    };
 
-  // Load Google SDK
-  const googleScript = document.createElement('script');
-  googleScript.src = 'https://accounts.google.com/gsi/client';
-  googleScript.async = true;
-  googleScript.defer = true;
-  document.head.appendChild(googleScript);
+    // Load Google SDK
+    const googleScript = document.createElement('script');
+    googleScript.src = 'https://accounts.google.com/gsi/client';
+    googleScript.async = true;
+    googleScript.defer = true;
+    document.head.appendChild(googleScript);
 
-  // Initialize Facebook SDK
-  window.fbAsyncInit = () => {
-    FB.init({
-      appId: config.facebook.appId,
-      cookie: true,
-      xfbml: true,
-      version: 'v17.0'
-    });
-    console.log('Facebook SDK loaded');
-  };
+    // Initialize Facebook SDK
+    window.fbAsyncInit = () => {
+      FB.init({
+        appId: config.facebook.appId,
+        cookie: true,
+        xfbml: true,
+        version: 'v17.0'
+      });
+      console.log('Facebook SDK loaded');
+      resolve(); // Resolve the promise when Facebook SDK is loaded
+    };
 
-  // Load Facebook SDK
-  const fbScript = document.createElement('script');
-  fbScript.src = 'https://connect.facebook.net/en_US/sdk.js';
-  fbScript.async = true;
-  fbScript.defer = true;
-  document.head.appendChild(fbScript);
+    // Load Facebook SDK
+    const fbScript = document.createElement('script');
+    fbScript.src = 'https://connect.facebook.net/en_US/sdk.js';
+    fbScript.async = true;
+    fbScript.defer = true;
+    document.head.appendChild(fbScript);
+    
+    // Fallback resolution in case Facebook SDK fails to load
+    setTimeout(() => {
+      resolve();
+    }, 5000);
+  });
 };
 
 /**
