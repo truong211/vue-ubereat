@@ -1,0 +1,182 @@
+/* Base Variables */
+:root {
+  /* Colors */
+  --primary-color: #ff5252;
+  --secondary-color: #424242;
+  --success-color: #4caf50;
+  --error-color: #ff5252;
+  --warning-color: #fb8c00;
+  --info-color: #2196f3;
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* Transitions */
+  --transition-quick: 0.2s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.5s ease;
+  
+  /* Shadows */
+  --shadow-1: 0 2px 4px rgba(0,0,0,0.1);
+  --shadow-2: 0 4px 8px rgba(0,0,0,0.1);
+  --shadow-3: 0 8px 16px rgba(0,0,0,0.1);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Animation Classes */
+.fade-in {
+  animation: fadeIn var(--transition-normal);
+}
+
+.slide-up {
+  animation: slideInUp var(--transition-normal);
+}
+
+.slide-right {
+  animation: slideInRight var(--transition-normal);
+}
+
+/* Hover Effects */
+.hover-scale {
+  transition: transform var(--transition-quick);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.hover-shadow {
+  transition: box-shadow var(--transition-quick);
+}
+
+.hover-shadow:hover {
+  box-shadow: var(--shadow-2);
+}
+
+/* Responsive Typography */
+@media (max-width: 600px) {
+  .text-h1 { font-size: 2.5rem !important; }
+  .text-h2 { font-size: 2rem !important; }
+  .text-h3 { font-size: 1.75rem !important; }
+  .text-h4 { font-size: 1.5rem !important; }
+}
+
+/* Responsive Spacing */
+@media (max-width: 600px) {
+  .responsive-container {
+    padding: var(--spacing-md) !important;
+  }
+  
+  .responsive-gap {
+    gap: var(--spacing-sm) !important;
+  }
+}
+
+/* Restaurant Card Animations */
+.restaurant-card {
+  transition: all var(--transition-normal);
+}
+
+.restaurant-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-2);
+}
+
+/* Menu Item Animations */
+.menu-item {
+  transition: all var(--transition-quick);
+}
+
+.menu-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Cart Animations */
+.cart-item-enter-active,
+.cart-item-leave-active {
+  transition: all var(--transition-normal);
+}
+
+.cart-item-enter-from,
+.cart-item-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+/* Loading States */
+.loading-skeleton {
+  animation: pulse 1.5s infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0),
+    rgba(255,255,255,0.5),
+    rgba(255,255,255,0)
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better Touch Response */
+@media (hover: none) {
+  .hover-scale:hover {
+    transform: none;
+  }
+  
+  .hover-shadow:hover {
+    box-shadow: none;
+  }
+}
+
+/* Focus States */
+:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* Better Mobile Touch Targets */
+@media (max-width: 600px) {
+  .touch-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}

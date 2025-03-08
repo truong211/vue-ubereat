@@ -1,0 +1,154 @@
+{
+  "name": "Food Delivery Driver App",
+  "short_name": "Driver App",
+  "description": "Manage deliveries, track orders, and communicate with restaurants and customers",
+  "theme_color": "#1976d2",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/?source=pwa",
+  "icons": [
+    {
+      "src": "/img/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/img/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Current Order",
+      "short_name": "Order",
+      "description": "View your current delivery order",
+      "url": "/driver/orders/current",
+      "icons": [{ "src": "/img/icons/delivery.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Earnings",
+      "short_name": "Earnings",
+      "description": "View your earnings and statistics",
+      "url": "/driver/earnings",
+      "icons": [{ "src": "/img/icons/earnings.png", "sizes": "192x192" }]
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+delivery",
+      "url": "/driver/orders/%s"
+    }
+  ],
+  "categories": ["food", "delivery", "business"],
+  "screenshots": [
+    {
+      "src": "/img/screenshots/orders.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "platform": "wide",
+      "label": "Orders Screen"
+    },
+    {
+      "src": "/img/screenshots/map.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "platform": "wide",
+      "label": "Navigation Map"
+    },
+    {
+      "src": "/img/screenshots/earnings.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "platform": "wide",
+      "label": "Earnings Dashboard"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "/driver/orders/import",
+      "accept": {
+        "application/json": [".deliveryorder"]
+      },
+      "icons": [{ "src": "/img/icons/import.png", "sizes": "192x192" }],
+      "launch_type": "single-client"
+    }
+  ],
+  "splash_pages": null,
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "share_target": {
+    "action": "/driver/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "images",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  },
+  "lang": "en-US",
+  "dir": "ltr",
+  "iarc_rating_id": "",
+  "gcm_sender_id": "",
+  "gcm_user_visible_only": true,
+  "permissions": [
+    "geolocation",
+    "notifications",
+    "background-sync"
+  ],
+  "features": [
+    "Cross Platform",
+    "Offline Support",
+    "Push Notifications",
+    "Background Sync",
+    "GPS Navigation",
+    "Real-time Chat"
+  ]
+}
