@@ -8,6 +8,7 @@ import ui from './modules/ui'
 import reviews from './modules/reviews'
 import orderTracking from './modules/orderTracking'
 import categories from './modules/categories'
+import restaurants from './modules/restaurants'
 import websocketService from '@/services/websocket'
 
 // Create a new store instance.
@@ -133,6 +134,7 @@ export default createStore({
     ui,
     reviews,
     orderTracking,
-    categories
+    categories,
+    restaurants
   }
 })

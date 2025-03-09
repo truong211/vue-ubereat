@@ -1,4 +1,37 @@
 export default {
+  translations: {
+    common: {
+      welcome: 'Chào mừng đến UberEat',
+      loading: 'Đang tải...',
+      error: 'Đã xảy ra lỗi',
+      retry: 'Thử lại',
+      cancel: 'Hủy',
+      save: 'Lưu',
+      delete: 'Xóa',
+      edit: 'Chỉnh sửa',
+      search: 'Tìm kiếm',
+      filter: 'Lọc',
+      sort: 'Sắp xếp'
+    },
+    auth: {
+      login: 'Đăng nhập',
+      logout: 'Đăng xuất',
+      register: 'Đăng ký',
+      forgotPassword: 'Quên mật khẩu',
+      resetPassword: 'Đặt lại mật khẩu',
+      email: 'Email',
+      password: 'Mật khẩu',
+      confirmPassword: 'Xác nhận mật khẩu'
+    },
+    navigation: {
+      home: 'Trang chủ',
+      restaurants: 'Nhà hàng',
+      orders: 'Đơn hàng',
+      cart: 'Giỏ hàng',
+      profile: 'Hồ sơ',
+      settings: 'Cài đặt'
+    }
+  },
   restaurant: {
     // Previous translations remain...
 

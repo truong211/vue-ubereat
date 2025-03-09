@@ -1,4 +1,37 @@
 export default {
+  translations: {
+    common: {
+      welcome: 'Welcome to UberEat',
+      loading: 'Loading...',
+      error: 'An error occurred',
+      retry: 'Retry',
+      cancel: 'Cancel',
+      save: 'Save',
+      delete: 'Delete',
+      edit: 'Edit',
+      search: 'Search',
+      filter: 'Filter',
+      sort: 'Sort'
+    },
+    auth: {
+      login: 'Login',
+      logout: 'Logout',
+      register: 'Register',
+      forgotPassword: 'Forgot Password',
+      resetPassword: 'Reset Password',
+      email: 'Email',
+      password: 'Password',
+      confirmPassword: 'Confirm Password'
+    },
+    navigation: {
+      home: 'Home',
+      restaurants: 'Restaurants',
+      orders: 'Orders',
+      cart: 'Cart',
+      profile: 'Profile',
+      settings: 'Settings'
+    }
+  },
   restaurant: {
     // Previous translations remain...
 

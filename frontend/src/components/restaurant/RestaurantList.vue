@@ -219,8 +219,8 @@ export default {
   
   computed: {
     ...mapState({
-      restaurants: state => state.restaurant.restaurants,
-      totalRestaurants: state => state.restaurant.totalRestaurants,
+      restaurants: state => state.restaurants.restaurants,
+      totalRestaurants: state => state.restaurants.totalRestaurants,
       userFavorites: state => state.user.favorites || []
     }),
     
@@ -231,7 +231,7 @@ export default {
   
   methods: {
     ...mapActions({
-      fetchRestaurants: 'restaurant/fetchRestaurants',
+      fetchRestaurants: 'restaurants/fetchRestaurants',
       addFavorite: 'user/addFavorite',
       removeFavorite: 'user/removeFavorite'
     }),

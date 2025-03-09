@@ -8,6 +8,7 @@ const Review = require('./review.model');
 const Promotion = require('./promotion.model');
 const Cart = require('./cart.model');
 const Address = require('./address.model');
+const ProductPromotion = require('./productPromotion.model');
 
 // Additional associations can be defined here if needed
 
@@ -21,5 +22,6 @@ module.exports = {
   Review,
   Promotion,
   Cart,
-  Address
-}; 
+  Address,
+  ProductPromotion
+};

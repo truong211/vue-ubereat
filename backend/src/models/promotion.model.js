@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
-const Restaurant = require('./restaurant.model');
 
 /**
  * Promotion Model
@@ -12,22 +11,10 @@ const Promotion = sequelize.define('Promotion', {
     primaryKey: true,
     autoIncrement: true
   },
-  restaurantId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: Restaurant,
-      key: 'id'
-    }
-  },
   code: {
     type: DataTypes.STRING(50),
     allowNull: false,
     unique: true
-  },
-  name: {
-    type: DataTypes.STRING(100),
-    allowNull: false
   },
   description: {
     type: DataTypes.TEXT,
@@ -60,41 +47,13 @@ const Promotion = sequelize.define('Promotion', {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true
   },
-  usageLimit: {
-    type: DataTypes.INTEGER,
-    allowNull: true
-  },
-  usageCount: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
-  },
-  isActive: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-  },
-  isGlobal: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  applicableProducts: {
-    type: DataTypes.JSON,
-    allowNull: true
-  },
-  applicableCategories: {
-    type: DataTypes.JSON,
-    allowNull: true
-  },
-  image: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+  status: {
+    type: DataTypes.ENUM('active', 'inactive'),
+    defaultValue: 'active'
   }
 }, {
   timestamps: true,
   tableName: 'promotions'
 });
 
-// Define associations
-Promotion.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
-Restaurant.hasMany(Promotion, { foreignKey: 'restaurantId', as: 'promotions' });
-
-module.exports = Promotion; 
+module.exports = Promotion;
