@@ -16,6 +16,7 @@ const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/order.routes');
 const reviewRoutes = require('./routes/review.routes');
 const promotionRoutes = require('./routes/promotion.routes');
+const paymentRoutes = require('./routes/payment.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -57,6 +58,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', authMiddleware, orderRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/promotions', promotionRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -121,4 +123,4 @@ server.listen(PORT, () => {
 });
 
 // Export for testing
-module.exports = { app, server, io }; 
+module.exports = { app, server, io };
