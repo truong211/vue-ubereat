@@ -237,68 +237,39 @@
 
             <!-- Step 2: Payment -->
             <v-stepper-window-item value="2">
-              <v-card class="pa-4">
-                <v-card-title>Payment Method</v-card-title>
-                <v-card-text>
-                  <payment-processor 
-                    :amount="orderTotal" 
-                    :orderId="generateOrderId()"
-                    @payment-success="handlePaymentSuccess"
-                    @payment-error="handlePaymentError"
-                    @dialog-closed="handleDialogClosed"
-                  ></payment-processor>
-                </v-card-text>
-                <v-card-actions>
-                  <v-btn 
-                    variant="text" 
-                    @click="currentStep = '1'"
-                  >
-                    Back to Delivery
-                  </v-btn>
-                </v-card-actions>
-              </v-card>
+              <payment-form
+                :order-data="{
+                  id: orderId,
+                  amount: total,
+                  items: cartItems
+                }"
+                @payment-success="handlePaymentSuccess"
+                @payment-error="handlePaymentError"
+              />
             </v-stepper-window-item>
 
             <!-- Step 3: Confirmation -->
             <v-stepper-window-item value="3">
-              <v-card class="pa-4 text-center">
-                <v-card-text>
-                  <v-icon color="success" size="64" class="mb-4">mdi-check-circle</v-icon>
-                  <h2 class="text-h4 mb-2">Thank You For Your Order!</h2>
-                  <p class="text-h6 mb-4">Order #{{ confirmedOrderId }}</p>
-                  
-                  <v-alert type="success" class="mb-6">
-                    Your order has been received and is being processed. You'll receive a confirmation via email shortly.
-                  </v-alert>
-                  
-                  <div class="mb-6">
-                    <p class="mb-2">Your food is being prepared by:</p>
-                    <p class="text-h6">{{ cartRestaurant }}</p>
-                  </div>
-                  
-                  <div class="mb-6">
-                    <p class="mb-2">Estimated delivery time:</p>
-                    <p class="text-h6">{{ estimatedDeliveryTime }}</p>
-                  </div>
-                  
-                  <v-chip
-                    v-if="isUserEnrolledInLoyalty"
-                    color="primary"
-                    class="mb-6"
-                    prepend-icon="mdi-star"
-                  >
-                    You earned {{ loyaltyPointsEarned }} points with this order!
-                  </v-chip>
-                </v-card-text>
-                <v-card-actions class="justify-center">
-                  <v-btn 
-                    color="primary" 
-                    to="/orders"
-                    size="large"
-                  >
-                    View Your Orders
-                  </v-btn>
-                </v-card-actions>
+              <v-card class="text-center pa-6">
+                <v-icon
+                  color="success"
+                  size="64"
+                  class="mb-4"
+                >
+                  mdi-check-circle
+                </v-icon>
+                <h2 class="text-h5 mb-2">Order Placed Successfully!</h2>
+                <p class="text-body-1 mb-6">
+                  Your order has been confirmed and is being processed.
+                  You will receive updates about your order status.
+                </p>
+                <v-btn
+                  color="primary"
+                  size="large"
+                  :to="{ name: 'OrderTracking', params: { id: orderId } }"
+                >
+                  Track Order
+                </v-btn>
               </v-card>
             </v-stepper-window-item>
           </v-stepper-window>

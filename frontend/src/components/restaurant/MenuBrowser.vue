@@ -193,141 +193,149 @@
         <v-card-text>
           <p class="text-body-1">{{ selectedItem.description }}</p>
 
-          <!-- Item Tags -->
-          <div class="my-4">
-            <v-chip
-              v-for="tag in selectedItem.dietaryTags"
-              :key="tag"
-              :color="getDietaryTagColor(tag)"
-              size="small"
-              class="mr-2 mb-2"
-            >
-              <v-icon start>{{ getDietaryTagIcon(tag) }}</v-icon>
-              {{ getDietaryTagLabel(tag) }}
-            </v-chip>
+          <!-- Nutritional Information -->
+          <v-expansion-panels class="mt-4">
+            <v-expansion-panel>
+              <v-expansion-panel-title>
+                <v-icon start>mdi-nutrition</v-icon>
+                Nutritional Information
+              </v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <v-list density="compact" class="bg-grey-lighten-4 rounded">
+                  <v-list-item>
+                    <template v-slot:prepend>
+                      <v-icon color="primary">mdi-fire-circle</v-icon>
+                    </template>
+                    <v-list-item-title>Calories</v-list-item-title>
+                    <v-list-item-subtitle>{{ selectedItem.nutrition?.calories || 'N/A' }} kcal</v-list-item-subtitle>
+                  </v-list-item>
+                  <v-list-item>
+                    <template v-slot:prepend>
+                      <v-icon color="primary">mdi-protein</v-icon>
+                    </template>
+                    <v-list-item-title>Protein</v-list-item-title>
+                    <v-list-item-subtitle>{{ selectedItem.nutrition?.protein || 'N/A' }} g</v-list-item-subtitle>
+                  </v-list-item>
+                  <v-list-item>
+                    <template v-slot:prepend>
+                      <v-icon color="primary">mdi-molecule</v-icon>
+                    </template>
+                    <v-list-item-title>Carbohydrates</v-list-item-title>
+                    <v-list-item-subtitle>{{ selectedItem.nutrition?.carbs || 'N/A' }} g</v-list-item-subtitle>
+                  </v-list-item>
+                  <v-list-item>
+                    <template v-slot:prepend>
+                      <v-icon color="primary">mdi-water</v-icon>
+                    </template>
+                    <v-list-item-title>Fat</v-list-item-title>
+                    <v-list-item-subtitle>{{ selectedItem.nutrition?.fat || 'N/A' }} g</v-list-item-subtitle>
+                  </v-list-item>
+                </v-list>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
+
+          <!-- Allergen Information -->
+          <div v-if="selectedItem.allergens && selectedItem.allergens.length" class="mt-4">
+            <div class="d-flex align-center mb-2">
+              <v-icon color="warning">mdi-alert-circle</v-icon>
+              <span class="text-subtitle-1 ml-2">Allergen Information</span>
+            </div>
+            <v-chip-group>
+              <v-chip
+                v-for="allergen in selectedItem.allergens"
+                :key="allergen"
+                color="warning"
+                variant="outlined"
+                size="small"
+              >
+                {{ allergen }}
+              </v-chip>
+            </v-chip-group>
           </div>
 
           <!-- Customization Options -->
-          <template v-if="selectedItem.customizable">
-            <v-divider class="mb-4"></v-divider>
-            
-            <!-- Size Selection -->
-            <div v-if="selectedItem.sizes" class="mb-4">
-              <div class="text-subtitle-1 mb-2">Size</div>
-              <v-btn-toggle
-                v-model="selectedSize"
-                mandatory
-                divided
-                class="w-100"
-              >
-                <v-btn
-                  v-for="size in selectedItem.sizes"
-                  :key="size.value"
-                  :value="size.value"
-                  class="flex-grow-1"
-                >
-                  <div class="text-center">
-                    <div>{{ size.label }}</div>
-                    <div class="text-caption">${{ size.price.toFixed(2) }}</div>
-                  </div>
-                </v-btn>
-              </v-btn-toggle>
-            </div>
-
-            <!-- Options Groups -->
-            <div
-              v-for="(group, index) in selectedItem.optionGroups"
-              :key="index"
-              class="mb-4"
-            >
-              <div class="d-flex justify-space-between align-center mb-2">
-                <div class="text-subtitle-1">{{ group.name }}</div>
-                <div class="text-caption">
-                  {{ group.required ? 'Required' : 'Optional' }}
-                  <template v-if="group.max > 1">
-                    • Select up to {{ group.max }}
-                  </template>
+          <div v-if="selectedItem.customizationOptions" class="mt-4">
+            <div class="text-subtitle-1 mb-2">Customize Your Order</div>
+            <v-radio-group v-model="selectedOptions.size" class="mb-4">
+              <template v-slot:label>
+                <div class="d-flex align-center">
+                  <v-icon start>mdi-ruler</v-icon>
+                  <span class="ml-2">Size</span>
                 </div>
+              </template>
+              <v-radio
+                v-for="size in selectedItem.customizationOptions.sizes"
+                :key="size.value"
+                :value="size.value"
+                :label="`${size.label} (+$${size.additionalPrice.toFixed(2)})`"
+              ></v-radio>
+            </v-radio-group>
+
+            <v-divider class="mb-4"></v-divider>
+
+            <template v-if="selectedItem.customizationOptions.addons">
+              <div class="d-flex align-center mb-2">
+                <v-icon>mdi-plus-circle</v-icon>
+                <span class="text-subtitle-1 ml-2">Extra Toppings</span>
               </div>
+              <v-checkbox
+                v-for="addon in selectedItem.customizationOptions.addons"
+                :key="addon.value"
+                v-model="selectedOptions.addons"
+                :value="addon.value"
+                :label="`${addon.label} (+$${addon.price.toFixed(2)})`"
+                hide-details
+                class="mb-2"
+              ></v-checkbox>
+            </template>
+          </div>
 
-              <v-radio-group
-                v-if="group.max === 1"
-                v-model="selectedOptions[group.name]"
-                :rules="group.required ? [v => !!v || 'Required'] : []"
-              >
-                <v-radio
-                  v-for="option in group.options"
-                  :key="option.id"
-                  :value="option.id"
-                  :label="option.name"
-                >
-                  <template v-slot:label>
-                    <div class="d-flex justify-space-between align-center flex-grow-1">
-                      <span>{{ option.name }}</span>
-                      <span v-if="option.price > 0" class="text-caption">
-                        +${{ option.price.toFixed(2) }}
-                      </span>
-                    </div>
-                  </template>
-                </v-radio>
-              </v-radio-group>
-
-              <v-checkbox-btn
-                v-else
-                v-for="option in group.options"
-                :key="option.id"
-                v-model="selectedOptions[group.name]"
-                :value="option.id"
-                :label="option.name"
-                :rules="[
-                  v => !group.required || v.length > 0 || 'Required',
-                  v => v.length <= group.max || `Select up to ${group.max} options`
-                ]"
-              >
-                <template v-slot:label>
-                  <div class="d-flex justify-space-between align-center flex-grow-1">
-                    <span>{{ option.name }}</span>
-                    <span v-if="option.price > 0" class="text-caption">
-                      +${{ option.price.toFixed(2) }}
-                    </span>
-                  </div>
-                </template>
-              </v-checkbox-btn>
-            </div>
-
-            <!-- Special Instructions -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Special Instructions</div>
-              <v-textarea
-                v-model="specialInstructions"
-                placeholder="Add any special requests (optional)"
-                variant="outlined"
-                rows="2"
-                counter="200"
-                :rules="[v => !v || v.length <= 200 || 'Max 200 characters']"
-              ></v-textarea>
-            </div>
-          </template>
+          <!-- Special Instructions -->
+          <v-text-field
+            v-model="specialInstructions"
+            label="Special Instructions"
+            placeholder="Any special requests?"
+            variant="outlined"
+            class="mt-4"
+            clearable
+          ></v-text-field>
         </v-card-text>
 
         <v-divider></v-divider>
 
         <v-card-actions class="pa-4">
-          <v-btn
-            variant="text"
-            @click="showItemDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="primary"
-            :loading="isAddingToCart"
-            :disabled="!selectedItem.available"
-            @click="addToCart"
-          >
-            Add to Cart • ${{ calculateTotalPrice().toFixed(2) }}
-          </v-btn>
+          <v-row align="center">
+            <v-col cols="6">
+              <div class="d-flex align-center">
+                <v-btn
+                  icon="mdi-minus"
+                  variant="outlined"
+                  size="small"
+                  @click="decrementQuantity"
+                  :disabled="quantity <= 1"
+                ></v-btn>
+                <span class="mx-4 text-h6">{{ quantity }}</span>
+                <v-btn
+                  icon="mdi-plus"
+                  variant="outlined"
+                  size="small"
+                  @click="incrementQuantity"
+                ></v-btn>
+              </div>
+            </v-col>
+            <v-col cols="6" class="text-right">
+              <v-btn
+                color="primary"
+                size="large"
+                block
+                @click="addToCart"
+                :disabled="!selectedItem.available"
+              >
+                Add to Cart - ${{ calculateTotal.toFixed(2) }}
+              </v-btn>
+            </v-col>
+          </v-row>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -336,32 +344,18 @@
 
 <script>
 import { ref, computed } from 'vue'
-import { useDebounce } from '@/composables/useDebounce'
 
 export default {
   name: 'MenuBrowser',
   
   props: {
-    // Restaurant menu data
     categories: {
       type: Array,
       required: true
     },
-    
     items: {
       type: Array,
       required: true
-    },
-    
-    // Customization options
-    showSearch: {
-      type: Boolean,
-      default: true
-    },
-    
-    showFilters: {
-      type: Boolean,
-      default: true
     }
   },
   
@@ -372,19 +366,18 @@ export default {
   ],
   
   setup(props, { emit }) {
-    // Search and filter state
     const searchQuery = ref('')
-    const activeCategory = ref(props.categories[0]?.id)
     const sortBy = ref('recommended')
     const dietaryFilters = ref([])
-    
-    // Item selection state
+    const activeCategory = ref(null)
     const showItemDialog = ref(false)
     const selectedItem = ref(null)
-    const selectedSize = ref(null)
-    const selectedOptions = ref({})
+    const quantity = ref(1)
     const specialInstructions = ref('')
-    const isAddingToCart = ref(false)
+    const selectedOptions = ref({
+      size: null,
+      addons: []
+    })
     
     // Filter options
     const sortOptions = [
@@ -452,60 +445,68 @@ export default {
       showItemDialog.value = true
     }
     
-    const calculateTotalPrice = () => {
+    // Calculate total price including customizations
+    const calculateTotal = computed(() => {
       if (!selectedItem.value) return 0
       
-      let total = selectedItem.value.price
+      let total = selectedItem.value.price * quantity.value
       
       // Add size price
-      if (selectedSize.value && selectedItem.value.sizes) {
-        const size = selectedItem.value.sizes.find(s => s.value === selectedSize.value)
-        if (size) {
-          total = size.price
+      if (selectedOptions.value.size && selectedItem.value.customizationOptions?.sizes) {
+        const selectedSize = selectedItem.value.customizationOptions.sizes.find(
+          size => size.value === selectedOptions.value.size
+        )
+        if (selectedSize) {
+          total += selectedSize.additionalPrice * quantity.value
         }
       }
       
-      // Add options prices
-      if (selectedItem.value.optionGroups) {
-        selectedItem.value.optionGroups.forEach(group => {
-          const selectedIds = Array.isArray(selectedOptions.value[group.name])
-            ? selectedOptions.value[group.name]
-            : [selectedOptions.value[group.name]]
-          
-          selectedIds.forEach(id => {
-            const option = group.options.find(o => o.id === id)
-            if (option && option.price) {
-              total += option.price
-            }
-          })
+      // Add addon prices
+      if (selectedOptions.value.addons.length && selectedItem.value.customizationOptions?.addons) {
+        selectedOptions.value.addons.forEach(addonValue => {
+          const addon = selectedItem.value.customizationOptions.addons.find(
+            a => a.value === addonValue
+          )
+          if (addon) {
+            total += addon.price * quantity.value
+          }
         })
       }
       
       return total
-    }
+    })
     
-    const addToCart = async () => {
-      if (isAddingToCart.value || !selectedItem.value?.available) return
-      
-      isAddingToCart.value = true
-      
-      try {
-        const itemToAdd = {
-          id: selectedItem.value.id,
-          name: selectedItem.value.name,
-          price: calculateTotalPrice(),
-          size: selectedSize.value,
-          options: selectedOptions.value,
-          specialInstructions: specialInstructions.value,
-          quantity: 1
-        }
-        
-        emit('add-to-cart', itemToAdd)
-        showItemDialog.value = false
-      } catch (error) {
-        console.error('Failed to add item to cart:', error)
-      } finally {
-        isAddingToCart.value = false
+    // Quantity controls
+    const incrementQuantity = () => {
+      quantity.value++
+    }
+
+    const decrementQuantity = () => {
+      if (quantity.value > 1) {
+        quantity.value--
+      }
+    }
+
+    // Add to cart
+    const addToCart = () => {
+      emit('add-to-cart', {
+        item: selectedItem.value,
+        quantity: quantity.value,
+        options: selectedOptions.value,
+        specialInstructions: specialInstructions.value,
+        totalPrice: calculateTotal.value
+      })
+      showItemDialog.value = false
+      resetDialog()
+    }
+
+    // Reset dialog state
+    const resetDialog = () => {
+      quantity.value = 1
+      specialInstructions.value = ''
+      selectedOptions.value = {
+        size: null,
+        addons: []
       }
     }
     
