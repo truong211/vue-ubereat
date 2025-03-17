@@ -4,6 +4,7 @@
       <!-- Map View Component -->
       <MapRestaurantView 
         :restaurants="filteredRestaurants"
+        :initial-radius="filters.distance || 5"
         @location-updated="handleLocationUpdate"
         @calculate-distances="calculateRestaurantDistances"
       />
@@ -21,7 +22,8 @@
                   variant="outlined"
                   density="comfortable"
                   hide-details
-                  @input="applyFilters"
+                  @update:model-value="debounceSearch"
+                  clearable
                 ></v-text-field>
               </v-col>
               <v-col cols="12" sm="3">
@@ -33,6 +35,7 @@
                   density="comfortable"
                   hide-details
                   @update:model-value="applyFilters"
+                  clearable
                 ></v-select>
               </v-col>
               <v-col cols="12" sm="3">
@@ -70,6 +73,7 @@
                     density="comfortable"
                     hide-details
                     @update:model-value="applyFilters"
+                    clearable
                   ></v-select>
                 </v-col>
                 <v-col cols="12" sm="3">
@@ -81,6 +85,7 @@
                     density="comfortable"
                     hide-details
                     @update:model-value="applyFilters"
+                    clearable
                   ></v-select>
                 </v-col>
                 <v-col cols="12" sm="3">
@@ -91,8 +96,16 @@
                     variant="outlined"
                     density="comfortable"
                     hide-details
+                    :disabled="!userLocation"
                     @update:model-value="applyFilters"
-                  ></v-select>
+                    clearable
+                  >
+                    <template v-slot:prepend-inner>
+                      <v-icon :color="userLocation ? 'primary' : 'grey'" size="small">
+                        mdi-map-marker
+                      </v-icon>
+                    </template>
+                  </v-select>
                 </v-col>
                 <v-col cols="12" sm="3">
                   <v-select
@@ -103,13 +116,14 @@
                     density="comfortable"
                     hide-details
                     @update:model-value="applyFilters"
+                    clearable
                   ></v-select>
                 </v-col>
               </v-row>
             </v-expand-transition>
 
             <v-row class="mt-2">
-              <v-col cols="12" class="text-center">
+              <v-col cols="12" class="d-flex justify-space-between align-center">
                 <v-btn
                   variant="text"
                   size="small"
@@ -119,6 +133,16 @@
                   <v-icon right>
                     {{ showAdvancedFilters ? 'mdi-chevron-up' : 'mdi-chevron-down' }}
                   </v-icon>
+                </v-btn>
+                <v-btn
+                  v-if="hasActiveFilters"
+                  variant="text"
+                  size="small"
+                  color="error"
+                  @click="clearFilters"
+                >
+                  <v-icon left size="small">mdi-close</v-icon>
+                  Clear filters
                 </v-btn>
               </v-col>
             </v-row>
@@ -139,14 +163,17 @@
                 width="140"
                 height="120"
                 @click="selectCategory(category)"
+                :color="activeCategory?.id === category.id ? 'primary' : undefined"
               >
                 <v-img
                   :src="category.image_url || '/images/category-placeholder.jpg'"
                   height="80"
                   cover
                   class="category-image"
+                  :class="{ 'greyscale': activeCategory && activeCategory.id !== category.id }"
                 ></v-img>
-                <v-card-title class="pa-2 text-center text-subtitle-2 text-truncate">
+                <v-card-title class="pa-2 text-center text-subtitle-2 text-truncate" 
+                  :class="{ 'text-white': activeCategory?.id === category.id }">
                   {{ category.name }}
                 </v-card-title>
               </v-card>
@@ -173,16 +200,25 @@
             type="info"
             title="No restaurants found"
             text="Try adjusting your filters or search criteria"
-          ></v-alert>
+          >
+            <template v-slot:append>
+              <v-btn color="info" variant="text" @click="clearFilters">Clear Filters</v-btn>
+            </template>
+          </v-alert>
         </v-col>
       </v-row>
 
       <!-- Restaurant Grid -->
       <v-row v-else>
         <v-col cols="12">
-          <h2 class="text-h5 mb-4">
-            {{ activeCategory ? `${activeCategory.name} Restaurants` : 'All Restaurants' }}
-          </h2>
+          <div class="d-flex justify-space-between align-center mb-4">
+            <h2 class="text-h5">
+              {{ activeCategory ? `${activeCategory.name} Restaurants` : 'All Restaurants' }}
+            </h2>
+            <div class="restaurant-count text-subtitle-1">
+              {{ filteredRestaurants.length }} {{ filteredRestaurants.length === 1 ? 'restaurant' : 'restaurants' }} found
+            </div>
+          </div>
         </v-col>
 
         <v-col
@@ -199,7 +235,7 @@
             @click="viewRestaurant(restaurant.id)"
           >
             <v-img
-              :src="restaurant.image_url || '/images/restaurant-placeholder.jpg'"
+              :src="restaurant.logo ? `${baseUrl}/uploads/restaurants/${restaurant.logo}` : '/images/restaurant-placeholder.jpg'"
               height="200"
               cover
               class="restaurant-image"
@@ -209,6 +245,7 @@
                   <v-progress-circular indeterminate color="grey-lighten-5"></v-progress-circular>
                 </v-row>
               </template>
+              
               <!-- Delivery time badge -->
               <div class="delivery-badge">
                 <v-chip
@@ -217,7 +254,19 @@
                   size="small"
                   class="font-weight-medium"
                 >
-                  {{ restaurant.delivery_time || '30-45' }} min
+                  {{ restaurant.estimatedDeliveryTime || '30-45' }} min
+                </v-chip>
+              </div>
+              
+              <!-- Distance badge (if available) -->
+              <div v-if="restaurant.distance" class="distance-badge">
+                <v-chip
+                  color="info"
+                  label
+                  size="small"
+                  class="font-weight-medium"
+                >
+                  {{ formatDistance(restaurant.distance) }}
                 </v-chip>
               </div>
             </v-img>
@@ -234,12 +283,12 @@
                   readonly
                   size="small"
                 ></v-rating>
-                <span class="ml-1">{{ restaurant.rating.toFixed(1) }}</span>
+                <span class="ml-1">{{ restaurant.rating ? restaurant.rating.toFixed(1) : '0.0' }}</span>
                 
-                <!-- Display distance if available -->
+                <!-- Display price range if available -->
                 <v-spacer></v-spacer>
-                <span v-if="restaurant.distance" class="text-caption">
-                  {{ formatDistance(restaurant.distance) }}
+                <span class="text-caption">
+                  {{ getPriceRangeSymbol(restaurant.priceRange) }}
                 </span>
               </div>
             </v-card-subtitle>
@@ -251,7 +300,7 @@
               </div>
               <div class="d-flex align-center">
                 <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-                <span v-if="restaurant.status === 'active'">Open</span>
+                <span v-if="restaurant.isActive">Open</span>
                 <span v-else class="text-red">Closed</span>
                 <v-spacer></v-spacer>
                 <v-chip
@@ -260,17 +309,8 @@
                   variant="outlined"
                   class="ml-2"
                 >
-                  {{ restaurant.cuisine || 'Various' }}
+                  {{ restaurant.cuisineType || 'Various' }}
                 </v-chip>
-              </div>
-            </v-card-text>
-            
-            <!-- Popular items section (if available) -->
-            <v-divider v-if="restaurant.popular_items && restaurant.popular_items.length"></v-divider>
-            <v-card-text v-if="restaurant.popular_items && restaurant.popular_items.length" class="pt-2">
-              <p class="text-body-2 text-grey mb-2">Popular Items:</p>
-              <div class="popular-items text-caption">
-                {{ formatPopularItems(restaurant.popular_items) }}
               </div>
             </v-card-text>
             
@@ -298,7 +338,7 @@
       </v-row>
 
       <!-- Pagination -->
-      <v-row v-if="filteredRestaurants.length > 0">
+      <v-row v-if="filteredRestaurants.length > 0 && pagination.totalPages > 1">
         <v-col cols="12" class="text-center">
           <v-pagination
             v-model="pagination.page"
@@ -314,9 +354,12 @@
 
 <script>
 import { mapState, mapActions } from 'vuex';
+import { computed, ref, watch, onMounted } from 'vue';
 import MapRestaurantView from './MapRestaurantView.vue';
 import { useMapService } from '@/composables/useMapService';
 import { useRestaurantSearch } from '@/composables/useRestaurantSearch';
+import debounce from 'lodash/debounce';
+import { API_URL } from '@/config';
 
 export default {
   name: 'RestaurantList',
@@ -326,80 +369,93 @@ export default {
   },
   
   setup() {
-    const { calculateDistance } = useMapService();
-    const { searchRestaurants } = useRestaurantSearch();
+    const {
+      calculateDistance,
+      formatDistance
+    } = useMapService();
+    
+    const {
+      cuisineOptions,
+      sortOptions,
+      ratingOptions,
+      deliveryTimeOptions,
+      distanceOptions,
+      priceRangeOptions
+    } = useRestaurantSearch();
+    
+    const filters = ref({
+      search: '',
+      cuisine: null,
+      sortBy: 'rating',
+      rating: null,
+      deliveryTime: null,
+      distance: null,
+      priceRange: null
+    });
+    
+    const pagination = ref({
+      page: 1,
+      limit: 12,
+      totalPages: 1
+    });
+    
+    const showAdvancedFilters = ref(false);
+    const activeCategory = ref(null);
+    const userLocation = ref(null);
+    
+    const hasActiveFilters = computed(() => {
+      return filters.value.search || 
+        filters.value.cuisine || 
+        filters.value.rating || 
+        filters.value.deliveryTime || 
+        filters.value.distance || 
+        filters.value.priceRange ||
+        activeCategory.value;
+    });
+    
+    const getPriceRangeSymbol = (priceRange) => {
+      if (!priceRange) return '';
+      
+      switch(priceRange) {
+        case 'low': return '$';
+        case 'medium': return '$$';
+        case 'high': return '$$$';
+        default: return priceRange; 
+      }
+    };
+    
+    // Create debounced search function
+    const debounceSearch = debounce(() => {
+      applyFilters();
+    }, 500);
     
     return {
+      // Exposing values from composables
+      filters,
+      pagination,
+      cuisineOptions,
+      sortOptions,
+      ratingOptions,
+      deliveryTimeOptions,
+      distanceOptions,
+      priceRangeOptions,
       calculateDistance,
-      searchRestaurants
+      formatDistance,
+      
+      // Local state
+      showAdvancedFilters,
+      activeCategory,
+      userLocation,
+      hasActiveFilters,
+      getPriceRangeSymbol,
+      debounceSearch,
+      baseUrl: API_URL
     };
   },
   
   data() {
     return {
-      loading: false,
-      showAdvancedFilters: false,
-      userLocation: null,
-      activeCategory: null,
-      filters: {
-        search: '',
-        cuisine: null,
-        sortBy: 'rating',
-        rating: null,
-        deliveryTime: null,
-        distance: null,
-        priceRange: null
-      },
-      pagination: {
-        page: 1,
-        limit: 12,
-        totalPages: 1
-      },
-      cuisineOptions: [
-        { title: 'All Cuisines', value: null },
-        { title: 'Italian', value: 'Italian' },
-        { title: 'Chinese', value: 'Chinese' },
-        { title: 'Japanese', value: 'Japanese' },
-        { title: 'Mexican', value: 'Mexican' },
-        { title: 'Indian', value: 'Indian' },
-        { title: 'Thai', value: 'Thai' },
-        { title: 'American', value: 'American' },
-        { title: 'Fast Food', value: 'Fast Food' }
-      ],
-      sortOptions: [
-        { title: 'Rating (High to Low)', value: 'rating' },
-        { title: 'Name (A-Z)', value: 'name_asc' },
-        { title: 'Name (Z-A)', value: 'name_desc' },
-        { title: 'Distance (Near to Far)', value: 'distance' },
-        { title: 'Delivery Time (Fast to Slow)', value: 'delivery_time' }
-      ],
-      ratingOptions: [
-        { title: 'Any Rating', value: null },
-        { title: '4.5+', value: 4.5 },
-        { title: '4.0+', value: 4.0 },
-        { title: '3.5+', value: 3.5 },
-        { title: '3.0+', value: 3.0 }
-      ],
-      deliveryTimeOptions: [
-        { title: 'Any Time', value: null },
-        { title: 'Under 30 min', value: 30 },
-        { title: 'Under 45 min', value: 45 },
-        { title: 'Under 60 min', value: 60 }
-      ],
-      distanceOptions: [
-        { title: 'Any Distance', value: null },
-        { title: 'Under 1 km', value: 1 },
-        { title: 'Under 3 km', value: 3 },
-        { title: 'Under 5 km', value: 5 },
-        { title: 'Under 10 km', value: 10 }
-      ],
-      priceRangeOptions: [
-        { title: 'Any Price', value: null },
-        { title: '$', value: 'low' },
-        { title: '$$', value: 'medium' },
-        { title: '$$$', value: 'high' }
-      ],
-      favorites: []
+      loading: false
     };
   },
   
@@ -407,8 +463,9 @@ export default {
     ...mapState({
       restaurants: state => state.restaurants.restaurants,
       totalRestaurants: state => state.restaurants.totalRestaurants,
-      userFavorites: state => state.user.favorites || [],
-      categories: state => state.categories.categories || []
+      userFavorites: state => state.auth.favorites || [],
+      categories: state => state.categories.categories || [],
+      storeUserLocation: state => state.restaurants.userLocation
     }),
     
     filteredRestaurants() {
@@ -426,7 +483,8 @@ export default {
       fetchRestaurants: 'restaurants/fetchRestaurants',
       fetchCategories: 'categories/fetchCategories',
       addFavorite: 'user/addFavorite',
-      removeFavorite: 'user/removeFavorite'
+      removeFavorite: 'user/removeFavorite',
+      setUserLocation: 'restaurants/setUserLocation'
     }),
     
     async applyFilters() {
@@ -441,10 +499,10 @@ export default {
           cuisine: this.filters.cuisine,
           category_id: this.activeCategory?.id,
           sortBy: this.filters.sortBy,
-          min_rating: this.filters.rating,
-          max_delivery_time: this.filters.deliveryTime,
-          max_distance: this.filters.distance,
-          price_range: this.filters.priceRange,
+          minRating: this.filters.rating,
+          maxDeliveryTime: this.filters.deliveryTime,
+          maxDistance: this.filters.distance,
+          priceRange: this.filters.priceRange,
           latitude: this.userLocation?.lat,
           longitude: this.userLocation?.lng,
         });
@@ -455,6 +513,18 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    
+    clearFilters() {
+      this.filters.search = '';
+      this.filters.cuisine = null;
+      this.filters.rating = null;
+      this.filters.deliveryTime = null;
+      this.filters.distance = null;
+      this.filters.priceRange = null;
+      this.activeCategory = null;
+      
+      this.applyFilters();
     },
     
     async changePage(page) {
@@ -468,10 +538,10 @@ export default {
           cuisine: this.filters.cuisine,
           category_id: this.activeCategory?.id,
           sortBy: this.filters.sortBy,
-          min_rating: this.filters.rating,
-          max_delivery_time: this.filters.deliveryTime,
-          max_distance: this.filters.distance,
-          price_range: this.filters.priceRange,
+          minRating: this.filters.rating,
+          maxDeliveryTime: this.filters.deliveryTime,
+          maxDistance: this.filters.distance,
+          priceRange: this.filters.priceRange,
           latitude: this.userLocation?.lat,
           longitude: this.userLocation?.lng,
         });
@@ -500,6 +570,8 @@ export default {
     
     handleLocationUpdate(location) {
       this.userLocation = location;
+      // Store location in Vuex for other components
+      this.setUserLocation(location);
       this.applyFilters();
     },
     
@@ -525,28 +597,29 @@ export default {
       }
     },
     
-    formatDistance(distance) {
-      if (!distance) return '';
-      
-      if (distance < 1) {
-        // Convert to meters if less than 1km
-        return `${Math.round(distance * 1000)}m away`;
+    selectCategory(category) {
+      // Toggle off if already active
+      if (this.activeCategory && this.activeCategory.id === category.id) {
+        this.activeCategory = null;
+      } else {
+        this.activeCategory = category;
       }
       
-      return `${distance.toFixed(1)}km away`;
-    },
-    
-    formatPopularItems(items) {
-      if (!items || !items.length) return '';
-      
-      // Show maximum 3 popular items
-      const displayItems = items.slice(0, 3);
-      return displayItems.map(item => item.name).join(', ');
-    },
-    
-    selectCategory(category) {
-      this.activeCategory = category;
       this.applyFilters();
+    }
+  },
+  
+  watch: {
+    // If location changes in store, update local location
+    storeUserLocation: {
+      handler(newLocation) {
+        if (newLocation && (!this.userLocation || 
+            newLocation.lat !== this.userLocation.lat || 
+            newLocation.lng !== this.userLocation.lng)) {
+          this.userLocation = newLocation;
+        }
+      },
+      immediate: true
     }
   },
   
@@ -557,10 +630,17 @@ export default {
       // Fetch categories first
       await this.fetchCategories();
       
+      // Check if we have stored user location
+      if (this.storeUserLocation) {
+        this.userLocation = this.storeUserLocation;
+      }
+      
       // Then fetch restaurants
       await this.fetchRestaurants({
         page: this.pagination.page,
-        limit: this.pagination.limit
+        limit: this.pagination.limit,
+        latitude: this.userLocation?.lat,
+        longitude: this.userLocation?.lng
       });
       
       this.pagination.totalPages = Math.ceil(this.totalRestaurants / this.pagination.limit);
@@ -604,6 +684,12 @@ export default {
   right: 8px;
 }
 
+.distance-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+}
+
 .categories-container {
   margin-bottom: 16px;
 }
@@ -618,12 +704,7 @@ export default {
   transform: translateY(-3px);
 }
 
-.popular-items {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #757575;
+.greyscale {
+  filter: grayscale(0.8);
 }
 </style>

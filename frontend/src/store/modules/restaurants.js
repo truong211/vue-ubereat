@@ -1,123 +1,191 @@
-import axios from 'axios'
-import { API_URL } from '@/config'
+import { restaurantService } from '../../services/restaurant.service';
+
+// Initial state
+const state = {
+  restaurants: [],
+  featuredRestaurants: [],
+  popularRestaurants: [],
+  restaurantDetails: null,
+  restaurantMenu: [],
+  restaurantReviews: [],
+  loading: false,
+  error: null,
+  totalRestaurants: 0,
+  userLocation: null
+};
+
+// Getters
+const getters = {
+  getRestaurantById: (state) => (id) => {
+    return state.restaurants.find(restaurant => restaurant.id == id);
+  },
+  getNearbyRestaurants: (state) => (maxDistance = 5) => {
+    if (!state.userLocation) return [];
+    return state.restaurants
+      .filter(restaurant => restaurant.distance && restaurant.distance <= maxDistance)
+      .sort((a, b) => a.distance - b.distance);
+  },
+  getHighestRatedRestaurants: (state) => (limit = 5) => {
+    return [...state.restaurants]
+      .sort((a, b) => b.rating - a.rating)
+      .slice(0, limit);
+  },
+  getRestaurantsByCategory: (state) => (categoryId) => {
+    return state.restaurants.filter(restaurant => {
+      const categories = restaurant.categories || [];
+      return categories.some(cat => cat.id == categoryId);
+    });
+  }
+};
+
+// Actions
+const actions = {
+  async fetchRestaurants({ commit }, params = {}) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getAllRestaurants(params);
+      commit('SET_RESTAURANTS', response.data.data.restaurants);
+      commit('SET_TOTAL_RESTAURANTS', response.data.results);
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurants');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async fetchRestaurantById({ commit }, { id, params = {} }) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getRestaurantById(id, params);
+      commit('SET_RESTAURANT_DETAILS', response.data.data.restaurant);
+      return response.data.data.restaurant;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant details');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async fetchRestaurantMenu({ commit }, id) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getRestaurantMenu(id);
+      commit('SET_RESTAURANT_MENU', response.data.data.categories);
+      return response.data.data.categories;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant menu');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async fetchRestaurantReviews({ commit }, { id, params = {} }) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getRestaurantReviews(id, params);
+      commit('SET_RESTAURANT_REVIEWS', response.data.data.reviews);
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant reviews');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async searchRestaurantsByLocation({ commit }, params = {}) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.searchByLocation(params);
+      commit('SET_RESTAURANTS', response.data.data.restaurants);
+      commit('SET_TOTAL_RESTAURANTS', response.data.results);
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to search restaurants by location');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async fetchFeaturedRestaurants({ commit }, params = {}) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getFeaturedRestaurants(params);
+      commit('SET_FEATURED_RESTAURANTS', response.data.data.restaurants);
+      return response.data.data.restaurants;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch featured restaurants');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async fetchPopularRestaurants({ commit }, params = {}) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await restaurantService.getPopularRestaurants(params);
+      commit('SET_POPULAR_RESTAURANTS', response.data.data.restaurants);
+      return response.data.data.restaurants;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch popular restaurants');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  setUserLocation({ commit }, location) {
+    commit('SET_USER_LOCATION', location);
+  }
+};
+
+// Mutations
+const mutations = {
+  SET_RESTAURANTS(state, restaurants) {
+    state.restaurants = restaurants;
+  },
+  SET_TOTAL_RESTAURANTS(state, total) {
+    state.totalRestaurants = total;
+  },
+  SET_FEATURED_RESTAURANTS(state, restaurants) {
+    state.featuredRestaurants = restaurants;
+  },
+  SET_POPULAR_RESTAURANTS(state, restaurants) {
+    state.popularRestaurants = restaurants;
+  },
+  SET_RESTAURANT_DETAILS(state, restaurant) {
+    state.restaurantDetails = restaurant;
+  },
+  SET_RESTAURANT_MENU(state, menu) {
+    state.restaurantMenu = menu;
+  },
+  SET_RESTAURANT_REVIEWS(state, reviews) {
+    state.restaurantReviews = reviews;
+  },
+  SET_LOADING(state, isLoading) {
+    state.loading = isLoading;
+  },
+  SET_ERROR(state, error) {
+    state.error = error;
+  },
+  SET_USER_LOCATION(state, location) {
+    state.userLocation = location;
+  },
+  CLEAR_RESTAURANT_DETAILS(state) {
+    state.restaurantDetails = null;
+  }
+};
 
 export default {
   namespaced: true,
-  
-  state: {
-    restaurants: [],
-    featuredRestaurants: [],
-    popularRestaurants: [],
-    currentRestaurant: null,
-    loading: false,
-    error: null,
-    filters: {
-      category: null,
-      rating: null,
-      priceRange: null,
-      searchQuery: ''
-    }
-  },
-  
-  getters: {
-    allRestaurants: state => state.restaurants,
-    featuredRestaurants: state => state.featuredRestaurants,
-    popularRestaurants: state => state.popularRestaurants,
-    currentRestaurant: state => state.currentRestaurant,
-    isLoading: state => state.loading,
-    getError: state => state.error,
-    getFilters: state => state.filters
-  },
-  
-  mutations: {
-    SET_RESTAURANTS(state, restaurants) {
-      state.restaurants = restaurants
-    },
-    SET_FEATURED_RESTAURANTS(state, restaurants) {
-      state.featuredRestaurants = restaurants
-    },
-    SET_POPULAR_RESTAURANTS(state, restaurants) {
-      state.popularRestaurants = restaurants
-    },
-    SET_CURRENT_RESTAURANT(state, restaurant) {
-      state.currentRestaurant = restaurant
-    },
-    SET_LOADING(state, loading) {
-      state.loading = loading
-    },
-    SET_ERROR(state, error) {
-      state.error = error
-    },
-    SET_FILTER(state, { filterType, value }) {
-      state.filters[filterType] = value
-    },
-    CLEAR_FILTERS(state) {
-      state.filters = {
-        category: null,
-        rating: null,
-        priceRange: null,
-        searchQuery: ''
-      }
-    }
-  },
-  
-  actions: {
-    async fetchRestaurants({ commit }) {
-      try {
-        commit('SET_LOADING', true)
-        const response = await axios.get(`${API_URL}/restaurants`)
-        commit('SET_RESTAURANTS', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to fetch restaurants')
-        console.error('Error fetching restaurants:', error)
-        return []
-      } finally {
-        commit('SET_LOADING', false)
-      }
-    },
-    
-    async fetchFeaturedRestaurants({ commit }) {
-      try {
-        const response = await axios.get(`${API_URL}/restaurants/featured`)
-        commit('SET_FEATURED_RESTAURANTS', response.data)
-      } catch (error) {
-        console.error('Error fetching featured restaurants:', error)
-        commit('SET_ERROR', error.message || 'Failed to fetch featured restaurants')
-      }
-    },
-    
-    async fetchPopularRestaurants({ commit }) {
-      try {
-        const response = await axios.get(`${API_URL}/restaurants/popular`)
-        commit('SET_POPULAR_RESTAURANTS', response.data)
-      } catch (error) {
-        console.error('Error fetching popular restaurants:', error)
-        commit('SET_ERROR', error.message || 'Failed to fetch popular restaurants')
-      }
-    },
-    
-    async fetchRestaurantById({ commit }, restaurantId) {
-      try {
-        commit('SET_LOADING', true)
-        const response = await axios.get(`${API_URL}/restaurants/${restaurantId}`)
-        commit('SET_CURRENT_RESTAURANT', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to fetch restaurant details')
-        console.error('Error fetching restaurant details:', error)
-        return null
-      } finally {
-        commit('SET_LOADING', false)
-      }
-    },
-    
-    setFilter({ commit }, { filterType, value }) {
-      commit('SET_FILTER', { filterType, value })
-    },
-    
-    clearFilters({ commit }) {
-      commit('CLEAR_FILTERS')
-    }
-  }
-}
+  state,
+  getters,
+  actions,
+  mutations
+};

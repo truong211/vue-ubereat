@@ -1,76 +1,79 @@
 <template>
-  <div class="map-view-container">
-    <!-- Map Toggle Button -->
-    <div class="map-toggle">
-      <v-btn
-        :color="showMap ? 'primary' : ''"
-        @click="toggleMap"
-        icon="mdi-map"
-        :variant="showMap ? 'flat' : 'outlined'"
-      ></v-btn>
-    </div>
-    
-    <v-expand-transition>
-      <div v-if="showMap" class="map-container mb-4">
-        <v-card height="400px" class="map-card">
-          <div ref="mapElement" class="map-element"></div>
-          <div class="map-overlay">
-            <v-btn
-              color="primary"
-              variant="flat"
-              prepend-icon="mdi-crosshairs-gps"
-              @click="centerToUserLocation"
-              :loading="locating"
+  <div class="map-restaurant-view">
+    <v-card v-if="showMap" class="mb-4">
+      <v-card-title class="d-flex justify-space-between align-center">
+        <div>
+          <span class="text-h6">Restaurants Near You</span>
+          <div v-if="userLocation" class="text-caption text-medium-emphasis">
+            <v-icon size="small" class="mr-1">mdi-crosshairs-gps</v-icon>
+            {{ userLocation.address || 'Current Location' }}
+          </div>
+        </div>
+        <v-btn-group>
+          <v-btn
+            icon="mdi-crosshairs-gps"
+            variant="tonal"
+            @click="getCurrentLocation"
+            :loading="isGettingLocation"
+            :disabled="isGettingLocation"
+          ></v-btn>
+          <v-btn
+            :icon="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
+            variant="tonal"
+            @click="expanded = !expanded"
+          ></v-btn>
+        </v-btn-group>
+      </v-card-title>
+
+      <v-expand-transition>
+        <div v-show="expanded">
+          <v-card-text class="pa-0">
+            <div ref="mapContainer" style="height: 400px; width: 100%;"></div>
+          </v-card-text>
+
+          <v-card-text>
+            <v-slider
+              v-model="searchRadius"
+              :min="1"
+              :max="10"
+              :step="0.5"
+              label="Search Radius (km)"
+              thumb-label="always"
+              @update:model-value="updateSearchRadius"
             >
-              Use my location
-            </v-btn>
-          </div>
-          <div v-if="selectedRestaurant" class="restaurant-info-overlay">
-            <v-card class="restaurant-card">
-              <v-img
-                :src="selectedRestaurant.image_url || '/img/icons/restaurant-placeholder.jpg'"
-                height="80"
-                cover
-                class="restaurant-image"
-              ></v-img>
-              <v-card-title class="pt-2 pb-0">
-                {{ selectedRestaurant.name }}
-              </v-card-title>
-              <v-card-subtitle class="pb-1 d-flex align-center">
-                <v-rating
-                  :model-value="selectedRestaurant.rating"
-                  color="amber"
+              <template v-slot:append>
+                <v-text-field
+                  v-model="searchRadius"
+                  type="number"
+                  style="width: 70px"
                   density="compact"
-                  half-increments
-                  readonly
-                  size="x-small"
-                ></v-rating>
-                <span class="ml-1 text-caption">{{ selectedRestaurant.rating.toFixed(1) }}</span>
-                <v-spacer></v-spacer>
-                <span class="text-caption">{{ formatDistance(selectedRestaurant.distance) }}</span>
-              </v-card-subtitle>
-              <v-card-actions class="pt-0">
-                <v-spacer></v-spacer>
-                <v-btn
-                  size="small"
-                  color="primary"
-                  variant="text"
-                  @click="viewRestaurant(selectedRestaurant.id)"
-                >
-                  View Menu
-                </v-btn>
-              </v-card-actions>
-            </v-card>
-          </div>
-        </v-card>
-      </div>
-    </v-expand-transition>
+                  min="1"
+                  max="10"
+                  step="0.5"
+                  hide-details
+                  @update:model-value="updateSearchRadius"
+                ></v-text-field>
+              </template>
+            </v-slider>
+          </v-card-text>
+        </div>
+      </v-expand-transition>
+    </v-card>
   </div>
 </template>
 
 <script>
-import { useMapService } from '@/composables/useMapService';
-import { useToast } from '@/composables/useToast';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+// Fix for Leaflet icon issue in production
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+  iconUrl: require('leaflet/dist/images/marker-icon.png'),
+  shadowUrl: require('leaflet/dist/images/marker-shadow.png')
+});
 
 export default {
   name: 'MapRestaurantView',
@@ -79,237 +82,231 @@ export default {
     restaurants: {
       type: Array,
       required: true
+    },
+    initialRadius: {
+      type: Number,
+      default: 5 // km
     }
   },
   
-  data() {
-    return {
-      showMap: false,
-      map: null,
-      markers: [],
-      selectedRestaurant: null,
-      userLocation: null,
-      locating: false
-    };
-  },
+  emits: ['location-updated', 'calculate-distances'],
   
-  setup() {
-    const {
-      initMap,
-      addMarker,
-      fitMapBounds,
-      getCurrentPosition
-    } = useMapService();
+  setup(props, { emit }) {
+    const mapContainer = ref(null);
+    const map = ref(null);
+    const showMap = ref(true);
+    const expanded = ref(false);
+    const searchRadius = ref(props.initialRadius);
+    const radiusCircle = ref(null);
+    const userLocation = ref(null);
+    const isGettingLocation = ref(false);
+    const markers = ref({
+      user: null,
+      restaurants: []
+    });
     
-    const { showError } = useToast();
-    
-    return {
-      initMap,
-      addMarker,
-      fitMapBounds,
-      getCurrentPosition,
-      showError
-    };
-  },
-  
-  watch: {
-    restaurants: {
-      handler(newRestaurants) {
-        this.updateMarkers(newRestaurants);
-      },
-      deep: true
-    },
-    
-    showMap(newValue) {
-      if (newValue && !this.map && this.$refs.mapElement) {
-        this.$nextTick(() => {
-          this.initializeMap();
-        });
-      }
-    }
-  },
-  
-  methods: {
-    toggleMap() {
-      this.showMap = !this.showMap;
-      this.$emit('map-toggled', this.showMap);
-    },
-    
-    async initializeMap() {
-      if (!this.$refs.mapElement) return;
+    // Initialize map
+    const initializeMap = () => {
+      if (!mapContainer.value) return;
       
-      try {
-        // Default center - can be configured to user's city or country default
-        const center = { lat: 10.8231, lng: 106.6297 }; // Ho Chi Minh City
+      // Create map if it doesn't exist
+      if (!map.value) {
+        // Default center (can be customized based on your target audience)
+        const defaultCenter = [10.7769, 106.7009]; // Ho Chi Minh City
         
-        this.map = await this.initMap(this.$refs.mapElement, {
-          zoom: 13,
-          center
+        map.value = L.map(mapContainer.value, {
+          center: defaultCenter,
+          zoom: 12
         });
         
-        // Add markers for all restaurants
-        this.updateMarkers(this.restaurants);
+        // Add tile layer (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map.value);
+      }
+      
+      // If user location exists, center map and add marker
+      if (userLocation.value) {
+        const { lat, lng } = userLocation.value;
+        map.value.setView([lat, lng], 13);
         
-        // Try to get user location
-        this.centerToUserLocation();
-      } catch (error) {
-        console.error('Error initializing map:', error);
-        this.showError('Could not initialize map. Please try again later.');
-      }
-    },
-    
-    updateMarkers(restaurants) {
-      if (!this.map) return;
-      
-      // Clear existing markers
-      this.markers.forEach(marker => {
-        marker.setMap(null);
-      });
-      this.markers = [];
-      
-      // Add new markers
-      restaurants.forEach(restaurant => {
-        if (restaurant.latitude && restaurant.longitude) {
-          const marker = this.addMarker(
-            this.map,
-            {
-              lat: parseFloat(restaurant.latitude),
-              lng: parseFloat(restaurant.longitude)
-            },
-            {
-              title: restaurant.name,
-              icon: 'restaurant'
-            }
-          );
-          
-          // Add click listener to show info window
-          marker.addListener('click', () => {
-            this.selectRestaurant(restaurant);
-          });
-          
-          this.markers.push(marker);
+        // Add/update user marker
+        if (markers.value.user) {
+          markers.value.user.setLatLng([lat, lng]);
+        } else {
+          markers.value.user = L.marker([lat, lng])
+            .addTo(map.value)
+            .bindPopup('Your Location');
         }
-      });
-      
-      // Fit map to show all markers
-      if (this.markers.length > 0) {
-        this.fitMapBounds(this.map, this.markers);
-      }
-    },
-    
-    selectRestaurant(restaurant) {
-      this.selectedRestaurant = restaurant;
-    },
-    
-    viewRestaurant(id) {
-      this.$router.push({ name: 'RestaurantDetail', params: { id } });
-    },
-    
-    async centerToUserLocation() {
-      try {
-        this.locating = true;
-        const position = await this.getCurrentPosition();
-        this.userLocation = position;
         
-        // Update map center to user location
-        if (this.map) {
-          this.map.setCenter(position);
-          this.map.setZoom(14);
-          
-          // Add a marker for the user's location if not already added
-          const userMarker = this.addMarker(
-            this.map,
-            position,
-            {
-              title: 'Your Location',
-              icon: 'user'
-            }
-          );
-          
-          // Calculate distance for each restaurant
-          this.updateRestaurantDistances(position);
-          
-          // Notify parent about user location update
-          this.$emit('location-updated', position);
+        // Add/update radius circle
+        const radiusInMeters = searchRadius.value * 1000; // km to meters
+        if (radiusCircle.value) {
+          radiusCircle.value.setLatLng([lat, lng]);
+          radiusCircle.value.setRadius(radiusInMeters);
+        } else {
+          radiusCircle.value = L.circle([lat, lng], {
+            radius: radiusInMeters,
+            color: '#1976D2',
+            fillColor: '#1976D2',
+            fillOpacity: 0.1,
+            weight: 1
+          }).addTo(map.value);
         }
-      } catch (error) {
-        console.error('Error getting user location:', error);
-        this.showError('Could not access your location. Please check your browser settings.');
-      } finally {
-        this.locating = false;
-      }
-    },
-    
-    updateRestaurantDistances(userPosition) {
-      // This would typically be handled by the store or parent component
-      // But we'll emit an event to notify the parent
-      this.$emit('calculate-distances', userPosition);
-    },
-    
-    formatDistance(distance) {
-      if (!distance) return 'Distance unknown';
-      
-      if (distance < 1) {
-        // Convert to meters if less than 1km
-        return `${Math.round(distance * 1000)}m away`;
       }
       
-      return `${distance.toFixed(1)}km away`;
-    }
+      // Add restaurant markers
+      updateRestaurantMarkers();
+    };
+    
+    // Update restaurant markers on map
+    const updateRestaurantMarkers = () => {
+      // Clear existing restaurant markers
+      markers.value.restaurants.forEach(marker => {
+        map.value.removeLayer(marker);
+      });
+      markers.value.restaurants = [];
+      
+      // Exit if no map or no user location
+      if (!map.value || !userLocation.value) return;
+      
+      // Add new restaurant markers
+      props.restaurants.forEach(restaurant => {
+        if (!restaurant.latitude || !restaurant.longitude) return;
+        
+        const lat = parseFloat(restaurant.latitude);
+        const lng = parseFloat(restaurant.longitude);
+        
+        // Create custom icon with restaurant name initial
+        const iconHtml = `<div style="background-color: #F44336; color: white; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-weight: bold;">${restaurant.name.charAt(0)}</div>`;
+        const icon = L.divIcon({
+          html: iconHtml,
+          className: 'restaurant-marker-icon',
+          iconSize: [32, 32]
+        });
+        
+        const marker = L.marker([lat, lng], { icon })
+          .addTo(map.value)
+          .bindPopup(`
+            <strong>${restaurant.name}</strong><br>
+            ${restaurant.distance ? `${restaurant.distance.toFixed(1)}km away<br>` : ''}
+            ${restaurant.rating ? `Rating: ${restaurant.rating}★<br>` : ''}
+            ${restaurant.cuisine || ''}
+          `);
+        
+        marker.on('click', () => {
+          // You could emit an event here if you want to select a restaurant on click
+        });
+        
+        markers.value.restaurants.push(marker);
+      });
+      
+      // Fit bounds to show all markers if we have restaurants and a user location
+      if (markers.value.restaurants.length > 0 && markers.value.user) {
+        const allMarkers = [
+          markers.value.user,
+          ...markers.value.restaurants
+        ];
+        const group = L.featureGroup(allMarkers);
+        map.value.fitBounds(group.getBounds(), { padding: [50, 50] });
+      }
+    };
+    
+    // Get user's current location
+    const getCurrentLocation = () => {
+      if (!navigator.geolocation) {
+        console.error('Geolocation is not supported by your browser');
+        return;
+      }
+      
+      isGettingLocation.value = true;
+      
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            
+            // Update state with user location
+            userLocation.value = { 
+              lat, 
+              lng,
+              address: 'Your Location' // You could use reverse geocoding here to get actual address
+            };
+            
+            // Emit event for parent component
+            emit('location-updated', userLocation.value);
+            
+            // Initialize/update map
+            initializeMap();
+            
+            // Calculate distances to restaurants based on user position
+            emit('calculate-distances', { lat, lng });
+          } catch (error) {
+            console.error('Error getting location:', error);
+          } finally {
+            isGettingLocation.value = false;
+          }
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          isGettingLocation.value = false;
+        }
+      );
+    };
+    
+    // Update search radius
+    const updateSearchRadius = () => {
+      if (radiusCircle.value && userLocation.value) {
+        radiusCircle.value.setRadius(searchRadius.value * 1000); // km to meters
+      }
+    };
+    
+    // Watch for changes to restaurants prop
+    watch(() => props.restaurants, () => {
+      updateRestaurantMarkers();
+    }, { deep: true });
+    
+    // Lifecycle hooks
+    onMounted(() => {
+      if (mapContainer.value) {
+        initializeMap();
+      }
+    });
+    
+    onUnmounted(() => {
+      if (map.value) {
+        map.value.remove();
+        map.value = null;
+      }
+    });
+    
+    return {
+      mapContainer,
+      showMap,
+      expanded,
+      searchRadius,
+      userLocation,
+      isGettingLocation,
+      getCurrentLocation,
+      updateSearchRadius
+    };
   }
 };
 </script>
 
 <style scoped>
-.map-view-container {
-  position: relative;
+.map-restaurant-view {
+  margin-bottom: 20px;
 }
 
-.map-toggle {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 10;
+/* Fix for Leaflet control layers */
+:deep(.leaflet-control-container .leaflet-control) {
+  z-index: 800;
 }
 
-.map-container {
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.map-card {
-  position: relative;
-}
-
-.map-element {
-  width: 100%;
-  height: 100%;
-}
-
-.map-overlay {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1;
-}
-
-.restaurant-info-overlay {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
-  z-index: 1;
-}
-
-.restaurant-card {
-  max-width: 300px;
-  margin: 0 auto;
-}
-
-.restaurant-image {
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+:deep(.restaurant-marker-icon) {
+  background: none;
+  border: none;
 }
 </style>

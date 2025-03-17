@@ -1,4 +1,6 @@
 import PaymentService from '@/services/payment.service';
+import axios from 'axios';
+import { API_URL } from '@/config';
 
 const state = {
   availablePaymentMethods: [],
@@ -7,7 +9,9 @@ const state = {
   paymentStatus: null,
   paymentError: null,
   processingPayment: false,
-  lastPaymentInfo: null
+  lastPaymentInfo: null,
+  savedCards: [],
+  lastPaymentError: null
 };
 
 const getters = {
@@ -17,7 +21,10 @@ const getters = {
   getPaymentStatus: (state) => state.paymentStatus,
   getPaymentError: (state) => state.paymentError,
   isProcessingPayment: (state) => state.processingPayment,
-  getLastPaymentInfo: (state) => state.lastPaymentInfo
+  getLastPaymentInfo: (state) => state.lastPaymentInfo,
+  getSavedCards: state => state.savedCards,
+  isProcessing: state => state.processingPayment,
+  getLastError: state => state.lastPaymentError
 };
 
 const mutations = {
@@ -46,6 +53,21 @@ const mutations = {
     state.paymentStatus = null;
     state.paymentError = null;
     state.processingPayment = false;
+  },
+  SET_SAVED_CARDS(state, cards) {
+    state.savedCards = cards;
+  },
+  ADD_SAVED_CARD(state, card) {
+    state.savedCards.push(card);
+  },
+  REMOVE_SAVED_CARD(state, cardId) {
+    state.savedCards = state.savedCards.filter(card => card.id !== cardId);
+  },
+  SET_PROCESSING(state, isProcessing) {
+    state.processingPayment = isProcessing;
+  },
+  SET_PAYMENT_ERROR(state, error) {
+    state.lastPaymentError = error;
   }
 };
 
@@ -141,6 +163,83 @@ const actions = {
 
   clearPaymentState({ commit }) {
     commit('CLEAR_PAYMENT_STATE');
+  },
+
+  async fetchSavedCards({ commit }) {
+    try {
+      const response = await axios.get(`${API_URL}/api/payment/saved-cards`);
+      commit('SET_SAVED_CARDS', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching saved cards:', error);
+      throw error;
+    }
+  },
+
+  async deleteSavedCard({ commit }, cardId) {
+    try {
+      await axios.delete(`${API_URL}/api/payment/saved-cards/${cardId}`);
+      commit('REMOVE_SAVED_CARD', cardId);
+    } catch (error) {
+      console.error('Error deleting saved card:', error);
+      throw error;
+    }
+  },
+
+  async processCardPayment({ commit }, { orderId, paymentDetails }) {
+    commit('SET_PROCESSING', true);
+    commit('SET_PAYMENT_ERROR', null);
+
+    try {
+      const response = await axios.post(`${API_URL}/api/payment/process`, {
+        order_id: orderId,
+        ...paymentDetails
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('Payment processing error:', error);
+      commit('SET_PAYMENT_ERROR', error.response?.data?.message || 'Payment processing failed');
+      throw error;
+    } finally {
+      commit('SET_PROCESSING', false);
+    }
+  },
+
+  async processWalletPayment({ commit }, { orderId, provider, returnUrl }) {
+    commit('SET_PROCESSING', true);
+    commit('SET_PAYMENT_ERROR', null);
+
+    try {
+      const response = await axios.post(`${API_URL}/api/payment/${provider}/init`, {
+        order_id: orderId,
+        return_url: returnUrl
+      });
+
+      // For wallet payments (Momo, ZaloPay, VNPay), we expect a redirect URL
+      if (response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Payment initialization error:', error);
+      commit('SET_PAYMENT_ERROR', error.response?.data?.message || 'Payment initialization failed');
+      throw error;
+    } finally {
+      commit('SET_PROCESSING', false);
+    }
+  },
+
+  async verifyPayment({ commit }, { provider, paymentId }) {
+    try {
+      const response = await axios.get(`${API_URL}/api/payment/${provider}/verify/${paymentId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Payment verification error:', error);
+      commit('SET_PAYMENT_ERROR', error.response?.data?.message || 'Payment verification failed');
+      throw error;
+    }
   }
 };
 

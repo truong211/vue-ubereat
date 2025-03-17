@@ -1,53 +1,16 @@
 import { ref, computed, watch } from 'vue';
 import { useMapService } from './useMapService';
 
-interface Restaurant {
-  id: number | string;
-  name: string;
-  image_url?: string;
-  rating?: number;
-  cuisine?: string;
-  latitude?: number | string;
-  longitude?: number | string;
-  address?: string;
-  distance?: number;
-  delivery_time?: string | number;
-  status?: string;
-  popular_items?: Array<{name: string}>;
-  [key: string]: any;
-}
-
-interface SearchFilters {
-  search: string;
-  cuisine: string | null;
-  sortBy: string;
-  rating: number | null;
-  deliveryTime: number | null;
-  distance: number | null;
-  priceRange: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  category_id?: number | string | null;
-  [key: string]: any;
-}
-
-interface PaginationOptions {
-  page: number;
-  limit: number;
-  totalPages?: number;
-  totalItems?: number;
-}
-
 export function useRestaurantSearch() {
   const { calculateDistance, formatDistance } = useMapService();
   
   // State
-  const restaurants = ref<Restaurant[]>([]);
-  const filteredRestaurants = ref<Restaurant[]>([]);
-  const loading = ref<boolean>(false);
-  const error = ref<string | null>(null);
-  const userLocation = ref<{lat: number; lng: number; address?: string} | null>(null);
-  const pagination = ref<PaginationOptions>({
+  const restaurants = ref([]);
+  const filteredRestaurants = ref([]);
+  const loading = ref(false);
+  const error = ref(null);
+  const userLocation = ref(null);
+  const pagination = ref({
     page: 1,
     limit: 12,
     totalPages: 1,
@@ -55,7 +18,7 @@ export function useRestaurantSearch() {
   });
 
   // Filters
-  const defaultFilters: SearchFilters = {
+  const defaultFilters = {
     search: '',
     cuisine: null,
     sortBy: 'rating',
@@ -65,7 +28,7 @@ export function useRestaurantSearch() {
     priceRange: null,
   };
   
-  const filters = ref<SearchFilters>({...defaultFilters});
+  const filters = ref({...defaultFilters});
   
   // Filter options
   const cuisineOptions = [
@@ -121,8 +84,10 @@ export function useRestaurantSearch() {
   /**
    * Search for restaurants based on current filters
    * This would typically make an API call to the backend
+   * @param {Object} params - Optional filter parameters to override current filters
+   * @returns {Promise} Promise resolving to filtered restaurant list
    */
-  const searchRestaurants = async (params?: Partial<SearchFilters>): Promise<Restaurant[]> => {
+  const searchRestaurants = async (params) => {
     loading.value = true;
     error.value = null;
     
@@ -162,8 +127,11 @@ export function useRestaurantSearch() {
   /**
    * Simulate API filtering and sorting (for demo purposes)
    * In a real app, this would be done by your backend API
+   * @param {Array} data - Restaurant data to filter
+   * @param {Object} filters - Filter criteria
+   * @returns {Array} Filtered restaurant data
    */
-  const simulateApiFiltering = (data: Restaurant[], filters: SearchFilters): Restaurant[] => {
+  const simulateApiFiltering = (data, filters) => {
     let results = [...data];
     
     // Filter by search term
@@ -192,7 +160,7 @@ export function useRestaurantSearch() {
     // Filter by minimum rating
     if (filters.rating) {
       results = results.filter(restaurant => 
-        (restaurant.rating || 0) >= filters.rating!
+        (restaurant.rating || 0) >= filters.rating
       );
     }
     
@@ -202,14 +170,14 @@ export function useRestaurantSearch() {
         const deliveryTime = typeof restaurant.delivery_time === 'string' 
           ? parseInt(restaurant.delivery_time.split('-')[1] || restaurant.delivery_time, 10) 
           : restaurant.delivery_time;
-        return (deliveryTime || 60) <= filters.deliveryTime!;
+        return (deliveryTime || 60) <= filters.deliveryTime;
       });
     }
     
     // Filter by maximum distance
     if (filters.distance && userLocation.value) {
       results = results.filter(restaurant => 
-        (restaurant.distance || 999) <= filters.distance!
+        (restaurant.distance || 999) <= filters.distance
       );
     }
     
@@ -256,8 +224,9 @@ export function useRestaurantSearch() {
   
   /**
    * Update user's location and recalculate distances
+   * @param {Object} location - User location with lat and lng properties
    */
-  const setUserLocation = (location: {lat: number; lng: number; address?: string}) => {
+  const setUserLocation = (location) => {
     userLocation.value = location;
     
     // Update restaurant distances
@@ -275,10 +244,10 @@ export function useRestaurantSearch() {
     restaurants.value = restaurants.value.map(restaurant => {
       if (restaurant.latitude && restaurant.longitude) {
         const distance = calculateDistance(
-          userLocation.value!,
+          userLocation.value,
           {
-            lat: parseFloat(restaurant.latitude as string),
-            lng: parseFloat(restaurant.longitude as string)
+            lat: parseFloat(restaurant.latitude),
+            lng: parseFloat(restaurant.longitude)
           }
         );
         return { ...restaurant, distance };
@@ -289,10 +258,10 @@ export function useRestaurantSearch() {
     filteredRestaurants.value = filteredRestaurants.value.map(restaurant => {
       if (restaurant.latitude && restaurant.longitude) {
         const distance = calculateDistance(
-          userLocation.value!,
+          userLocation.value,
           {
-            lat: parseFloat(restaurant.latitude as string),
-            lng: parseFloat(restaurant.longitude as string)
+            lat: parseFloat(restaurant.latitude),
+            lng: parseFloat(restaurant.longitude)
           }
         );
         return { ...restaurant, distance };
@@ -322,8 +291,9 @@ export function useRestaurantSearch() {
   
   /**
    * Change to a specific page
+   * @param {number} page - Page number to load
    */
-  const changePage = (page: number) => {
+  const changePage = (page) => {
     pagination.value.page = page;
     return searchRestaurants({
       ...filters.value,

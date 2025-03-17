@@ -1,28 +1,14 @@
 import { ref } from 'vue';
 
-interface MapOptions {
-  zoom?: number;
-  center?: {
-    lat: number;
-    lng: number;
-  };
-}
-
-interface MarkerOptions {
-  title?: string;
-  icon?: string;
-  draggable?: boolean;
-}
-
 export function useMapService() {
   const isMapLoaded = ref(false);
   const isMapApiLoaded = ref(false);
-  const error = ref<string | null>(null);
+  const error = ref(null);
   
   /**
    * Initialize the map service
    */
-  const loadMapApi = async (): Promise<void> => {
+  const loadMapApi = async () => {
     // Skip if already loaded
     if (isMapApiLoaded.value) return;
     
@@ -36,10 +22,10 @@ export function useMapService() {
       
       // Create callback for Google Maps API
       const callbackName = 'gmapsCallback';
-      (window as any)[callbackName] = () => {
+      window[callbackName] = () => {
         isMapApiLoaded.value = true;
         resolve();
-        delete (window as any)[callbackName];
+        delete window[callbackName];
       };
       
       // Get API key from environment or config
@@ -61,15 +47,12 @@ export function useMapService() {
   /**
    * Initialize a map in the specified container
    */
-  const initMap = async (
-    container: HTMLElement,
-    options: MapOptions = {}
-  ): Promise<google.maps.Map> => {
+  const initMap = async (container, options = {}) => {
     if (!isMapApiLoaded.value) {
       await loadMapApi();
     }
     
-    const mapOptions: google.maps.MapOptions = {
+    const mapOptions = {
       zoom: options.zoom || 14,
       center: options.center || { lat: 10.8231, lng: 106.6297 }, // Default center (HCMC)
       disableDefaultUI: false,
@@ -88,13 +71,9 @@ export function useMapService() {
   /**
    * Add a marker to the map
    */
-  const addMarker = (
-    map: google.maps.Map,
-    position: { lat: number; lng: number },
-    options: MarkerOptions = {}
-  ): google.maps.Marker => {
+  const addMarker = (map, position, options = {}) => {
     // Create marker options
-    const markerOptions: google.maps.MarkerOptions = {
+    const markerOptions = {
       position,
       map,
       title: options.title || '',
@@ -140,11 +119,7 @@ export function useMapService() {
   /**
    * Add a polyline route between two points
    */
-  const addRoute = (
-    map: google.maps.Map,
-    origin: { lat: number; lng: number },
-    destination: { lat: number; lng: number }
-  ): Promise<google.maps.DirectionsRenderer> => {
+  const addRoute = (map, origin, destination) => {
     return new Promise((resolve, reject) => {
       const directionsService = new google.maps.DirectionsService();
       const directionsRenderer = new google.maps.DirectionsRenderer({
@@ -188,20 +163,14 @@ export function useMapService() {
   /**
    * Update a marker's position
    */
-  const updateMarkerPosition = (
-    marker: google.maps.Marker,
-    position: { lat: number; lng: number }
-  ): void => {
+  const updateMarkerPosition = (marker, position) => {
     marker.setPosition(new google.maps.LatLng(position.lat, position.lng));
   };
   
   /**
    * Adjust map bounds to fit all markers
    */
-  const fitMapBounds = (
-    map: google.maps.Map,
-    markers: google.maps.Marker[]
-  ): void => {
+  const fitMapBounds = (map, markers) => {
     if (!markers.length) return;
     
     const bounds = new google.maps.LatLngBounds();
@@ -228,7 +197,7 @@ export function useMapService() {
   /**
    * Get current user geolocation
    */
-  const getCurrentPosition = (): Promise<{ lat: number; lng: number }> => {
+  const getCurrentPosition = () => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error('Geolocation is not supported by your browser'));
@@ -257,10 +226,7 @@ export function useMapService() {
   /**
    * Calculate distance between two points in kilometers
    */
-  const calculateDistance = (
-    point1: { lat: number; lng: number },
-    point2: { lat: number; lng: number }
-  ): number => {
+  const calculateDistance = (point1, point2) => {
     const R = 6371; // Earth radius in km
     const dLat = deg2rad(point2.lat - point1.lat);
     const dLng = deg2rad(point2.lng - point1.lng);
@@ -274,16 +240,16 @@ export function useMapService() {
     return R * c; // Distance in km
   };
   
-  const deg2rad = (deg: number): number => {
+  const deg2rad = (deg) => {
     return deg * (Math.PI / 180);
   };
 
   /**
    * Format distance for display
-   * @param distance Distance in kilometers
-   * @returns Formatted distance string (e.g., "1.2 km" or "800 m")
+   * @param {number} distance Distance in kilometers
+   * @returns {string} Formatted distance string (e.g., "1.2 km" or "800 m")
    */
-  const formatDistance = (distance: number): string => {
+  const formatDistance = (distance) => {
     if (distance < 0.1) {
       return `${Math.round(distance * 1000)} m`;
     } else if (distance < 1) {
@@ -295,11 +261,11 @@ export function useMapService() {
   
   /**
    * Estimate travel time based on distance
-   * @param distance Distance in kilometers
-   * @param mode Travel mode ('driving', 'walking', 'cycling')
-   * @returns Estimated time in minutes
+   * @param {number} distance Distance in kilometers
+   * @param {string} mode Travel mode ('driving', 'walking', 'cycling')
+   * @returns {number} Estimated time in minutes
    */
-  const estimateTravelTime = (distance: number, mode: 'driving' | 'walking' | 'cycling' = 'driving'): number => {
+  const estimateTravelTime = (distance, mode = 'driving') => {
     // Average speeds (km/h)
     const speeds = {
       driving: 30, // Urban driving
@@ -314,9 +280,9 @@ export function useMapService() {
   
   /**
    * Get the user's current location
-   * @returns Promise that resolves to the user's location {lat, lng}
+   * @returns {Promise} Promise that resolves to the user's location {lat, lng}
    */
-  const getUserLocation = (): Promise<{lat: number, lng: number}> => {
+  const getUserLocation = () => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         error.value = 'Geolocation is not supported by your browser';

@@ -36,6 +36,16 @@ const upload = multer({
   }
 });
 
+// Special routes that need to be defined before the param middleware
+// Get featured restaurants
+router.get('/featured', restaurantController.getFeaturedRestaurants);
+
+// Get popular restaurants
+router.get('/popular', restaurantController.getPopularRestaurants);
+
+// Search restaurants by location
+router.get('/search', restaurantController.searchRestaurantsByLocation);
+
 /**
  * @route GET /api/restaurants
  * @desc Get all restaurants
@@ -58,6 +68,7 @@ router.get('/:id', restaurantController.getRestaurantById);
 router.post(
   '/',
   authMiddleware,
+  restrictTo('owner', 'admin'),
   upload.fields([
     { name: 'logo', maxCount: 1 },
     { name: 'coverImage', maxCount: 1 }
@@ -99,7 +110,7 @@ router.post(
 router.patch(
   '/:id',
   authMiddleware,
-  restrictTo('restaurant', 'admin'),
+  restrictTo('owner', 'admin', 'restaurant'),
   upload.fields([
     { name: 'logo', maxCount: 1 },
     { name: 'coverImage', maxCount: 1 }
@@ -137,7 +148,7 @@ router.patch(
 router.delete(
   '/:id',
   authMiddleware,
-  restrictTo('restaurant', 'admin'),
+  restrictTo('owner', 'admin', 'restaurant'),
   restaurantController.deleteRestaurant
 );
 
@@ -155,4 +166,4 @@ router.get('/:id/menu', restaurantController.getRestaurantMenu);
  */
 router.get('/:id/reviews', restaurantController.getRestaurantReviews);
 
-module.exports = router; 
+module.exports = router;

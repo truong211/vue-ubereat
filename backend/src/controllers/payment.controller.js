@@ -3,858 +3,476 @@ const { Order, User, PaymentHistory } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const uuid = require('uuid').v4;
+const axios = require('axios');
+const crypto = require('crypto');
+const config = require('../config');
 
-/**
- * Process payment with Stripe
- * @route POST /api/payments/process
- * @access Private
- */
-exports.processPayment = async (req, res, next) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+class PaymentController {
+  // Initialize payment services
+  constructor() {
+    this.vnpayConfig = {
+      tmnCode: config.vnpay.tmnCode,
+      hashSecret: config.vnpay.hashSecret,
+      apiUrl: config.vnpay.apiUrl
+    };
 
-    const { orderId, paymentMethodId } = req.body;
+    this.momoConfig = {
+      partnerCode: config.momo.partnerCode,
+      accessKey: config.momo.accessKey,
+      secretKey: config.momo.secretKey,
+      apiUrl: config.momo.apiUrl
+    };
 
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId: req.user.id,
-        paymentStatus: 'pending'
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found or already paid', 404));
-    }
-
-    // Create payment intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(order.totalAmount * 100), // Convert to cents
-      currency: 'usd',
-      payment_method: paymentMethodId,
-      confirm: true,
-      description: `Payment for order ${order.orderNumber}`,
-      metadata: {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        userId: req.user.id
-      }
-    });
-
-    // Update order payment status
-    order.paymentStatus = 'paid';
-    order.paymentId = paymentIntent.id;
-    order.paymentMethod = 'card';
-    await order.save();
-    
-    // Create payment history record
-    await PaymentHistory.create({
-      orderId: order.id,
-      userId: req.user.id,
-      amount: order.totalAmount,
-      paymentMethod: 'card',
-      status: 'completed',
-      transactionId: paymentIntent.id,
-      paymentDetails: paymentIntent,
-      notes: `Payment processed for order ${order.orderNumber}`
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        clientSecret: paymentIntent.client_secret,
-        paymentIntent: paymentIntent.id,
-        order
-      }
-    });
-  } catch (error) {
-    if (error.type === 'StripeCardError') {
-      return next(new AppError(error.message, 400));
-    }
-    next(error);
+    this.zalopayConfig = {
+      appId: config.zalopay.appId,
+      key1: config.zalopay.key1,
+      key2: config.zalopay.key2,
+      apiUrl: config.zalopay.apiUrl
+    };
   }
-};
 
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
+  // Process VNPay payment
+  async processVNPayPayment(req, res) {
+    try {
+      const { order_id, return_url } = req.body;
+      const order = await Order.findByPk(order_id);
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
       }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
-/**
- * Get payment status
- * @route GET /api/payments/:orderId
- * @access Private
- */
-exports.getPaymentStatus = async (req, res, next) => {
-  try {
-    const { orderId } = req.params;
-
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId: req.user.id
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found', 404));
-    }
-
-    // If payment was made with Stripe, get payment details
-    let paymentDetails = null;
-    if (order.paymentId && order.paymentMethod === 'card') {
-      const paymentIntent = await stripe.paymentIntents.retrieve(order.paymentId);
-      paymentDetails = {
-        id: paymentIntent.id,
-        status: paymentIntent.status,
-        amount: paymentIntent.amount / 100, // Convert from cents
-        created: new Date(paymentIntent.created * 1000),
-        paymentMethod: paymentIntent.payment_method
+      const tmnCode = this.vnpayConfig.tmnCode;
+      const secretKey = this.vnpayConfig.hashSecret;
+      const returnUrl = return_url;
+      
+      const date = new Date();
+      const createDate = date.toISOString().split('T')[0].replace(/-/g, '');
+      const orderId = `${order.id}_${Date.now()}`;
+      
+      // Create VNPay payment URL
+      const vnpUrl = new URL(this.vnpayConfig.apiUrl);
+      const params = {
+        vnp_Version: '2.1.0',
+        vnp_Command: 'pay',
+        vnp_TmnCode: tmnCode,
+        vnp_Locale: 'vn',
+        vnp_CurrCode: 'VND',
+        vnp_TxnRef: orderId,
+        vnp_OrderInfo: `Payment for order ${order.id}`,
+        vnp_OrderType: 'food_delivery',
+        vnp_Amount: order.total_amount * 100, // Amount in VND cents
+        vnp_ReturnUrl: returnUrl,
+        vnp_IpAddr: req.ip,
+        vnp_CreateDate: createDate
       };
 
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
+      // Generate signature
+      const signData = Object.keys(params)
+        .sort()
+        .map(key => `${key}=${params[key]}`)
+        .join('&');
+      
+      const hmac = crypto.createHmac('sha512', secretKey);
+      params.vnp_SecureHash = hmac.update(signData).digest('hex');
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+      // Add params to URL
+      Object.keys(params).forEach(key => vnpUrl.searchParams.append(key, params[key]));
+
+      // Save payment attempt
+      await PaymentHistory.create({
+        order_id: order.id,
+        payment_method: 'vnpay',
+        amount: order.total_amount,
+        status: 'pending',
+        transaction_ref: orderId
+      });
+
+      res.json({ redirect_url: vnpUrl.toString() });
+    } catch (error) {
+      console.error('VNPay payment error:', error);
+      res.status(500).json({ message: 'Failed to process VNPay payment' });
     }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        paymentStatus: order.paymentStatus,
-        paymentMethod: order.paymentMethod,
-        paymentDetails
-      }
-    });
-  } catch (error) {
-    next(error);
   }
-};
 
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Create payment intent (for mobile apps)
- * @route POST /api/payments/create-intent
- * @access Private
- */
-exports.createPaymentIntent = async (req, res, next) => {
-  try {
-    const { orderId } = req.body;
-
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId: req.user.id,
-        paymentStatus: 'pending'
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found or already paid', 404));
-    }
-
-    // Create payment intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(order.totalAmount * 100), // Convert to cents
-      currency: 'usd',
-      metadata: {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        userId: req.user.id
-      }
-    });
-
-    // Save payment intent ID to order
-    order.paymentId = paymentIntent.id;
-    await order.save();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        clientSecret: paymentIntent.client_secret
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Handle Stripe webhook
- * @route POST /api/payments/webhook
- * @access Public
- */
-exports.handleWebhook = async (req, res, next) => {
-  try {
-    const signature = req.headers['stripe-signature'];
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    
-    let event;
-    
+  // Process Momo payment
+  async processMomoPayment(req, res) {
     try {
-      event = stripe.webhooks.constructEvent(req.rawBody, signature, endpointSecret);
-    } catch (err) {
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-    
-    // Handle the event
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        const paymentIntent = event.data.object;
-        // Update order payment status
-        if (paymentIntent.metadata && paymentIntent.metadata.orderId) {
-          const order = await Order.findByPk(paymentIntent.metadata.orderId);
-          if (order) {
-            order.paymentStatus = 'paid';
-            await order.save();
-            
-            // Create or update payment history record
-            const paymentRecord = await PaymentHistory.findOne({
-              where: {
-                orderId: order.id,
-                transactionId: paymentIntent.id
-              }
-            });
-            
-            if (paymentRecord) {
-              paymentRecord.status = 'completed';
-              paymentRecord.paymentDetails = paymentIntent;
-              await paymentRecord.save();
-            } else {
-              await PaymentHistory.create({
-                orderId: order.id,
-                userId: paymentIntent.metadata.userId,
-                amount: order.totalAmount,
-                paymentMethod: 'card',
-                status: 'completed',
-                transactionId: paymentIntent.id,
-                paymentDetails: paymentIntent,
-                notes: `Payment completed for order ${order.orderNumber} via webhook`
-              });
-            }
-          }
-        }
-        break;
-      case 'payment_intent.payment_failed':
-        const failedPayment = event.data.object;
-        // Update order payment status
-        if (failedPayment.metadata && failedPayment.metadata.orderId) {
-          const order = await Order.findByPk(failedPayment.metadata.orderId);
-          if (order) {
-            order.paymentStatus = 'failed';
-            await order.save();
-            
-            // Create or update payment history record
-            const paymentRecord = await PaymentHistory.findOne({
-              where: {
-                orderId: order.id,
-                transactionId: failedPayment.id
-              }
-            });
-            
-            if (paymentRecord) {
-              paymentRecord.status = 'failed';
-              paymentRecord.paymentDetails = failedPayment;
-              await paymentRecord.save();
-            } else {
-              await PaymentHistory.create({
-                orderId: order.id,
-                userId: failedPayment.metadata.userId,
-                amount: order.totalAmount,
-                paymentMethod: 'card',
-                status: 'failed',
-                transactionId: failedPayment.id,
-                paymentDetails: failedPayment,
-                notes: `Payment failed for order ${order.orderNumber}`
-              });
-            }
-          }
-        }
-        break;
-      default:
-        // Unexpected event type
-        console.log(`Unhandled event type ${event.type}`);
-    }
+      const { order_id, return_url } = req.body;
+      const order = await Order.findByPk(order_id);
 
-    res.status(200).json({ received: true });
-  } catch (error) {
-    next(error);
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+
+      const requestId = `${Date.now()}_${order.id}`;
+      const orderId = `${order.id}_${Date.now()}`;
+      
+      // Create Momo payment request
+      const rawSignature = `partnerCode=${this.momoConfig.partnerCode}&accessKey=${this.momoConfig.accessKey}&requestId=${requestId}&amount=${order.total_amount}&orderId=${orderId}&orderInfo=Payment for order ${order.id}&returnUrl=${return_url}&notifyUrl=${config.momo.notifyUrl}&extraData=`;
+      
+      const signature = crypto
+        .createHmac('sha256', this.momoConfig.secretKey)
+        .update(rawSignature)
+        .digest('hex');
+
+      const requestBody = {
+        partnerCode: this.momoConfig.partnerCode,
+        accessKey: this.momoConfig.accessKey,
+        requestId: requestId,
+        amount: order.total_amount,
+        orderId: orderId,
+        orderInfo: `Payment for order ${order.id}`,
+        returnUrl: return_url,
+        notifyUrl: config.momo.notifyUrl,
+        extraData: '',
+        requestType: 'captureMoMoWallet',
+        signature: signature
+      };
+
+      const response = await axios.post(this.momoConfig.apiUrl, requestBody);
+
+      if (response.data.errorCode !== 0) {
+        throw new Error(response.data.message);
+      }
+
+      // Save payment attempt
+      await PaymentHistory.create({
+        order_id: order.id,
+        payment_method: 'momo',
+        amount: order.total_amount,
+        status: 'pending',
+        transaction_ref: orderId
+      });
+
+      res.json({ redirect_url: response.data.payUrl });
+    } catch (error) {
+      console.error('Momo payment error:', error);
+      res.status(500).json({ message: 'Failed to process Momo payment' });
+    }
   }
-};
 
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
+  // Process ZaloPay payment
+  async processZaloPayment(req, res) {
+    try {
+      const { order_id, return_url } = req.body;
+      const order = await Order.findByPk(order_id);
+
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+
+      const embedData = {
+        redirecturl: return_url
+      };
+
+      const items = [{
+        itemid: order.id,
+        itemname: `Order #${order.id}`,
+        itemprice: order.total_amount,
+        itemquantity: 1
+      }];
+
+      const transId = `${Date.now()}_${order.id}`;
+      
+      // Create ZaloPay order data
+      const orderData = {
+        app_id: this.zalopayConfig.appId,
+        app_trans_id: transId,
+        app_user: order.user_id,
+        app_time: Date.now(),
+        amount: order.total_amount,
+        item: JSON.stringify(items),
+        embed_data: JSON.stringify(embedData),
+        description: `Payment for order ${order.id}`
+      };
+
+      // Generate MAC for verification
+      const data = `${this.zalopayConfig.appId}|${orderData.app_trans_id}|${orderData.app_user}|${orderData.amount}|${orderData.app_time}|${orderData.embed_data}|${orderData.item}`;
+      const mac = crypto
+        .createHmac('sha256', this.zalopayConfig.key1)
+        .update(data)
+        .digest('hex');
+
+      orderData.mac = mac;
+
+      const response = await axios.post(this.zalopayConfig.apiUrl, orderData);
+
+      if (response.data.return_code !== 1) {
+        throw new Error(response.data.return_message);
+      }
+
+      // Save payment attempt
+      await PaymentHistory.create({
+        order_id: order.id,
+        payment_method: 'zalopay',
+        amount: order.total_amount,
+        status: 'pending',
+        transaction_ref: transId
+      });
+
+      res.json({ redirect_url: response.data.order_url });
+    } catch (error) {
+      console.error('ZaloPay payment error:', error);
+      res.status(500).json({ message: 'Failed to process ZaloPay payment' });
+    }
+  }
+
+  // Process card payment
+  async processCardPayment(req, res) {
+    try {
+      const { order_id, card_number, expiry, cvv, save_card } = req.body;
+      const order = await Order.findByPk(order_id);
+
+      if (!order) {
+        return res.status(404).json({ message: 'Order not found' });
+      }
+
+      // In a real application, you would integrate with a payment gateway like Stripe
+      // For demo purposes, we'll simulate a successful payment
+      const transactionId = `CARD_${Date.now()}_${order.id}`;
+
+      // Save payment record
+      await PaymentHistory.create({
+        order_id: order.id,
+        payment_method: 'card',
+        amount: order.total_amount,
+        status: 'completed',
+        transaction_ref: transactionId
+      });
+
+      // Update order status
+      await order.update({
+        payment_status: 'paid',
+        payment_method: 'card'
+      });
+
+      // If user wants to save the card, store last 4 digits (in real app, use proper tokenization)
+      if (save_card) {
+        // Implementation for card saving would go here
+      }
+
+      res.json({
+        success: true,
+        transaction_id: transactionId,
+        message: 'Payment processed successfully'
+      });
+    } catch (error) {
+      console.error('Card payment error:', error);
+      res.status(500).json({ message: 'Failed to process card payment' });
+    }
+  }
+
+  // Verify VNPay payment callback
+  async verifyVNPayPayment(req, res) {
+    try {
+      const vnpParams = req.query;
+      const secureHash = vnpParams.vnp_SecureHash;
+      delete vnpParams.vnp_SecureHash;
+      delete vnpParams.vnp_SecureHashType;
+
+      // Generate signature for verification
+      const signData = Object.keys(vnpParams)
+        .sort()
+        .map(key => `${key}=${vnpParams[key]}`)
+        .join('&');
+      
+      const hmac = crypto.createHmac('sha512', this.vnpayConfig.hashSecret);
+      const calculatedHash = hmac.update(signData).digest('hex');
+
+      if (secureHash !== calculatedHash) {
+        throw new Error('Invalid signature');
+      }
+
+      const orderId = vnpParams.vnp_TxnRef.split('_')[0];
+      const responseCode = vnpParams.vnp_ResponseCode;
+
+      const paymentHistory = await PaymentHistory.findOne({
+        where: {
+          order_id: orderId,
+          payment_method: 'vnpay',
+          status: 'pending'
+        }
+      });
+
+      if (!paymentHistory) {
+        throw new Error('Payment record not found');
+      }
+
+      if (responseCode === '00') {
+        // Payment successful
+        await paymentHistory.update({ status: 'completed' });
+        await Order.update(
+          { payment_status: 'paid', payment_method: 'vnpay' },
+          { where: { id: orderId } }
+        );
+      } else {
+        // Payment failed
+        await paymentHistory.update({ status: 'failed' });
+      }
+
+      // Redirect back to frontend with status
+      res.redirect(`${config.frontendUrl}/payment/status?orderId=${orderId}&status=${responseCode === '00' ? 'success' : 'failed'}`);
+    } catch (error) {
+      console.error('VNPay verification error:', error);
+      res.redirect(`${config.frontendUrl}/payment/status?status=error`);
+    }
+  }
+
+  // Verify Momo payment callback
+  async verifyMomoPayment(req, res) {
+    try {
+      const {
+        partnerCode,
+        orderId,
+        requestId,
+        amount,
+        orderInfo,
+        orderType,
+        transId,
+        resultCode,
+        message,
+        payType,
+        responseTime,
+        extraData,
+        signature
+      } = req.body;
+
+      // Verify signature
+      const rawSignature = `partnerCode=${partnerCode}&accessKey=${this.momoConfig.accessKey}&requestId=${requestId}&amount=${amount}&orderId=${orderId}&orderInfo=${orderInfo}&orderType=${orderType}&transId=${transId}&message=${message}&resultCode=${resultCode}&payType=${payType}&responseTime=${responseTime}&extraData=${extraData}`;
+      
+      const calculatedSignature = crypto
+        .createHmac('sha256', this.momoConfig.secretKey)
+        .update(rawSignature)
+        .digest('hex');
+
+      if (signature !== calculatedSignature) {
+        throw new Error('Invalid signature');
+      }
+
+      const originalOrderId = orderId.split('_')[0];
+      const paymentHistory = await PaymentHistory.findOne({
+        where: {
+          order_id: originalOrderId,
+          payment_method: 'momo',
+          status: 'pending'
+        }
+      });
+
+      if (!paymentHistory) {
+        throw new Error('Payment record not found');
+      }
+
+      if (resultCode === '0') {
+        // Payment successful
+        await paymentHistory.update({ status: 'completed' });
+        await Order.update(
+          { payment_status: 'paid', payment_method: 'momo' },
+          { where: { id: originalOrderId } }
+        );
+      } else {
+        // Payment failed
+        await paymentHistory.update({ status: 'failed' });
+      }
+
+      res.json({ message: 'Payment verification processed' });
+    } catch (error) {
+      console.error('Momo verification error:', error);
+      res.status(500).json({ message: 'Payment verification failed' });
+    }
+  }
+
+  // Verify ZaloPay payment callback
+  async verifyZaloPayPayment(req, res) {
+    try {
+      const {
+        app_id,
+        app_trans_id,
+        amount,
+        timestamp,
+        description,
+        embed_data,
+        mac
+      } = req.body;
+
+      // Verify MAC
+      const data = `${app_id}|${app_trans_id}|${amount}|${description}|${embed_data}|${timestamp}`;
+      const expectedMac = crypto
+        .createHmac('sha256', this.zalopayConfig.key2)
+        .update(data)
+        .digest('hex');
+
+      if (mac !== expectedMac) {
+        throw new Error('Invalid MAC');
+      }
+
+      const originalOrderId = app_trans_id.split('_')[0];
+      const paymentHistory = await PaymentHistory.findOne({
+        where: {
+          order_id: originalOrderId,
+          payment_method: 'zalopay',
+          status: 'pending'
+        }
+      });
+
+      if (!paymentHistory) {
+        throw new Error('Payment record not found');
+      }
+
+      // Update payment status
+      await paymentHistory.update({ status: 'completed' });
+      await Order.update(
+        { payment_status: 'paid', payment_method: 'zalopay' },
+        { where: { id: originalOrderId } }
+      );
+
+      res.json({ return_code: 1, return_message: 'Success' });
+    } catch (error) {
+      console.error('ZaloPay verification error:', error);
+      res.json({ return_code: -1, return_message: 'Failed to verify payment' });
+    }
+  }
+
+  // Get saved cards
+  async getSavedCards(req, res) {
+    try {
+      // In a real application, fetch saved cards from a secure payment service
+      // For demo, return mock data
+      const mockSavedCards = [
         {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Process cash payment
- * @route POST /api/payments/cash
- * @access Private
- */
-exports.processCashPayment = async (req, res, next) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { orderId } = req.body;
-
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId: req.user.id,
-        paymentStatus: 'pending'
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found or already paid', 404));
-    }
-
-    // Update order payment status to pending (will be marked as paid upon delivery)
-    order.paymentMethod = 'cash';
-    await order.save();
-
-    // Create payment history record
-    await PaymentHistory.create({
-      orderId: order.id,
-      userId: req.user.id,
-      amount: order.totalAmount,
-      paymentMethod: 'cash',
-      status: 'pending',
-      notes: 'Cash payment to be collected upon delivery'
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Cash payment option selected. Payment will be collected upon delivery.',
-        order
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
+          id: 'card_1',
+          brand: 'visa',
+          last4: '4242',
+          expMonth: '12',
+          expYear: '24'
+        },
         {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
+          id: 'card_2',
+          brand: 'mastercard',
+          last4: '8210',
+          expMonth: '08',
+          expYear: '25'
         }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
+      ];
 
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Confirm cash payment (for delivery personnel)
- * @route POST /api/payments/cash/confirm
- * @access Private (Driver)
- */
-exports.confirmCashPayment = async (req, res, next) => {
-  try {
-    const { orderId, amountCollected } = req.body;
-
-    // Check if user is a driver
-    if (req.user.role !== 'driver' && req.user.role !== 'admin') {
-      return next(new AppError('You are not authorized to perform this action', 403));
+      res.json(mockSavedCards);
+    } catch (error) {
+      console.error('Error fetching saved cards:', error);
+      res.status(500).json({ message: 'Failed to fetch saved cards' });
     }
-
-    // Find order
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        paymentMethod: 'cash',
-        status: 'out_for_delivery'
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found or not eligible for cash payment confirmation', 404));
-    }
-
-    // Update order payment status
-    order.paymentStatus = 'paid';
-    await order.save();
-
-    // Update payment history
-    const paymentRecord = await PaymentHistory.findOne({
-      where: {
-        orderId: order.id,
-        paymentMethod: 'cash',
-        status: 'pending'
-      }
-    });
-
-    if (paymentRecord) {
-      paymentRecord.status = 'completed';
-      paymentRecord.paymentDetails = { amountCollected };
-
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
   }
-};
-      paymentRecord.notes += ' | Confirmed by driver ID: ' + req.user.id;
-      await paymentRecord.save();
+
+  // Delete saved card
+  async deleteSavedCard(req, res) {
+    try {
+      const { cardId } = req.params;
+      // In a real application, delete card from payment service
+      // For demo, just return success
+      res.json({ message: 'Card deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting saved card:', error);
+      res.status(500).json({ message: 'Failed to delete saved card' });
     }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Cash payment confirmed',
-        order
-      }
-    });
-  } catch (error) {
-    next(error);
   }
-};
+}
 
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Refund payment
- * @route POST /api/payments/refund
- * @access Private (Admin)
- */
-exports.refundPayment = async (req, res, next) => {
-  try {
-    const { orderId, amount, reason } = req.body;
-
-    // Check if user is admin
-    if (req.user.role !== 'admin') {
-      return next(new AppError('You are not authorized to perform this action', 403));
-    }
-
-    // Find order
-    const order = await Order.findByPk(orderId);
-
-    if (!order) {
-      return next(new AppError('Order not found', 404));
-    }
-
-    if (order.paymentStatus !== 'paid' || !order.paymentId) {
-      return next(new AppError('Order has not been paid or payment ID is missing', 400));
-    }
-
-    // Process refund
-    const refund = await stripe.refunds.create({
-      payment_intent: order.paymentId,
-      amount: amount ? Math.round(amount * 100) : undefined, // Convert to cents if partial refund
-      reason: reason || 'requested_by_customer'
-    });
-
-    // Update order payment status
-    order.paymentStatus = amount && amount < order.totalAmount ? 'partially_refunded' : 'refunded';
-    order.refundId = refund.id;
-    order.refundAmount = amount || order.totalAmount;
-    await order.save();
-    
-    // Create payment history record for the refund
-    await PaymentHistory.create({
-      orderId: order.id,
-      userId: req.user.id,
-      amount: amount || order.totalAmount,
-      paymentMethod: order.paymentMethod,
-      paymentType: 'refund',
-      status: 'completed',
-      transactionId: refund.id,
-      paymentDetails: refund,
-      notes: reason || 'Refund processed by admin'
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        refund,
-        order
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get user payment history
- * @route GET /api/payments/history
- * @access Private
- */
-exports.getPaymentHistory = async (req, res, next) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    
-    // Find payment history for the user
-    const paymentHistory = await PaymentHistory.findAndCountAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Order,
-          attributes: ['orderNumber', 'status', 'totalAmount', 'createdAt']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(paymentHistory.count / limit);
-    
-    res.status(200).json({
-      status: 'success',
-      data: {
-        payments: paymentHistory.rows,
-        pagination: {
-          total: paymentHistory.count,
-          totalPages,
-          currentPage: page,
-          limit
-        }
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+module.exports = new PaymentController();

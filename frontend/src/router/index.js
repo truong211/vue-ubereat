@@ -10,6 +10,7 @@ import ResetPassword from '@/components/auth/ResetPassword.vue';
 import VerifyEmail from '@/components/auth/VerifyEmail.vue';
 import UserProfile from '@/components/profile/UserProfile.vue';
 import OrderTracking from '@/components/order/OrderTracking.vue';
+import PaymentStatusPage from '@/components/payment/PaymentStatusPage.vue';
 
 // Route definitions
 const routes = [
@@ -155,6 +156,15 @@ const routes = [
     meta: { title: 'Privacy Policy' }
   },
   */
+  {
+    path: '/payment/status',
+    name: 'PaymentStatus',
+    component: PaymentStatusPage,
+    meta: {
+      requiresAuth: true,
+      title: 'Payment Status'
+    }
+  },
   // 404 page - using a simple component for now
   {
     path: '/:pathMatch(.*)*',
