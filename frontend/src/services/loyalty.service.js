@@ -1,4 +1,5 @@
-import api from './api.service'
+import axios from 'axios';
+import { store } from '@/store';
 
 class LoyaltyService {
   /**
@@ -17,35 +18,233 @@ class LoyaltyService {
   }
 
   /**
-   * Get available rewards
-   * @param {string} customerId Customer ID
-   * @returns {Promise<Object>} Available rewards
+   * Calculate points earned from an order
+   * @param {Object} order - The order object
+   * @returns {Number} - Points earned
    */
-  async getAvailableRewards(customerId) {
+  calculateOrderPoints(order) {
+    if (!order || !order.total) {
+      return 0;
+    }
+
+    // Basic calculation: 10 points per dollar spent
+    let points = Math.floor(order.total * 10);
+    
+    // Check for tier multipliers
+    const userTier = this.getUserTier();
+    const tierMultipliers = {
+      'bronze': 1,
+      'silver': 1.2,
+      'gold': 1.5,
+      'platinum': 2
+    };
+    
+    if (tierMultipliers[userTier]) {
+      points = Math.floor(points * tierMultipliers[userTier]);
+    }
+    
+    return points;
+  }
+
+  /**
+   * Get available rewards for the current user
+   * @returns {Promise<Array>} - List of available rewards
+   */
+  async getAvailableRewards() {
     try {
-      const response = await api.get(`/loyalty/rewards/${customerId}/available`)
-      return response.data
+      const response = await axios.get('/api/rewards/available');
+      return response.data.rewards || [];
     } catch (error) {
-      console.error('Failed to fetch available rewards:', error)
-      throw error
+      console.error('Error fetching available rewards:', error);
+      return [];
     }
   }
 
   /**
-   * Get reward history
-   * @param {string} customerId Customer ID
-   * @param {Object} options Query options
-   * @returns {Promise<Object>} Reward history
+   * Get user's reward history
+   * @param {Number} page - Page number
+   * @param {Number} limit - Number of items per page
+   * @returns {Promise<Object>} - Reward history with pagination
    */
-  async getRewardHistory(customerId, options = {}) {
+  async getRewardHistory(page = 1, limit = 10) {
     try {
-      const response = await api.get(`/loyalty/rewards/${customerId}/history`, {
-        params: options
-      })
-      return response.data
+      const response = await axios.get(`/api/rewards/history?page=${page}&limit=${limit}`);
+      return response.data;
     } catch (error) {
-      console.error('Failed to fetch reward history:', error)
-      throw error
+      console.error('Error fetching reward history:', error);
+      return { rewards: [], total: 0 };
+    }
+  }
+
+  /**
+   * Redeem reward points for a specific reward
+   * @param {String} rewardId - ID of the reward to redeem
+   * @returns {Promise<Object>} - Redemption result
+   */
+  async redeemReward(rewardId) {
+    try {
+      const response = await axios.post('/api/rewards/redeem', { rewardId });
+      
+      // Update user points in store
+      if (response.data.success) {
+        store.dispatch('user/updateUserPoints', response.data.remainingPoints);
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error redeeming reward:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Apply a reward to an order
+   * @param {String} rewardId - ID of the reward to apply
+   * @param {String} orderId - ID of the order
+   * @returns {Promise<Object>} - Updated order with applied reward
+   */
+  async applyRewardToOrder(rewardId, orderId) {
+    try {
+      const response = await axios.post(`/api/orders/${orderId}/apply-reward`, { rewardId });
+      return response.data;
+    } catch (error) {
+      console.error('Error applying reward to order:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the user's current loyalty tier
+   * @returns {String} - User tier (bronze, silver, gold, platinum)
+   */
+  getUserTier() {
+    const user = store.state.auth.user;
+    if (!user || !user.loyaltyPoints) {
+      return 'bronze';
+    }
+    
+    const points = user.loyaltyPoints;
+    
+    if (points >= 10000) {
+      return 'platinum';
+    } else if (points >= 5000) {
+      return 'gold';
+    } else if (points >= 1000) {
+      return 'silver';
+    } else {
+      return 'bronze';
+    }
+  }
+
+  /**
+   * Get tier benefits for a specific tier or all tiers
+   * @param {String} tier - Optional tier to get benefits for
+   * @returns {Object} - Tier benefits
+   */
+  getTierBenefits(tier = null) {
+    const benefits = {
+      'bronze': {
+        pointsMultiplier: 1,
+        freeDelivery: false,
+        exclusiveOffers: false,
+        prioritySupport: false,
+        birthdayReward: true
+      },
+      'silver': {
+        pointsMultiplier: 1.2,
+        freeDelivery: false,
+        exclusiveOffers: true,
+        prioritySupport: false,
+        birthdayReward: true
+      },
+      'gold': {
+        pointsMultiplier: 1.5,
+        freeDelivery: true,
+        exclusiveOffers: true,
+        prioritySupport: false,
+        birthdayReward: true
+      },
+      'platinum': {
+        pointsMultiplier: 2,
+        freeDelivery: true,
+        exclusiveOffers: true,
+        prioritySupport: true,
+        birthdayReward: true
+      }
+    };
+    
+    return tier ? benefits[tier] : benefits;
+  }
+
+  /**
+   * Calculate points needed for next tier
+   * @returns {Object} - Next tier info with points needed
+   */
+  getNextTierInfo() {
+    const user = store.state.auth.user;
+    const currentPoints = user?.loyaltyPoints || 0;
+    const currentTier = this.getUserTier();
+    
+    const tierThresholds = {
+      'bronze': 0,
+      'silver': 1000,
+      'gold': 5000,
+      'platinum': 10000
+    };
+    
+    if (currentTier === 'platinum') {
+      return {
+        nextTier: null,
+        pointsNeeded: 0,
+        progress: 100
+      };
+    }
+    
+    const nextTierMap = {
+      'bronze': 'silver',
+      'silver': 'gold',
+      'gold': 'platinum'
+    };
+    
+    const nextTier = nextTierMap[currentTier];
+    const nextTierPoints = tierThresholds[nextTier];
+    const pointsNeeded = Math.max(0, nextTierPoints - currentPoints);
+    const progress = Math.min(100, Math.floor((currentPoints / nextTierPoints) * 100));
+    
+    return {
+      currentTier,
+      nextTier,
+      currentPoints,
+      pointsNeeded,
+      progress
+    };
+  }
+
+  /**
+   * Check if birthday reward is available
+   * @returns {Promise<Boolean>} - Whether birthday reward is available
+   */
+  async checkBirthdayReward() {
+    try {
+      const response = await axios.get('/api/rewards/birthday-check');
+      return response.data.available || false;
+    } catch (error) {
+      console.error('Error checking birthday reward:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Claim birthday reward
+   * @returns {Promise<Object>} - Claimed reward
+   */
+  async claimBirthdayReward() {
+    try {
+      const response = await axios.post('/api/rewards/claim-birthday');
+      return response.data;
+    } catch (error) {
+      console.error('Error claiming birthday reward:', error);
+      throw error;
     }
   }
 
@@ -68,21 +267,6 @@ class LoyaltyService {
   }
 
   /**
-   * Calculate points for order
-   * @param {Object} order Order details
-   * @returns {Promise<Object>} Points calculation
-   */
-  async calculateOrderPoints(order) {
-    try {
-      const response = await api.post('/loyalty/points/calculate', order)
-      return response.data
-    } catch (error) {
-      console.error('Failed to calculate points:', error)
-      throw error
-    }
-  }
-
-  /**
    * Award points
    * @param {string} customerId Customer ID
    * @param {Object} transaction Transaction details
@@ -97,39 +281,6 @@ class LoyaltyService {
       return response.data
     } catch (error) {
       console.error('Failed to award points:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Redeem reward
-   * @param {string} customerId Customer ID
-   * @param {string} rewardId Reward ID
-   * @returns {Promise<Object>} Redemption result
-   */
-  async redeemReward(customerId, rewardId) {
-    try {
-      const response = await api.post(
-        `/loyalty/rewards/${customerId}/redeem/${rewardId}`
-      )
-      return response.data
-    } catch (error) {
-      console.error('Failed to redeem reward:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Get tier benefits
-   * @param {string} tierId Tier ID
-   * @returns {Promise<Object>} Tier benefits
-   */
-  async getTierBenefits(tierId) {
-    try {
-      const response = await api.get(`/loyalty/tiers/${tierId}/benefits`)
-      return response.data
-    } catch (error) {
-      console.error('Failed to fetch tier benefits:', error)
       throw error
     }
   }
@@ -263,4 +414,5 @@ class LoyaltyService {
   }
 }
 
-export default new LoyaltyService()
+export const loyaltyService = new LoyaltyService();
+export default loyaltyService;
