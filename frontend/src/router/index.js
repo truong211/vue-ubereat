@@ -82,14 +82,12 @@ const routes = [
     component: () => import('@/components/cart/CartView.vue'),
     meta: { title: 'Shopping Cart' }
   },
-  /* Commented out until component is created
   {
     path: '/checkout',
     name: 'Checkout',
     component: () => import('@/components/checkout/CheckoutPage.vue'),
     meta: { title: 'Checkout', requiresAuth: true }
   },
-  */
   {
     path: '/orders',
     name: 'Orders',
@@ -111,14 +109,12 @@ const routes = [
     meta: { title: 'My Favorites', requiresAuth: true }
   },
   */
-  /* Commented out until component is created
   {
     path: '/addresses',
     name: 'Addresses',
     component: () => import('@/components/address/AddressList.vue'),
     meta: { title: 'My Addresses', requiresAuth: true }
   },
-  */
   /* Commented out until component is created
   {
     path: '/payment-methods',

@@ -1,713 +1,696 @@
 <template>
-  <div class="order-tracking">
-    <v-container>
-      <v-row>
-        <!-- Order Status Card -->
-        <v-col cols="12" md="5" lg="4">
-          <v-card class="mb-4">
-            <v-card-title class="d-flex align-center">
-              <span>Order #{{ order?.id || '...' }}</span>
-              <v-spacer></v-spacer>
-              <v-chip
-                v-if="order"
-                :color="getStatusColor(order.status)"
-                class="text-capitalize"
-              >
-                {{ order.status }}
-              </v-chip>
-            </v-card-title>
-            
-            <v-card-text v-if="loading">
-              <div class="text-center py-8">
-                <v-progress-circular
-                  indeterminate
-                  color="primary"
-                  size="64"
-                ></v-progress-circular>
-                <div class="mt-4">Loading order details...</div>
-              </div>
-            </v-card-text>
-            
-            <template v-else-if="order">
-              <!-- Order Status Timeline -->
-              <v-card-text>
-                <v-timeline align="start" direction="vertical" line-thickness="2">
-                  <v-timeline-item
-                    v-for="(status, index) in orderStatuses"
-                    :key="status.value"
-                    :dot-color="getTimelineDotColor(status.value, order.status)"
-                    :icon="status.icon"
-                    :size="getTimelineSize(status.value, order.status)"
-                    :line-color="getTimelineLineColor(status.value, order.status, index)"
-                  >
-                    <div class="d-flex align-center">
-                      <div>
-                        <div class="text-subtitle-1 font-weight-medium">{{ status.label }}</div>
-                        <div v-if="getStatusTime(status.value)" class="text-caption">
-                          {{ formatTime(getStatusTime(status.value)) }}
-                        </div>
-                      </div>
-                      <v-spacer></v-spacer>
-                      <v-icon
-                        v-if="isStatusCompleted(status.value)"
-                        color="success"
-                        size="small"
-                      >
-                        mdi-check-circle
-                      </v-icon>
-                    </div>
-                  </v-timeline-item>
-                </v-timeline>
-              </v-card-text>
-              
-              <!-- Estimated Delivery Time -->
-              <v-card-text v-if="order.status !== 'delivered' && order.status !== 'cancelled'">
-                <div class="text-center pa-4 rounded-lg bg-primary-lighten-5">
-                  <div class="text-overline">Estimated Delivery Time</div>
-                  <div class="text-h5 font-weight-bold">{{ formatEstimatedTime(order.estimatedDeliveryTime) }}</div>
-                  <div class="text-caption">{{ getEstimatedTimeDescription() }}</div>
-                </div>
-              </v-card-text>
-              
-              <!-- Restaurant Info -->
-              <v-divider></v-divider>
-              <v-list lines="two">
-                <v-list-subheader>Restaurant Information</v-list-subheader>
-                <v-list-item>
-                  <template v-slot:prepend>
-                    <v-avatar size="40" rounded>
-                      <v-img
-                        :src="order.restaurant.image_url || '/images/restaurant-placeholder.jpg'"
-                        cover
-                      ></v-img>
-                    </v-avatar>
-                  </template>
-                  <v-list-item-title>{{ order.restaurant.name }}</v-list-item-title>
-                  <v-list-item-subtitle>
-                    <div class="d-flex align-center">
-                      <v-icon size="small" class="mr-1">mdi-phone</v-icon>
-                      <span>{{ order.restaurant.phone || 'No phone available' }}</span>
-                    </div>
-                  </v-list-item-subtitle>
-                </v-list-item>
-              </v-list>
-              
-              <!-- Driver Info (if assigned) -->
-              <template v-if="order.driver && order.status !== 'delivered' && order.status !== 'cancelled'">
-                <v-divider></v-divider>
-                <v-list lines="two">
-                  <v-list-subheader>Delivery Driver</v-list-subheader>
-                  <v-list-item>
-                    <template v-slot:prepend>
-                      <v-avatar color="primary">
-                        <span class="text-h6 text-white">{{ order.driver.name.charAt(0) }}</span>
-                      </v-avatar>
-                    </template>
-                    <v-list-item-title>{{ order.driver.name }}</v-list-item-title>
-                    <v-list-item-subtitle>
-                      <div class="d-flex align-center">
-                        <v-icon size="small" class="mr-1">mdi-phone</v-icon>
-                        <span>{{ order.driver.phone }}</span>
-                      </div>
-                    </v-list-item-subtitle>
-                    <template v-slot:append>
-                      <v-btn
-                        icon
-                        color="primary"
-                        variant="text"
-                        @click="callDriver"
-                      >
-                        <v-icon>mdi-phone</v-icon>
-                      </v-btn>
-                    </template>
-                  </v-list-item>
-                </v-list>
-              </template>
-              
-              <!-- Order Actions -->
-              <v-card-actions>
-                <v-btn
-                  block
-                  color="primary"
-                  variant="outlined"
-                  prepend-icon="mdi-food"
-                  :to="{ name: 'OrderDetail', params: { id: order.id }}"
-                >
-                  View Order Details
-                </v-btn>
-              </v-card-actions>
-              
-              <!-- Cancel Order Button (if order is still pending) -->
-              <v-card-actions v-if="canCancelOrder">
-                <v-btn
-                  block
-                  color="error"
-                  variant="outlined"
-                  prepend-icon="mdi-cancel"
-                  @click="showCancelDialog = true"
-                >
-                  Cancel Order
-                </v-btn>
-              </v-card-actions>
-            </template>
-          </v-card>
-        </v-col>
-        
-        <!-- Map and Delivery Info -->
-        <v-col cols="12" md="7" lg="8">
-          <v-card class="mb-4">
-            <v-card-title>Delivery Tracking</v-card-title>
-            
-            <v-card-text v-if="loading">
-              <div class="text-center py-8">
-                <v-progress-circular
-                  indeterminate
-                  color="primary"
-                  size="64"
-                ></v-progress-circular>
-              </div>
-            </v-card-text>
-            
-            <v-card-text v-else-if="order">
-              <!-- Delivery Map -->
-              <div class="map-container">
-                <div ref="mapContainer" class="map"></div>
-                
-                <!-- Map Placeholder (replace with actual map implementation) -->
-                <div v-if="!mapInitialized" class="map-placeholder d-flex flex-column align-center justify-center">
-                  <v-icon size="64" color="grey-lighten-1">mdi-map</v-icon>
-                  <div class="text-body-1 mt-4">Map loading...</div>
-                </div>
-              </div>
-              
-              <!-- Delivery Address -->
-              <div class="mt-4 pa-4 rounded-lg bg-grey-lighten-4">
-                <div class="d-flex align-center">
-                  <v-icon color="primary" class="mr-2">mdi-map-marker</v-icon>
-                  <div>
-                    <div class="text-subtitle-1 font-weight-medium">Delivery Address</div>
-                    <div class="text-body-2">{{ order.delivery_address }}</div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Delivery Instructions (if any) -->
-              <div v-if="order.delivery_instructions" class="mt-4 pa-4 rounded-lg bg-grey-lighten-4">
-                <div class="d-flex align-center">
-                  <v-icon color="primary" class="mr-2">mdi-information</v-icon>
-                  <div>
-                    <div class="text-subtitle-1 font-weight-medium">Delivery Instructions</div>
-                    <div class="text-body-2">{{ order.delivery_instructions }}</div>
-                  </div>
-                </div>
-              </div>
-            </v-card-text>
-          </v-card>
+  <v-container>
+    <v-row>
+      <v-col cols="12">
+        <v-card class="mb-4">
+          <v-card-title class="d-flex justify-space-between">
+            <div>
+              <h2 class="text-h5">Order #{{ orderId }}</h2>
+              <span class="text-subtitle-1 text-grey">{{ formatDate(order.created_at) }}</span>
+            </div>
+            <v-chip
+              :color="getStatusColor(order.status)"
+              text-color="white"
+              pill
+            >
+              {{ formatStatus(order.status) }}
+            </v-chip>
+          </v-card-title>
           
-          <!-- Order Summary Card -->
-          <v-card v-if="order">
-            <v-card-title>Order Summary</v-card-title>
-            
-            <v-list lines="two">
-              <v-list-item
-                v-for="(item, index) in order.order_details"
+          <v-card-text>
+            <v-timeline density="compact" align="start">
+              <v-timeline-item
+                v-for="(step, index) in orderSteps"
                 :key="index"
+                :dot-color="getStepColor(step, order.status)"
+                :icon="step.icon"
               >
-                <template v-slot:prepend>
-                  <div class="text-subtitle-1 font-weight-medium mr-2">{{ item.quantity }}x</div>
-                </template>
-                
-                <v-list-item-title>{{ item.product.name }}</v-list-item-title>
-                
-                <v-list-item-subtitle v-if="item.options && item.options.length > 0">
-                  Options: {{ formatOptions(item.options) }}
-                </v-list-item-subtitle>
-                
-                <template v-slot:append>
-                  <div class="text-subtitle-1 font-weight-medium">
-                    {{ formatPrice(item.price * item.quantity) }}
+                <div class="d-flex justify-space-between">
+                  <div>
+                    <div class="text-h6">{{ step.title }}</div>
+                    <div class="text-subtitle-2 text-grey">{{ step.description }}</div>
                   </div>
-                </template>
-              </v-list-item>
-            </v-list>
+                  <div v-if="step.time" class="text-caption text-grey">
+                    {{ step.time }}
+                  </div>
+                </div>
+              </v-timeline-item>
+            </v-timeline>
+            
+            <div class="mt-4">
+              <div class="text-h6">Estimated Delivery Time</div>
+              <div class="text-h4 font-weight-bold">{{ order.eta || 'Calculating...' }}</div>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+    
+    <v-row>
+      <v-col cols="12" md="7">
+        <v-card height="400px">
+          <v-card-title>Live Tracking</v-card-title>
+          <v-card-text class="pa-0">
+            <div class="map-container" ref="mapContainer" style="width: 100%; height: 350px;"></div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+      
+      <v-col cols="12" md="5">
+        <v-card>
+          <v-card-title>Order Details</v-card-title>
+          <v-card-text>
+            <div v-if="order.restaurant" class="mb-4">
+              <div class="text-h6">{{ order.restaurant.name }}</div>
+              <div class="text-body-2">{{ order.restaurant.address }}</div>
+              <div class="text-body-2">{{ order.restaurant.phone }}</div>
+            </div>
             
             <v-divider></v-divider>
             
-            <!-- Order Totals -->
-            <v-card-text>
-              <div class="d-flex justify-space-between mb-2">
-                <div class="text-body-1">Subtotal</div>
-                <div class="text-body-1">{{ formatPrice(getSubtotal()) }}</div>
+            <div class="my-4">
+              <div class="text-h6 mb-2">Items</div>
+              <v-list density="compact">
+                <v-list-item 
+                  v-for="item in order.items" 
+                  :key="item.id"
+                  :title="`${item.quantity}x ${item.product.name}`"
+                  :subtitle="item.options ? formatOptions(item.options) : ''"
+                >
+                  <template v-slot:append>
+                    <div class="text-body-2">{{ formatPrice(item.price * item.quantity) }}</div>
+                  </template>
+                </v-list-item>
+              </v-list>
+            </div>
+            
+            <v-divider></v-divider>
+            
+            <div class="mt-4">
+              <div class="d-flex justify-space-between mb-1">
+                <div>Subtotal</div>
+                <div>{{ formatPrice(order.subtotal) }}</div>
               </div>
-              
-              <div v-if="order.delivery_fee" class="d-flex justify-space-between mb-2">
-                <div class="text-body-1">Delivery Fee</div>
-                <div class="text-body-1">{{ formatPrice(order.delivery_fee) }}</div>
+              <div class="d-flex justify-space-between mb-1">
+                <div>Delivery Fee</div>
+                <div>{{ formatPrice(order.delivery_fee) }}</div>
               </div>
-              
-              <div v-if="order.discount" class="d-flex justify-space-between mb-2">
-                <div class="text-body-1">Discount</div>
-                <div class="text-body-1 text-success">-{{ formatPrice(order.discount) }}</div>
+              <div v-if="order.discount" class="d-flex justify-space-between mb-1">
+                <div>Discount</div>
+                <div class="text-success">-{{ formatPrice(order.discount) }}</div>
               </div>
-              
-              <div class="d-flex justify-space-between mt-4">
-                <div class="text-h6 font-weight-bold">Total</div>
-                <div class="text-h6 font-weight-bold">{{ formatPrice(order.total_amount) }}</div>
+              <div v-if="order.tax" class="d-flex justify-space-between mb-1">
+                <div>Tax</div>
+                <div>{{ formatPrice(order.tax) }}</div>
               </div>
-              
-              <div class="d-flex justify-space-between mt-2">
-                <div class="text-caption">Payment Method</div>
-                <div class="text-caption text-capitalize">
-                  {{ order.payment_method }}
-                  <v-chip
-                    size="x-small"
-                    :color="getPaymentStatusColor(order.payment_status)"
-                    class="text-capitalize ml-2"
-                  >
-                    {{ order.payment_status }}
-                  </v-chip>
+              <div class="d-flex justify-space-between font-weight-bold text-h6 mt-2">
+                <div>Total</div>
+                <div>{{ formatPrice(order.total) }}</div>
+              </div>
+            </div>
+            
+            <v-divider class="my-4"></v-divider>
+            
+            <div>
+              <div class="text-h6 mb-2">Delivery Information</div>
+              <div class="text-body-1">{{ order.delivery_address?.recipient_name }}</div>
+              <div class="text-body-2">{{ formatFullAddress(order.delivery_address) }}</div>
+              <div class="text-body-2">{{ order.delivery_address?.phone }}</div>
+            </div>
+            
+            <v-divider class="my-4"></v-divider>
+            
+            <div v-if="order.shipper">
+              <div class="text-h6 mb-2">Delivery Driver</div>
+              <div class="d-flex align-center">
+                <v-avatar class="mr-2" color="grey-lighten-1">
+                  <v-img 
+                    v-if="order.shipper.avatar" 
+                    :src="order.shipper.avatar"
+                    alt="Driver avatar"
+                  ></v-img>
+                  <v-icon v-else icon="mdi-account"></v-icon>
+                </v-avatar>
+                <div>
+                  <div class="text-body-1">{{ order.shipper.name }}</div>
+                  <div class="d-flex align-center">
+                    <v-rating
+                      :model-value="order.shipper.rating || 0"
+                      color="amber"
+                      density="compact"
+                      half-increments
+                      readonly
+                      size="small"
+                    ></v-rating>
+                    <span class="text-caption ml-1">
+                      {{ order.shipper.rating || '0' }} ({{ order.shipper.rating_count || '0' }} ratings)
+                    </span>
+                  </div>
                 </div>
               </div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-container>
+              <v-btn
+                class="mt-2"
+                prepend-icon="mdi-phone"
+                variant="tonal"
+                color="primary"
+                @click="contactDriver"
+              >
+                Contact Driver
+              </v-btn>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
     
-    <!-- Cancel Order Dialog -->
-    <v-dialog v-model="showCancelDialog" max-width="500">
+    <v-row v-if="showReviewPrompt">
+      <v-col cols="12">
+        <v-card class="mt-4">
+          <v-card-title>How was your order?</v-card-title>
+          <v-card-text>
+            <div class="text-center mb-4">
+              <v-rating
+                v-model="reviewData.rating"
+                color="amber"
+                half-increments
+                hover
+                size="large"
+              ></v-rating>
+            </div>
+            <v-textarea
+              v-model="reviewData.comment"
+              label="Leave a comment (optional)"
+              placeholder="Tell us about your experience..."
+              rows="3"
+              counter="500"
+              maxlength="500"
+            ></v-textarea>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn
+              variant="text"
+              @click="showReviewPrompt = false"
+            >
+              Skip
+            </v-btn>
+            <v-btn
+              color="primary"
+              :disabled="reviewData.rating === 0"
+              :loading="isSubmittingReview"
+              @click="submitReview"
+            >
+              Submit Review
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
+    </v-row>
+    
+    <v-dialog v-model="contactDialog" max-width="400">
       <v-card>
-        <v-card-title>Cancel Order?</v-card-title>
-        
+        <v-card-title>Contact Driver</v-card-title>
         <v-card-text>
-          <p>Are you sure you want to cancel your order? This action cannot be undone.</p>
-          
-          <v-textarea
-            v-model="cancelReason"
-            label="Reason for cancellation (optional)"
-            rows="3"
-            variant="outlined"
-            class="mt-4"
-          ></v-textarea>
+          <div class="text-body-1 mb-4">
+            You can contact your driver through our app or call directly:
+          </div>
+          <v-list>
+            <v-list-item
+              prepend-icon="mdi-message-text"
+              title="Send a message"
+              @click="sendMessage"
+            ></v-list-item>
+            <v-list-item
+              prepend-icon="mdi-phone"
+              title="Call driver"
+              :subtitle="order.shipper?.phone"
+              @click="callDriver"
+            ></v-list-item>
+          </v-list>
         </v-card-text>
-        
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn
             variant="text"
-            @click="showCancelDialog = false"
+            @click="contactDialog = false"
           >
-            Keep Order
-          </v-btn>
-          <v-btn
-            color="error"
-            @click="cancelOrder"
-            :loading="cancelling"
-          >
-            Cancel Order
+            Close
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </v-container>
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { useMapService } from '@/composables/useMapService';
+import { useToast } from '@/composables/useToast';
+import axios from 'axios';
 
 export default {
   name: 'OrderTracking',
-  
   props: {
-    orderId: {
-      type: [Number, String],
+    id: {
+      type: [String, Number],
       required: true
     }
   },
   
+  setup() {
+    const { initMap, addMarker, addRoute, updateMarkerPosition } = useMapService();
+    const { showSuccess, showError } = useToast();
+    
+    return {
+      initMap,
+      addMarker,
+      addRoute,
+      updateMarkerPosition,
+      showSuccess,
+      showError
+    };
+  },
+  
   data() {
     return {
-      loading: true,
-      mapInitialized: false,
+      orderId: this.id,
+      order: {
+        status: 'pending',
+        created_at: new Date(),
+        items: [],
+        subtotal: 0,
+        delivery_fee: 0,
+        tax: 0,
+        discount: 0,
+        total: 0,
+        eta: null,
+        restaurant: null,
+        shipper: null,
+        delivery_address: null
+      },
+      orderSteps: [
+        { 
+          status: 'pending', 
+          title: 'Order Placed', 
+          description: 'We\'ve received your order', 
+          icon: 'mdi-receipt',
+          time: null
+        },
+        { 
+          status: 'confirmed', 
+          title: 'Order Confirmed', 
+          description: 'Restaurant is preparing your food', 
+          icon: 'mdi-check-circle',
+          time: null
+        },
+        { 
+          status: 'preparing', 
+          title: 'Preparing', 
+          description: 'Your food is being prepared', 
+          icon: 'mdi-food',
+          time: null
+        },
+        { 
+          status: 'ready_for_pickup', 
+          title: 'Ready for Pickup', 
+          description: 'Food is ready, waiting for driver', 
+          icon: 'mdi-package-variant',
+          time: null
+        },
+        { 
+          status: 'picked_up', 
+          title: 'Picked Up', 
+          description: 'Driver has picked up your order', 
+          icon: 'mdi-shopping',
+          time: null
+        },
+        { 
+          status: 'on_the_way', 
+          title: 'On the Way', 
+          description: 'Driver is heading to your location', 
+          icon: 'mdi-truck-delivery',
+          time: null
+        },
+        { 
+          status: 'delivered', 
+          title: 'Delivered', 
+          description: 'Enjoy your meal!', 
+          icon: 'mdi-check-decagram',
+          time: null
+        }
+      ],
       map: null,
       driverMarker: null,
       restaurantMarker: null,
       destinationMarker: null,
-      routePath: null,
-      showCancelDialog: false,
-      cancelling: false,
-      cancelReason: '',
-      orderStatuses: [
-        { value: 'pending', label: 'Order Placed', icon: 'mdi-receipt' },
-        { value: 'confirmed', label: 'Order Confirmed', icon: 'mdi-check-circle' },
-        { value: 'preparing', label: 'Preparing', icon: 'mdi-food' },
-        { value: 'ready_for_pickup', label: 'Ready for Pickup', icon: 'mdi-package-variant-closed' },
-        { value: 'out_for_delivery', label: 'Out for Delivery', icon: 'mdi-truck-delivery' },
-        { value: 'delivered', label: 'Delivered', icon: 'mdi-home' }
-      ],
-      statusUpdates: {}
+      pollingInterval: null,
+      websocket: null,
+      contactDialog: false,
+      showReviewPrompt: false,
+      isSubmittingReview: false,
+      reviewData: {
+        rating: 0,
+        comment: ''
+      }
     };
   },
   
   computed: {
-    ...mapState({
-      order: state => state.orders.currentOrder,
-      user: state => state.auth.user
-    }),
+    isOrderCompleted() {
+      return this.order.status === 'delivered' || this.order.status === 'canceled';
+    }
+  },
+  
+  created() {
+    this.fetchOrderDetails();
+  },
+  
+  async mounted() {
+    await this.$nextTick();
+    this.initializeMap();
+    this.setupRealtimeUpdates();
+  },
+  
+  beforeUnmount() {
+    // Clean up interval and websocket
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+    }
     
-    canCancelOrder() {
-      if (!this.order) return false;
-      return ['pending', 'confirmed'].includes(this.order.status);
+    if (this.websocket) {
+      this.websocket.close();
     }
   },
   
   methods: {
-    ...mapActions({
-      fetchOrder: 'orders/fetchOrderById',
-      cancelOrderAction: 'orders/cancelOrder',
-      subscribeToOrderUpdates: 'orders/subscribeToOrderUpdates',
-      unsubscribeFromOrderUpdates: 'orders/unsubscribeFromOrderUpdates'
-    }),
-    
-    async loadOrderData() {
-      this.loading = true;
-      
+    async fetchOrderDetails() {
       try {
-        await this.fetchOrder(this.orderId);
+        const response = await axios.get(`/api/orders/${this.orderId}`);
+        this.order = response.data;
         
-        // Initialize status updates with timestamps from order
-        if (this.order && this.order.status_updates) {
-          this.statusUpdates = this.order.status_updates;
+        // Update timeline with actual timestamps from status history
+        if (this.order.status_history) {
+          this.orderSteps.forEach(step => {
+            const statusEntry = this.order.status_history.find(
+              history => history.status === step.status
+            );
+            if (statusEntry) {
+              step.time = this.formatTime(new Date(statusEntry.timestamp));
+            }
+          });
         }
         
-        // Subscribe to real-time updates
-        this.subscribeToOrderUpdates(this.orderId);
+        // If order is delivered and not yet reviewed, show review prompt
+        if (this.order.status === 'delivered' && !this.order.is_reviewed) {
+          this.showReviewPrompt = true;
+        }
         
-        // Initialize map after order data is loaded
-        this.$nextTick(() => {
-          this.initMap();
-        });
+        // Update map with latest locations
+        this.updateMap();
       } catch (error) {
-        this.$toast.error('Failed to load order details');
-        console.error('Error loading order details:', error);
-      } finally {
-        this.loading = false;
+        console.error('Error fetching order details:', error);
+        this.showError('Failed to load order details');
       }
     },
     
-    initMap() {
-      // This is a placeholder for actual map implementation
-      // You would use Google Maps, Mapbox, or another mapping library here
+    initializeMap() {
+      if (!this.$refs.mapContainer) return;
       
-      // Simulate map initialization
-      setTimeout(() => {
-        this.mapInitialized = true;
+      this.map = this.initMap(this.$refs.mapContainer, {
+        zoom: 14,
+        center: { lat: 10.8231, lng: 106.6297 } // Default center (HCMC)
+      });
+    },
+    
+    updateMap() {
+      if (!this.map || !this.order.restaurant) return;
+      
+      const restaurantLocation = {
+        lat: parseFloat(this.order.restaurant.latitude),
+        lng: parseFloat(this.order.restaurant.longitude)
+      };
+      
+      const deliveryLocation = {
+        lat: parseFloat(this.order.delivery_address.latitude),
+        lng: parseFloat(this.order.delivery_address.longitude)
+      };
+      
+      // Add restaurant marker
+      this.restaurantMarker = this.addMarker(this.map, restaurantLocation, {
+        title: this.order.restaurant.name,
+        icon: 'restaurant'
+      });
+      
+      // Add destination marker
+      this.destinationMarker = this.addMarker(this.map, deliveryLocation, {
+        title: 'Delivery Address',
+        icon: 'destination'
+      });
+      
+      // Add driver marker if available
+      if (this.order.shipper && this.order.shipper.latitude && this.order.shipper.longitude) {
+        const driverLocation = {
+          lat: parseFloat(this.order.shipper.latitude),
+          lng: parseFloat(this.order.shipper.longitude)
+        };
         
-        // If we have driver location, update the map
-        if (this.order && this.order.driver && this.order.driver.location) {
-          this.updateDriverLocation(this.order.driver.location);
-        }
-      }, 1000);
-    },
-    
-    updateDriverLocation(location) {
-      // This would update the driver's marker on the map
-      // For now, we'll just log the location
-      console.log('Driver location updated:', location);
-    },
-    
-    async cancelOrder() {
-      if (!this.order) return;
-      
-      this.cancelling = true;
-      
-      try {
-        await this.cancelOrderAction({
-          orderId: this.order.id,
-          reason: this.cancelReason
+        this.driverMarker = this.addMarker(this.map, driverLocation, {
+          title: 'Driver Location',
+          icon: 'driver'
         });
         
-        this.$toast.success('Order cancelled successfully');
-        this.showCancelDialog = false;
-      } catch (error) {
-        this.$toast.error('Failed to cancel order');
-        console.error('Error cancelling order:', error);
-      } finally {
-        this.cancelling = false;
+        // Draw route if order is on the way
+        if (this.order.status === 'on_the_way') {
+          this.addRoute(this.map, driverLocation, deliveryLocation);
+        } else if (this.order.status === 'picked_up') {
+          this.addRoute(this.map, restaurantLocation, driverLocation);
+        }
       }
+      
+      // Center map to show all markers
+      this.fitMapBounds();
+    },
+    
+    fitMapBounds() {
+      // Logic to adjust map bounds to show all markers
+      // This would be implemented in the useMapService composable
+    },
+    
+    setupRealtimeUpdates() {
+      // Set up websocket connection for real-time updates
+      try {
+        this.websocket = new WebSocket(`ws://${window.location.host}/api/ws/order/${this.orderId}`);
+        
+        this.websocket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          this.handleRealtimeUpdate(data);
+        };
+        
+        this.websocket.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          this.startPolling(); // Fallback to polling if WebSocket fails
+        };
+      } catch (error) {
+        console.warn('WebSocket not supported, falling back to polling');
+        this.startPolling();
+      }
+    },
+    
+    startPolling() {
+      // Fallback to polling if WebSockets are not available
+      this.pollingInterval = setInterval(() => {
+        this.fetchOrderDetails();
+      }, 15000); // Poll every 15 seconds
+    },
+    
+    handleRealtimeUpdate(data) {
+      // Handle different types of updates
+      if (data.type === 'status_update') {
+        this.order.status = data.status;
+        
+        // Update the timestamp for this status step
+        const stepIndex = this.orderSteps.findIndex(step => step.status === data.status);
+        if (stepIndex >= 0) {
+          this.orderSteps[stepIndex].time = this.formatTime(new Date());
+        }
+        
+        this.showSuccess(`Order status updated to: ${this.formatStatus(data.status)}`);
+        
+        // Show review prompt if order is delivered
+        if (data.status === 'delivered') {
+          this.showReviewPrompt = true;
+        }
+      } else if (data.type === 'location_update' && data.role === 'driver') {
+        // Update driver location on map
+        const driverLocation = {
+          lat: parseFloat(data.latitude),
+          lng: parseFloat(data.longitude)
+        };
+        
+        if (this.driverMarker) {
+          this.updateMarkerPosition(this.driverMarker, driverLocation);
+        } else {
+          this.driverMarker = this.addMarker(this.map, driverLocation, {
+            title: 'Driver Location',
+            icon: 'driver'
+          });
+        }
+        
+        // Update ETA if provided
+        if (data.eta) {
+          this.order.eta = data.eta;
+        }
+      }
+    },
+    
+    contactDriver() {
+      this.contactDialog = true;
+    },
+    
+    sendMessage() {
+      // Implementation would depend on your messaging system
+      this.showSuccess('Message feature will be implemented soon');
+      this.contactDialog = false;
     },
     
     callDriver() {
-      if (!this.order || !this.order.driver || !this.order.driver.phone) return;
+      // Implement phone call functionality
+      if (this.order.shipper?.phone) {
+        window.location.href = `tel:${this.order.shipper.phone}`;
+      }
+      this.contactDialog = false;
+    },
+    
+    async submitReview() {
+      if (this.reviewData.rating === 0) return;
       
-      // Open phone dialer
-      window.location.href = `tel:${this.order.driver.phone}`;
+      try {
+        this.isSubmittingReview = true;
+        
+        await axios.post(`/api/reviews`, {
+          order_id: this.orderId,
+          restaurant_id: this.order.restaurant.id,
+          rating: this.reviewData.rating,
+          comment: this.reviewData.comment
+        });
+        
+        this.showSuccess('Thank you for your feedback!');
+        this.showReviewPrompt = false;
+        this.order.is_reviewed = true;
+      } catch (error) {
+        console.error('Error submitting review:', error);
+        this.showError('Failed to submit review. Please try again.');
+      } finally {
+        this.isSubmittingReview = false;
+      }
     },
     
-    getStatusTime(status) {
-      return this.statusUpdates[status] || null;
+    // Helper methods
+    formatDate(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
     },
     
-    isStatusCompleted(status) {
-      if (!this.order) return false;
+    formatTime(date) {
+      return new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    },
+    
+    formatStatus(status) {
+      const statusMap = {
+        'pending': 'Order Placed',
+        'confirmed': 'Confirmed',
+        'preparing': 'Preparing',
+        'ready_for_pickup': 'Ready for Pickup',
+        'picked_up': 'Picked Up',
+        'on_the_way': 'On the Way',
+        'delivered': 'Delivered',
+        'canceled': 'Canceled'
+      };
       
-      const statusIndex = this.orderStatuses.findIndex(s => s.value === status);
-      const currentStatusIndex = this.orderStatuses.findIndex(s => s.value === this.order.status);
-      
-      return statusIndex <= currentStatusIndex;
-    },
-    
-    getTimelineDotColor(status, currentStatus) {
-      if (status === currentStatus) return 'primary';
-      if (this.isStatusCompleted(status)) return 'success';
-      return 'grey';
-    },
-    
-    getTimelineSize(status, currentStatus) {
-      if (status === currentStatus) return 'large';
-      return 'small';
-    },
-    
-    getTimelineLineColor(status, currentStatus, index) {
-      if (index === this.orderStatuses.length - 1) return 'transparent';
-      if (this.isStatusCompleted(status)) return 'success';
-      return 'grey';
+      return statusMap[status] || status;
     },
     
     getStatusColor(status) {
-      switch (status) {
-        case 'pending':
-          return 'grey';
-        case 'confirmed':
-          return 'info';
-        case 'preparing':
-          return 'primary';
-        case 'ready_for_pickup':
-          return 'amber-darken-2';
-        case 'out_for_delivery':
-          return 'deep-purple';
-        case 'delivered':
-          return 'success';
-        case 'cancelled':
-          return 'error';
-        default:
-          return 'grey';
+      const colorMap = {
+        'pending': 'grey',
+        'confirmed': 'blue',
+        'preparing': 'amber',
+        'ready_for_pickup': 'deep-orange',
+        'picked_up': 'indigo',
+        'on_the_way': 'primary',
+        'delivered': 'success',
+        'canceled': 'error'
+      };
+      
+      return colorMap[status] || 'grey';
+    },
+    
+    getStepColor(step, currentStatus) {
+      // Find the current status index in the steps array
+      const currentStepIndex = this.orderSteps.findIndex(s => s.status === currentStatus);
+      const stepIndex = this.orderSteps.findIndex(s => s.status === step.status);
+      
+      if (stepIndex < currentStepIndex) {
+        return 'success'; // Completed step
+      } else if (stepIndex === currentStepIndex) {
+        return 'primary'; // Current step
+      } else {
+        return 'grey'; // Future step
       }
-    },
-    
-    getPaymentStatusColor(status) {
-      switch (status) {
-        case 'paid':
-          return 'success';
-        case 'pending':
-          return 'warning';
-        case 'failed':
-          return 'error';
-        default:
-          return 'grey';
-      }
-    },
-    
-    formatTime(timestamp) {
-      if (!timestamp) return '';
-      
-      const date = new Date(timestamp);
-      return new Intl.DateTimeFormat('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }).format(date);
-    },
-    
-    formatEstimatedTime(timestamp) {
-      if (!timestamp) return 'Calculating...';
-      
-      const date = new Date(timestamp);
-      return new Intl.DateTimeFormat('vi-VN', {
-        hour: '2-digit',
-        minute: '2-digit'
-      }).format(date);
-    },
-    
-    getEstimatedTimeDescription() {
-      if (!this.order || !this.order.estimatedDeliveryTime) return '';
-      
-      const now = new Date();
-      const estimatedTime = new Date(this.order.estimatedDeliveryTime);
-      const diffMinutes = Math.round((estimatedTime - now) / (1000 * 60));
-      
-      if (diffMinutes <= 0) return 'Arriving any moment now';
-      return `Arriving in approximately ${diffMinutes} minutes`;
     },
     
     formatPrice(price) {
-      return new Intl.NumberFormat('vi-VN', {
+      if (price == null) return '$0.00';
+      return new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'VND'
+        currency: 'USD'
       }).format(price);
     },
     
     formatOptions(options) {
-      if (!options || options.length === 0) return '';
-      
-      return options.map(option => option.name).join(', ');
+      if (!options) return '';
+      try {
+        const optionsObj = typeof options === 'string' ? JSON.parse(options) : options;
+        return Object.entries(optionsObj)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(', ');
+      } catch (e) {
+        return options;
+      }
     },
     
-    getSubtotal() {
-      if (!this.order || !this.order.order_details) return 0;
-      
-      return this.order.order_details.reduce((total, item) => total + (item.price * item.quantity), 0);
+    formatFullAddress(address) {
+      if (!address) return '';
+      return [
+        address.street_address,
+        address.city,
+        address.state,
+        address.postal_code,
+        address.country
+      ].filter(Boolean).join(', ');
     }
-  },
-  
-  async mounted() {
-    await this.loadOrderData();
-  },
-  
-  beforeUnmount() {
-    // Unsubscribe from real-time updates
-    this.unsubscribeFromOrderUpdates(this.orderId);
   }
 };
 </script>
 
 <style scoped>
-.order-tracking {
-  max-width: 800px;
-  margin: 0 auto;
+.v-timeline-item {
+  margin-bottom: 8px;
 }
 
 .map-container {
-  height: 300px;
   width: 100%;
-  position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.timeline-container {
-  padding: 16px 0;
-}
-
-.timeline-item-wrapper {
-  transition: all 0.3s ease;
-}
-
-.timeline-item-wrapper:hover {
-  transform: translateX(4px);
-}
-
-.timeline-item.active {
-  background-color: var(--v-primary-lighten-5);
-  border-radius: 8px;
-  padding: 8px;
-  margin: -8px;
-}
-
-.eta-display {
-  background-color: var(--v-primary-lighten-5);
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-}
-
-.eta-content {
-  position: relative;
-  z-index: 1;
-}
-
-.progress-bar {
-  height: 4px;
-  background-color: var(--v-primary-lighten-3);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.progress {
   height: 100%;
-  background-color: var(--v-primary-base);
-  transition: width 0.5s ease-out;
-}
-
-.chat-container {
-  height: 400px;
-  display: flex;
-  flex-direction: column;
-}
-
-.messages {
-  flex-grow: 1;
-  overflow-y: auto;
-}
-
-.message {
-  max-width: 80%;
-  margin-bottom: var(--spacing-sm);
-}
-
-.message.sent {
-  margin-left: auto;
-}
-
-.message-bubble {
-  background-color: var(--v-primary-lighten-4);
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: 12px;
-  display: inline-block;
-}
-
-.message.sent .message-bubble {
-  background-color: var(--v-primary-base);
-  color: white;
-}
-
-.message-time {
-  margin-top: 4px;
-  opacity: 0.7;
-}
-
-.driver-info {
-  border-top: 1px solid var(--v-border-base);
-  background-color: var(--v-surface-base);
-  transition: background-color 0.3s ease;
-}
-
-.driver-info:hover {
-  background-color: var(--v-surface-lighten-1);
-}
-
-.map-info-window {
-  padding: 8px;
-  max-width: 200px;
-}
-
-.map-info-window h3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.map-info-window p {
-  font-size: 14px;
-  color: #666;
-  margin: 0;
-}
-
-@media (max-width: 600px) {
-  .map-container {
-    height: 250px;
-  }
-  
-  .message {
-    max-width: 90%;
-  }
-  
-  .eta-display {
-    margin: 8px;
-  }
-  
-  .timeline-container {
-    padding: 8px 0;
-  }
+  min-height: 350px;
 }
 </style>

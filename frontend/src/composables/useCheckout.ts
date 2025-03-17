@@ -1,248 +1,232 @@
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import PaymentService from '@/services/payment.service'
-import { useStripe } from '@stripe/stripe-js'
-import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
+import { computed, ref } from 'vue';
+import { useStore } from 'vuex';
+import { useToast } from './useToast';
+import axios from 'axios';
 
-export interface Address {
-  id: string
-  street: string
-  city: string
-  state: string
-  zipCode: string
-  isDefault: boolean
+interface OrderData {
+  address_id: number;
+  payment_method: string;
+  coupon_code?: string | null;
+  delivery_instructions?: string;
+  scheduled_time?: string | null;
 }
 
-export interface PaymentMethod {
-  id: string
-  type: 'CREDIT_CARD' | 'VNPAY' | 'MOMO' | 'ZALOPAY' | 'PAYPAL' | 'STRIPE'
-  last4?: string
-  isDefault: boolean
-}
-
-export interface OrderSummary {
-  subtotal: number
-  deliveryFee: number
-  discount: number
-  total: number
-}
-
-export interface CouponValidation {
-  isValid: boolean
-  discountAmount: number
-  message: string
+interface CheckoutSummary {
+  subtotal: number;
+  deliveryFee: number;
+  tax: number;
+  discount: number;
+  total: number;
 }
 
 export function useCheckout() {
-  const router = useRouter()
-  const paymentService = new PaymentService()
-  const stripe = useStripe()
-
-  // State management
-  const selectedAddress = ref<Address | null>(null)
-  const selectedPaymentMethod = ref<PaymentMethod | null>(null)
-  const addresses = ref<Address[]>([])
-  const paymentMethods = ref<PaymentMethod[]>([])
-  const couponCode = ref('')
-  const loading = ref(false)
-  const error = ref('')
-  const currentStep = ref<'address' | 'payment' | 'confirmation'>('address')
-
-  // Order summary
-  const orderSummary = ref<OrderSummary>({
-    subtotal: 0,
-    deliveryFee: 0,
-    discount: 0,
-    total: 0
-  })
-
-  // Computed properties
-  const isAddressSelected = computed(() => selectedAddress.value !== null)
-  const isPaymentMethodSelected = computed(() => selectedPaymentMethod.value !== null)
-  const canProceedToPayment = computed(() => isAddressSelected.value)
-  const canConfirmOrder = computed(() => isAddressSelected.value && isPaymentMethodSelected.value)
-
-  // Load user's saved addresses
-  const loadAddresses = async () => {
+  const store = useStore();
+  const { showError } = useToast();
+  
+  const isProcessing = ref(false);
+  const checkoutError = ref<string | null>(null);
+  
+  // Get cart items from the store
+  const cartItems = computed(() => store.state.cart.items);
+  
+  // Get totals from the cart store
+  const cartTotals = computed(() => store.getters['cart/totals']);
+  
+  /**
+   * Calculate checkout summary including any applied promotions
+   */
+  const calculateCheckoutSummary = async (
+    addressId: number,
+    couponCode?: string
+  ): Promise<CheckoutSummary> => {
     try {
-      loading.value = true
-      const response = await fetch('/api/user/addresses')
-      addresses.value = await response.json()
-      error.value = ''
-    } catch (err) {
-      error.value = 'Failed to load addresses'
-      console.error(err)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Load available payment methods
-  const loadPaymentMethods = async () => {
-    try {
-      loading.value = true
-      const methods = await paymentService.getPaymentMethods()
-      paymentMethods.value = methods
-      error.value = ''
-    } catch (err) {
-      error.value = 'Failed to load payment methods'
-      console.error(err)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // Apply coupon code
-  const applyCoupon = async (code: string): Promise<CouponValidation> => {
-    try {
-      loading.value = true
-      const response = await fetch(`/api/coupons/validate?code=${code}`)
-      const validation = await response.json()
+      // If we have no items, return empty summary
+      if (!cartItems.value.length) {
+        return {
+          subtotal: 0,
+          deliveryFee: 0,
+          tax: 0,
+          discount: 0,
+          total: 0
+        };
+      }
       
-      if (validation.isValid) {
-        couponCode.value = code
-        orderSummary.value.discount = validation.discountAmount
-        orderSummary.value.total = 
-          orderSummary.value.subtotal + 
-          orderSummary.value.deliveryFee - 
-          orderSummary.value.discount
-      }
-
-      error.value = ''
-      return validation
-    } catch (err) {
-      error.value = 'Invalid coupon code'
-      console.error(err)
-      return { isValid: false, discountAmount: 0, message: 'Invalid coupon code' }
-    } finally {
-      loading.value = false
+      // Call API to calculate totals including delivery fee based on location
+      const response = await axios.post('/api/checkout/calculate', {
+        items: cartItems.value.map(item => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          options: item.options || null
+        })),
+        address_id: addressId,
+        coupon_code: couponCode || null
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Error calculating checkout summary:', error);
+      // Return cart totals as fallback
+      return {
+        subtotal: cartTotals.value.subtotal || 0,
+        deliveryFee: 0, // Default since we couldn't calculate
+        tax: cartTotals.value.tax || 0,
+        discount: 0, // Default since we couldn't apply coupon
+        total: cartTotals.value.total || 0
+      };
     }
-  }
-
-  // Process Stripe payment
-  const processStripePayment = async (paymentMethodId: string) => {
+  };
+  
+  /**
+   * Process the checkout and create an order
+   */
+  const processCheckout = async (orderData: OrderData) => {
+    if (!cartItems.value.length) {
+      throw new Error('Your cart is empty');
+    }
+    
+    isProcessing.value = true;
+    checkoutError.value = null;
+    
     try {
-      const { clientSecret } = await paymentService.createPaymentIntent({
-        amount: orderSummary.value.total,
-        currency: 'usd'
-      })
-
-      const { paymentIntent, error: stripeError } = await stripe?.confirmCardPayment(
-        clientSecret,
-        { payment_method: paymentMethodId }
-      )
-
-      if (stripeError) {
-        throw new Error(stripeError.message)
-      }
-
-      return paymentIntent
-    } catch (err) {
-      throw new Error('Stripe payment failed')
-    }
-  }
-
-  // Process PayPal payment
-  const processPayPalPayment = async () => {
-    // PayPal payment logic will be handled by PayPal Buttons component
-    return true
-  }
-
-  // Process payment
-  const processPayment = async () => {
-    if (!canConfirmOrder.value) {
-      error.value = 'Please select both delivery address and payment method'
-      return
-    }
-
-    try {
-      loading.value = true
-      const orderData = {
-        id: Date.now().toString(),
-        amount: orderSummary.value.total,
-        address: selectedAddress.value,
-        paymentMethod: selectedPaymentMethod.value,
-        couponCode: couponCode.value
-      }
-
-      let paymentResult
-      switch (selectedPaymentMethod.value?.type) {
-        case 'STRIPE':
-          paymentResult = await processStripePayment(selectedPaymentMethod.value.id)
-          break
-        case 'PAYPAL':
-          paymentResult = await processPayPalPayment()
-          break
-        case 'VNPAY':
-          paymentResult = await paymentService.initVNPay(orderData)
-          break
-        case 'MOMO':
-          paymentResult = await paymentService.initMomo(orderData)
-          break
-        case 'ZALOPAY':
-          paymentResult = await paymentService.initZaloPay(orderData)
-          break
-        default:
-          throw new Error('Unsupported payment method')
-      }
-
-      // Handle redirect or confirmation
-      if (paymentResult.redirectUrl) {
-        window.location.href = paymentResult.redirectUrl
-      } else {
-        await router.push(`/order-confirmation/${orderData.id}`)
-      }
-
-      error.value = ''
-    } catch (err) {
-      error.value = 'Payment processing failed'
-      console.error(err)
+      // Prepare request data
+      const requestData = {
+        ...orderData,
+        items: cartItems.value.map(item => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          price: item.product.price,
+          options: item.options || null
+        }))
+      };
+      
+      // Create the order
+      const response = await axios.post('/api/orders', requestData);
+      
+      // Clear the cart after successful order
+      store.dispatch('cart/clearCart');
+      
+      return {
+        success: true,
+        orderId: response.data.id,
+        orderData: response.data
+      };
+    } catch (error: any) {
+      checkoutError.value = 
+        error.response?.data?.message || 
+        'Failed to process your order. Please try again.';
+      
+      throw new Error(checkoutError.value);
     } finally {
-      loading.value = false
+      isProcessing.value = false;
     }
-  }
-
-  // Navigation methods
-  const nextStep = () => {
-    if (currentStep.value === 'address' && canProceedToPayment.value) {
-      currentStep.value = 'payment'
-    } else if (currentStep.value === 'payment' && canConfirmOrder.value) {
-      currentStep.value = 'confirmation'
+  };
+  
+  /**
+   * Validate payment information based on payment method
+   */
+  const validatePaymentInfo = (paymentMethod: string, paymentData: any): boolean => {
+    if (paymentMethod === 'cash') {
+      // No validation needed for cash payment
+      return true;
     }
-  }
-
-  const previousStep = () => {
-    if (currentStep.value === 'payment') {
-      currentStep.value = 'address'
-    } else if (currentStep.value === 'confirmation') {
-      currentStep.value = 'payment'
+    
+    if (paymentMethod === 'credit_card') {
+      if (!paymentData) return false;
+      
+      // Basic validation for credit card
+      const { cardNumber, expiryDate, cvv, cardholderName } = paymentData;
+      
+      if (!cardNumber || !expiryDate || !cvv || !cardholderName) {
+        showError('Please provide all credit card details');
+        return false;
+      }
+      
+      // Validate card number format (simple validation)
+      if (!/^\d{13,19}$/.test(cardNumber.replace(/\s/g, ''))) {
+        showError('Invalid card number format');
+        return false;
+      }
+      
+      // Validate expiry date (MM/YY format)
+      if (!/^\d{2}\/\d{2}$/.test(expiryDate)) {
+        showError('Invalid expiry date format (MM/YY)');
+        return false;
+      }
+      
+      // Validate CVV (3-4 digits)
+      if (!/^\d{3,4}$/.test(cvv)) {
+        showError('Invalid CVV format');
+        return false;
+      }
+      
+      return true;
     }
-  }
-
+    
+    if (['momo', 'zalopay', 'vnpay'].includes(paymentMethod)) {
+      // These payment methods will redirect to their respective payment gateways
+      // No client-side validation needed
+      return true;
+    }
+    
+    return false;
+  };
+  
+  /**
+   * Process payment using selected payment method
+   */
+  const processPayment = async (
+    paymentMethod: string,
+    paymentData: any,
+    orderId: number
+  ) => {
+    if (paymentMethod === 'cash') {
+      // For cash payment, no processing needed
+      return {
+        success: true,
+        message: 'Cash payment will be collected upon delivery'
+      };
+    }
+    
+    // For other payment methods, call payment API
+    try {
+      const response = await axios.post('/api/payments', {
+        order_id: orderId,
+        payment_method: paymentMethod,
+        payment_data: paymentData
+      });
+      
+      // For redirect-based payment methods (e.g., MoMo, ZaloPay)
+      if (response.data.redirect_url) {
+        window.location.href = response.data.redirect_url;
+        return {
+          success: true,
+          redirect: true
+        };
+      }
+      
+      // For directly processed payments
+      return {
+        success: true,
+        payment_id: response.data.payment_id,
+        message: 'Payment processed successfully'
+      };
+    } catch (error: any) {
+      const errorMessage = 
+        error.response?.data?.message || 
+        'Payment processing failed. Please try again.';
+      
+      throw new Error(errorMessage);
+    }
+  };
+  
   return {
-    // State
-    selectedAddress,
-    selectedPaymentMethod,
-    addresses,
-    paymentMethods,
-    couponCode,
-    loading,
-    error,
-    orderSummary,
-    currentStep,
-
-    // Computed
-    isAddressSelected,
-    isPaymentMethodSelected,
-    canProceedToPayment,
-    canConfirmOrder,
-
-    // Methods
-    loadAddresses,
-    loadPaymentMethods,
-    applyCoupon,
-    processPayment,
-    nextStep,
-    previousStep
-  }
+    isProcessing,
+    checkoutError,
+    cartItems,
+    cartTotals,
+    calculateCheckoutSummary,
+    processCheckout,
+    validatePaymentInfo,
+    processPayment
+  };
 }
