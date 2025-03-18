@@ -229,6 +229,25 @@
     </v-main>
 
     <!-- Footer -->
+    <v-footer class="bg-primary text-white" app>
+      <v-container>
+        <v-row>
+          <v-col cols="12" sm="6" md="3">
+            <h3 class="text-h6 mb-4">About Us</h3>
+            <v-list density="compact" bg-color="transparent" class="pa-0">
+              <v-list-item v-for="page in staticPages" :key="page.slug"
+                :to="`/pages/${page.slug}`"
+                :title="page.title"
+                class="px-0 text-white"
+                variant="plain"
+              ></v-list-item>
+            </v-list>
+          </v-col>
+          <!-- ...rest of footer columns... -->
+        </v-row>
+      </v-container>
+    </v-footer>
+
     <v-footer
       class="bg-grey-lighten-3"
     >
@@ -367,6 +386,7 @@
 
 <script>
 import { mapState, mapActions } from 'vuex';
+import axios from 'axios';
 
 export default {
   name: 'MainLayout',
@@ -421,8 +441,19 @@ export default {
         { title: 'Terms of Service', to: '/terms' },
         { title: 'Privacy Policy', to: '/privacy' },
         { title: 'Cookie Policy', to: '/cookies' }
-      ]
+      ],
+
+      staticPages: [],
     };
+  },
+
+  async created() {
+    try {
+      const response = await axios.get('/api/pages');
+      this.staticPages = response.data.data.pages.filter(page => page.published);
+    } catch (error) {
+      console.error('Error fetching static pages:', error);
+    }
   },
   
   computed: {
@@ -479,4 +510,4 @@ export default {
 .v-list-item--density-compact {
   min-height: 32px;
 }
-</style> 
+</style>

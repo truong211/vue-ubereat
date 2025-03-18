@@ -13,33 +13,71 @@
         prepend-inner-icon="mdi-magnify"
         @update:model-value="handleSearch"
       >
-        <template v-slot:append>
-          <v-btn
-            icon
-            variant="text"
-            @click="toggleFilters"
-          >
-            <v-icon :color="hasActiveFilters ? 'primary' : undefined">
-              mdi-filter-variant
-            </v-icon>
-            <v-badge
-              v-if="activeFiltersCount > 0"
-              :content="activeFiltersCount"
-              color="primary"
-              floating
-              offset-x="12"
-              offset-y="-8"
-            ></v-badge>
-          </v-btn>
+        <!-- Add recent searches dropdown -->
+        <template v-slot:append-inner>
+          <v-menu v-if="recentSearches.length > 0">
+            <template v-slot:activator="{ props }">
+              <v-btn
+                icon
+                variant="text"
+                v-bind="props"
+                size="small"
+              >
+                <v-icon>mdi-history</v-icon>
+              </v-btn>
+            </template>
+            <v-list density="compact">
+              <v-list-item
+                v-for="(search, index) in recentSearches"
+                :key="index"
+                :value="search"
+                @click="selectRecentSearch(search)"
+              >
+                <v-list-item-title>{{ search }}</v-list-item-title>
+              </v-list-item>
+              <v-divider></v-divider>
+              <v-list-item @click="clearSearchHistory">
+                <v-list-item-title class="text-caption">Clear History</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
         </template>
       </v-text-field>
     </div>
 
-    <!-- Filters Panel -->
+    <!-- Enhanced Filter Panel -->
     <v-expand-transition>
       <div v-show="showFilters" class="filters-panel mb-4">
         <v-card>
           <v-card-text>
+            <!-- Sort Options -->
+            <div class="mb-4">
+              <div class="text-subtitle-1 mb-2">Sort By</div>
+              <v-btn-toggle
+                v-model="sortBy"
+                mandatory
+                divided
+                color="primary"
+              >
+                <v-btn value="rating">
+                  <v-icon start>mdi-star</v-icon>
+                  Rating
+                </v-btn>
+                <v-btn value="distance">
+                  <v-icon start>mdi-map-marker</v-icon>
+                  Distance
+                </v-btn>
+                <v-btn value="price_asc">
+                  <v-icon start>mdi-currency-usd</v-icon>
+                  Price: Low to High
+                </v-btn>
+                <v-btn value="price_desc">
+                  <v-icon start>mdi-currency-usd</v-icon>
+                  Price: High to Low
+                </v-btn>
+              </v-btn-toggle>
+            </div>
+
             <!-- Cuisine Types -->
             <div class="mb-4">
               <div class="text-subtitle-1 mb-2">Cuisines</div>
@@ -59,30 +97,6 @@
                   {{ cuisine.name }}
                 </v-chip>
               </v-chip-group>
-            </div>
-
-            <!-- Sort Options -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Sort By</div>
-              <v-btn-toggle
-                v-model="sortBy"
-                mandatory
-                divided
-                color="primary"
-              >
-                <v-btn value="rating">
-                  <v-icon start>mdi-star</v-icon>
-                  Rating
-                </v-btn>
-                <v-btn value="delivery_time">
-                  <v-icon start>mdi-clock-outline</v-icon>
-                  Delivery Time
-                </v-btn>
-                <v-btn value="distance">
-                  <v-icon start>mdi-map-marker</v-icon>
-                  Distance
-                </v-btn>
-              </v-btn-toggle>
             </div>
 
             <!-- Price Range -->
@@ -105,85 +119,15 @@
               </v-chip-group>
             </div>
 
-            <!-- Dietary Preferences -->
+            <!-- Rating Filter -->
             <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Dietary Preferences</div>
-              <v-chip-group
-                v-model="dietaryPreferences"
-                multiple
-                selected-class="selected-chip"
-              >
-                <v-chip
-                  v-for="pref in dietaryOptions"
-                  :key="pref.id"
-                  :value="pref.id"
-                  filter
-                  variant="elevated"
-                >
-                  <v-icon start size="small">{{ pref.icon }}</v-icon>
-                  {{ pref.name }}
-                </v-chip>
-              </v-chip-group>
-            </div>
-
-            <!-- Distance Range -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Distance (km)</div>
-              <v-range-slider
-                v-model="distanceRange"
-                :min="0"
-                :max="10"
-                :step="0.5"
-                thumb-label="always"
-                class="mt-4"
-              ></v-range-slider>
-            </div>
-
-            <!-- Rating Range -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Rating</div>
-              <v-range-slider
-                v-model="ratingRange"
-                :min="0"
-                :max="5"
-                :step="0.5"
-                thumb-label="always"
-                class="mt-4"
-              ></v-range-slider>
-            </div>
-
-            <!-- Additional Filters -->
-            <div class="mb-4">
-              <v-checkbox
-                v-model="freeDelivery"
-                label="Free Delivery"
-                hide-details
-                density="compact"
-              ></v-checkbox>
-              <v-checkbox
-                v-model="openNow"
-                label="Open Now"
-                hide-details
-                density="compact"
-              ></v-checkbox>
-            </div>
-
-            <!-- Filter Actions -->
-            <div class="d-flex justify-end">
-              <v-btn
-                variant="text"
-                @click="resetFilters"
-                :disabled="!hasActiveFilters"
-              >
-                Reset Filters
-              </v-btn>
-              <v-btn
-                color="primary"
-                class="ml-2"
-                @click="applyFilters"
-              >
-                Apply Filters
-              </v-btn>
+              <div class="text-subtitle-1 mb-2">Minimum Rating</div>
+              <v-rating
+                v-model="minRating"
+                color="amber"
+                half-increments
+                hover
+              ></v-rating>
             </div>
           </v-card-text>
         </v-card>
@@ -466,6 +410,7 @@ export default {
     const onlyRated = ref(localStorage.getItem('filter_onlyRated') === 'true')
     const distanceRange = ref([0, parseInt(localStorage.getItem('filter_maxDistance') || '10')])
     const ratingRange = ref([0, parseFloat(localStorage.getItem('filter_minRating') || '5')])
+    const minRating = ref(0)
     
     // View state
     const viewMode = ref('grid')
@@ -702,6 +647,7 @@ export default {
       onlyRated,
       viewMode,
       selectedRestaurant,
+      minRating,
       
       // Data
       cuisineTypes,

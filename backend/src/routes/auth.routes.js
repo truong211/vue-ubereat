@@ -93,6 +93,13 @@ router.post(
 );
 
 /**
+ * @route GET /api/auth/verify-email/:token
+ * @desc Verify user email
+ * @access Public
+ */
+router.get('/verify-email/:token', authController.verifyEmail);
+
+/**
  * @route GET /api/auth/me
  * @desc Get current user
  * @access Private
@@ -125,4 +132,4 @@ router.patch(
  */
 router.post('/logout', authMiddleware, authController.logout);
 
-module.exports = router; 
+module.exports = router;

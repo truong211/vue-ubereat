@@ -74,6 +74,65 @@ const Review = sequelize.define('Review', {
   responseDate: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  // New fields for additional review features
+  moderationStatus: {
+    type: DataTypes.ENUM('pending', 'approved', 'rejected'),
+    defaultValue: 'approved'
+  },
+  moderationReason: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  moderatedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  moderatedBy: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  helpfulVotes: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  unhelpfulVotes: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  // Detailed food-specific ratings
+  foodQualityRating: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1,
+      max: 5
+    }
+  },
+  valueRating: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1,
+      max: 5
+    }
+  },
+  deliveryRating: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1,
+      max: 5
+    }
+  },
+  // Tags/Aspects of the review
+  tags: {
+    type: DataTypes.JSON,
+    allowNull: true
   }
 }, {
   timestamps: true,
@@ -85,6 +144,7 @@ Review.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 Review.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
 Review.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
 Review.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+Review.belongsTo(User, { foreignKey: 'moderatedBy', as: 'moderator' });
 
 // Add reverse associations
 User.hasMany(Review, { foreignKey: 'userId', as: 'reviews' });

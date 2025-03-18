@@ -223,7 +223,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
@@ -232,48 +232,79 @@ export default {
   setup() {
     const store = useStore();
     const loading = ref(false);
-    
-    // Table headers
-    const headers = [
-      { title: 'Image', key: 'image', sortable: false },
-      { title: 'Name', key: 'name' },
-      { title: 'Category', key: 'category' },
-      { title: 'Price', key: 'price' },
-      { title: 'Actions', key: 'actions', sortable: false }
-    ];
-    
-    // Categories state
     const categories = ref([]);
+    const menuItems = ref([]);
+    const searchQuery = ref('');
+    const selectedCategory = ref(null);
+    
     const categoryDialog = ref({
       show: false,
       isEdit: false,
       loading: false,
       form: {
         name: '',
-        description: ''
+        description: '',
+        displayOrder: 0,
+        isActive: true
       }
     });
-    
-    // Menu items state
-    const menuItems = ref([]);
+
     const itemDialog = ref({
       show: false,
       isEdit: false,
       loading: false,
       form: {
         name: '',
-        categoryId: null,
-        price: 0,
         description: '',
-        imageFile: null
+        price: 0,
+        categoryId: null,
+        image: null,
+        preparationTime: 15,
+        isAvailable: true,
+        allergies: [],
+        customizations: []
       }
     });
-    
-    // Validation rules
-    const itemImageRules = [
-      v => !v || v.size < 2000000 || 'Image size should be less than 2 MB!'
-    ];
-    
+
+    // Add customization field
+    const addCustomization = () => {
+      itemDialog.value.form.customizations.push({
+        name: '',
+        options: [],
+        required: false,
+        multiple: false,
+        min: 0,
+        max: 1
+      });
+    };
+
+    // Add option to customization
+    const addOption = (customizationIndex) => {
+      itemDialog.value.form.customizations[customizationIndex].options.push({
+        name: '',
+        price: 0
+      });
+    };
+
+    // Filter items by category and search query
+    const filteredItems = computed(() => {
+      let items = [...menuItems.value];
+      
+      if (selectedCategory.value) {
+        items = items.filter(item => item.categoryId === selectedCategory.value);
+      }
+      
+      if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase();
+        items = items.filter(item => 
+          item.name.toLowerCase().includes(query) ||
+          item.description.toLowerCase().includes(query)
+        );
+      }
+      
+      return items;
+    });
+
     // Load initial data
     onMounted(async () => {
       loading.value = true;
@@ -288,27 +319,13 @@ export default {
         loading.value = false;
       }
     });
-    
-    // Category methods
-    const loadCategories = async () => {
+
+    // Save category changes
+    const saveCategory = async () => {
+      if (!validateCategoryForm()) return;
+      
+      categoryDialog.value.loading = true;
       try {
-        categories.value = await store.dispatch('restaurant/getCategories');
-      } catch (error) {
-        console.error('Failed to load categories:', error);
-      }
-    };
-    
-    const openCategoryDialog = (category = null) => {
-      categoryDialog.value.isEdit = !!category;
-      categoryDialog.value.form = category
-        ? { ...category }
-        : { name: '', description: '' };
-      categoryDialog.value.show = true;
-    };
-    
-    const saveCategoryDialog = async () => {
-      try {
-        categoryDialog.value.loading = true;
         if (categoryDialog.value.isEdit) {
           await store.dispatch('restaurant/updateCategory', categoryDialog.value.form);
         } else {
@@ -322,55 +339,27 @@ export default {
         categoryDialog.value.loading = false;
       }
     };
-    
-    const deleteCategory = async (id) => {
-      if (confirm('Are you sure you want to delete this category?')) {
-        try {
-          await store.dispatch('restaurant/deleteCategory', id);
-          await loadCategories();
-        } catch (error) {
-          console.error('Failed to delete category:', error);
-        }
-      }
-    };
-    
-    // Menu item methods
-    const loadMenuItems = async () => {
+
+    // Save menu item changes
+    const saveMenuItem = async () => {
+      if (!validateItemForm()) return;
+      
+      itemDialog.value.loading = true;
       try {
-        menuItems.value = await store.dispatch('restaurant/getMenuItems');
-      } catch (error) {
-        console.error('Failed to load menu items:', error);
-      }
-    };
-    
-    const openItemDialog = (item = null) => {
-      itemDialog.value.isEdit = !!item;
-      itemDialog.value.form = item
-        ? { ...item, imageFile: null }
-        : {
-          name: '',
-          categoryId: null,
-          price: 0,
-          description: '',
-          imageFile: null
-        };
-      itemDialog.value.show = true;
-    };
-    
-    const saveItemDialog = async () => {
-      try {
-        itemDialog.value.loading = true;
         const formData = new FormData();
         Object.keys(itemDialog.value.form).forEach(key => {
-          if (key === 'imageFile' && itemDialog.value.form[key]) {
-            formData.append('image', itemDialog.value.form[key]);
-          } else {
+          if (key === 'customizations') {
+            formData.append(key, JSON.stringify(itemDialog.value.form[key]));
+          } else if (itemDialog.value.form[key] !== null) {
             formData.append(key, itemDialog.value.form[key]);
           }
         });
-        
+
         if (itemDialog.value.isEdit) {
-          await store.dispatch('restaurant/updateMenuItem', formData);
+          await store.dispatch('restaurant/updateMenuItem', {
+            id: itemDialog.value.form.id,
+            data: formData
+          });
         } else {
           await store.dispatch('restaurant/createMenuItem', formData);
         }
@@ -382,32 +371,34 @@ export default {
         itemDialog.value.loading = false;
       }
     };
-    
-    const deleteItem = async (id) => {
-      if (confirm('Are you sure you want to delete this menu item?')) {
-        try {
-          await store.dispatch('restaurant/deleteMenuItem', id);
-          await loadMenuItems();
-        } catch (error) {
-          console.error('Failed to delete menu item:', error);
-        }
+
+    // Toggle item availability
+    const toggleItemAvailability = async (item) => {
+      try {
+        await store.dispatch('restaurant/updateMenuItem', {
+          id: item.id,
+          data: { isAvailable: !item.isAvailable }
+        });
+        await loadMenuItems();
+      } catch (error) {
+        console.error('Failed to update item availability:', error);
       }
     };
-    
+
     return {
       loading,
-      headers,
       categories,
       menuItems,
+      searchQuery,
+      selectedCategory,
       categoryDialog,
       itemDialog,
-      itemImageRules,
-      openCategoryDialog,
-      saveCategoryDialog,
-      deleteCategory,
-      openItemDialog,
-      saveItemDialog,
-      deleteItem
+      filteredItems,
+      addCustomization,
+      addOption,
+      saveCategory,
+      saveMenuItem,
+      toggleItemAvailability
     };
   }
 };

@@ -10,103 +10,50 @@
  * 3. Run: node setup-database.js
  */
 
-const { exec } = require('child_process');
-const mysql = require('mysql');
-const fs = require('fs');
+const mysql = require('mysql2/promise');
+const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, 'backend', '.env') });
 
-// Database configuration - using credentials from .env file
-const config = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'food_delivery'
-};
-
-// Path to schema file
-const schemaFilePath = path.join(__dirname, 'food_Delivery.sql');
-
-// Create a connection without database selected
-const connection = mysql.createConnection({
-  host: config.host,
-  user: config.user,
-  password: config.password
-});
-
-// Create database if it doesn't exist
-connection.connect((err) => {
-  if (err) {
-    console.error('Error connecting to MySQL:', err.message);
-    return;
-  }
-  
-  console.log('Connected to MySQL server successfully!');
-  
-  connection.query(`CREATE DATABASE IF NOT EXISTS ${config.database}`, (err) => {
-    if (err) {
-      console.error('Error creating database:', err.message);
-      connection.end();
-      return;
-    }
-    
-    console.log(`Database '${config.database}' created or already exists.`);
-    
-    // Read and execute schema file
-    fs.readFile(schemaFilePath, 'utf8', (err, data) => {
-      if (err) {
-        console.error('Error reading schema file:', err.message);
-        connection.end();
-        return;
-      }
-      
-      console.log('Schema file read successfully.');
-      
-      // Connect to the created database
-      connection.changeUser({ database: config.database }, (err) => {
-        if (err) {
-          console.error('Error connecting to database:', err.message);
-          connection.end();
-          return;
-        }
-        
-        console.log(`Connected to database '${config.database}'.`);
-        
-        // Split the schema into separate commands
-        const commands = data.split(';').filter(cmd => cmd.trim() !== '');
-        
-        // Execute each command sequentially
-        executeCommands(commands, 0, () => {
-          console.log('Schema imported successfully!');
-          console.log('\nDatabase setup complete! You can now start the application:');
-          console.log('1. cd backend && npm run dev');
-          console.log('2. cd frontend && npm run dev');
-          connection.end();
-        });
-      });
+async function setupDatabase() {
+  try {
+    // Create connection
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST || 'localhost',
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || ''
     });
-  });
-});
 
-// Function to execute SQL commands sequentially
-function executeCommands(commands, index, callback) {
-  if (index >= commands.length) {
-    callback();
-    return;
-  }
-  
-  const command = commands[index].trim();
-  if (command === '') {
-    executeCommands(commands, index + 1, callback);
-    return;
-  }
-  
-  connection.query(command, (err) => {
-    if (err) {
-      console.error(`Error executing command: ${command.substring(0, 50)}...`);
-      console.error(err.message);
+    console.log('Connected to MySQL server');
+
+    // Read SQL file
+    const sqlFile = await fs.readFile(path.join(__dirname, 'food_Delivery.sql'), 'utf8');
+
+    // Split SQL file into individual statements
+    const statements = sqlFile.split(';').filter(statement => statement.trim());
+
+    // Execute each statement
+    for (const statement of statements) {
+      if (statement.trim()) {
+        await connection.execute(statement);
+        console.log('Executed SQL statement successfully');
+      }
     }
-    
-    executeCommands(commands, index + 1, callback);
-  });
-} 
+
+    // Create upload directories if they don't exist
+    const uploadDirs = ['categories', 'banners', 'products', 'restaurants', 'profiles'];
+    for (const dir of uploadDirs) {
+      const dirPath = path.join(__dirname, 'backend', 'uploads', dir);
+      await fs.mkdir(dirPath, { recursive: true });
+      console.log(`Created upload directory: ${dir}`);
+    }
+
+    console.log('Database setup completed successfully');
+    await connection.end();
+  } catch (error) {
+    console.error('Error setting up database:', error);
+    process.exit(1);
+  }
+}
+
+setupDatabase();

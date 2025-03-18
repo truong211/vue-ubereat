@@ -1,19 +1,25 @@
 import { getDistance } from 'geolib'
+import { restaurantService } from '@/services/restaurant.service'
 
 const state = {
-  searchHistory: [],
+  searchQuery: '',
+  filters: {
+    cuisine: null,
+    priceRange: [],
+    rating: null,
+    deliveryTime: null,
+    distance: null,
+    sortBy: 'rating'
+  },
+  searchHistory: JSON.parse(localStorage.getItem('search_history') || '[]'),
+  suggestions: [],
+  isLoading: false,
+  error: null,
   recentSearches: [],
   searchResults: [],
   selectedLocation: null,
-  filters: {
-    distance: 5,
-    rating: 0,
-    priceRange: [],
-    cuisines: []
-  },
   sortBy: 'relevance',
-  loading: false,
-  error: null
+  loading: false
 }
 
 const getters = {
@@ -79,6 +85,14 @@ const getters = {
     }
 
     return results
+  },
+  hasActiveFilters: state => {
+    return state.filters.cuisine !== null ||
+      state.filters.priceRange.length > 0 ||
+      state.filters.rating !== null ||
+      state.filters.deliveryTime !== null ||
+      state.filters.distance !== null ||
+      state.filters.sortBy !== 'rating'
   }
 }
 
@@ -128,6 +142,46 @@ const mutations = {
   },
   SET_RECENT_SEARCHES(state, searches) {
     state.recentSearches = searches
+  },
+  SET_SEARCH_QUERY(state, query) {
+    state.searchQuery = query
+  },
+  ADD_TO_HISTORY(state, query) {
+    if (!query.trim()) return
+    
+    // Remove if exists
+    const index = state.searchHistory.indexOf(query)
+    if (index > -1) {
+      state.searchHistory.splice(index, 1)
+    }
+    
+    // Add to beginning
+    state.searchHistory.unshift(query)
+    
+    // Keep only last 10 items
+    if (state.searchHistory.length > 10) {
+      state.searchHistory.pop()
+    }
+    
+    // Save to localStorage
+    localStorage.setItem('search_history', JSON.stringify(state.searchHistory))
+  },
+  CLEAR_HISTORY(state) {
+    state.searchHistory = []
+    localStorage.removeItem('search_history')
+  },
+  SET_SUGGESTIONS(state, suggestions) {
+    state.suggestions = suggestions
+  },
+  RESET_FILTERS(state) {
+    state.filters = {
+      cuisine: null,
+      priceRange: [],
+      rating: null,
+      deliveryTime: null,
+      distance: null,
+      sortBy: 'rating'
+    }
   }
 }
 
@@ -211,6 +265,59 @@ const actions = {
   clearRecentSearches({ commit }) {
     commit('SET_RECENT_SEARCHES', [])
     localStorage.removeItem('recentSearches')
+  },
+  async search({ commit, state }, { query, filters = {} }) {
+    try {
+      commit('SET_LOADING', true)
+      commit('SET_ERROR', null)
+      
+      // Update search query if provided
+      if (query !== undefined) {
+        commit('SET_SEARCH_QUERY', query)
+        commit('ADD_TO_HISTORY', query)
+      }
+      
+      // Update filters if provided
+      if (Object.keys(filters).length > 0) {
+        commit('SET_FILTERS', filters)
+      }
+      
+      // Make API call with current search state
+      const results = await restaurantService.searchRestaurants({
+        search: state.searchQuery,
+        ...state.filters
+      })
+      
+      return results
+    } catch (error) {
+      commit('SET_ERROR', error.message)
+      throw error
+    } finally {
+      commit('SET_LOADING', false)
+    }
+  },
+  
+  async getSuggestions({ commit }, query) {
+    try {
+      if (!query || query.length < 2) {
+        commit('SET_SUGGESTIONS', [])
+        return
+      }
+      
+      const { suggestions } = await restaurantService.getSearchSuggestions(query)
+      commit('SET_SUGGESTIONS', suggestions)
+    } catch (error) {
+      console.error('Error fetching suggestions:', error)
+      commit('SET_SUGGESTIONS', [])
+    }
+  },
+  
+  clearHistory({ commit }) {
+    commit('CLEAR_HISTORY')
+  },
+  
+  resetFilters({ commit }) {
+    commit('RESET_FILTERS')
   }
 }
 

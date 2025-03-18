@@ -1,6 +1,8 @@
 const { validationResult } = require('express-validator');
 const { User, Address, Order } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Get user profile
@@ -10,7 +12,11 @@ const { AppError } = require('../middleware/error.middleware');
 exports.getProfile = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password'] },
+      include: [{
+        model: Address,
+        as: 'addresses'
+      }]
     });
 
     if (!user) {
@@ -35,24 +41,22 @@ exports.getProfile = async (req, res, next) => {
  */
 exports.updateProfile = async (req, res, next) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { fullName, phone, address } = req.body;
-
-    // Find user
     const user = await User.findByPk(req.user.id);
+
     if (!user) {
       return next(new AppError('User not found', 404));
     }
 
-    // Update user
-    user.fullName = fullName || user.fullName;
-    user.phone = phone || user.phone;
-    user.address = address || user.address;
+    // Update fields if provided
+    if (fullName) user.fullName = fullName;
+    if (phone) user.phone = phone;
+    if (address) user.address = address;
 
     await user.save();
 
@@ -78,23 +82,37 @@ exports.uploadProfileImage = async (req, res, next) => {
       return next(new AppError('Please upload an image', 400));
     }
 
-    // Find user
     const user = await User.findByPk(req.user.id);
     if (!user) {
       return next(new AppError('User not found', 404));
     }
 
-    // Update profile image
+    // Delete old profile image if exists
+    if (user.profileImage) {
+      const oldImagePath = path.join(__dirname, '../../uploads/profiles', user.profileImage);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+    }
+
     user.profileImage = req.file.filename;
     await user.save();
 
     res.status(200).json({
       status: 'success',
       data: {
-        user
+        user,
+        message: 'Profile image updated successfully'
       }
     });
   } catch (error) {
+    // Delete uploaded file if error occurs
+    if (req.file) {
+      const filePath = path.join(__dirname, '../../uploads/profiles', req.file.filename);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
     next(error);
   }
 };
@@ -377,4 +395,4 @@ exports.getOrderDetails = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};

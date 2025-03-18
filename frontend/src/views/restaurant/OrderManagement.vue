@@ -209,182 +209,182 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { format } from 'date-fns';
 
 export default {
   name: 'OrderManagement',
-  
   setup() {
     const store = useStore();
     const loading = ref(false);
-    
-    // Filters
-    const filters = ref({
-      status: '',
-      search: '',
-      sortBy: 'newest'
-    });
-    
-    // Order statuses and actions
-    const orderStatuses = [
-      { text: 'All Orders', value: '' },
-      { text: 'New', value: 'new' },
-      { text: 'Confirmed', value: 'confirmed' },
-      { text: 'Preparing', value: 'preparing' },
-      { text: 'Ready', value: 'ready' },
-      { text: 'Out for Delivery', value: 'delivering' },
-      { text: 'Delivered', value: 'delivered' },
-      { text: 'Cancelled', value: 'cancelled' }
-    ];
-    
-    const sortOptions = [
-      { text: 'Newest First', value: 'newest' },
-      { text: 'Oldest First', value: 'oldest' },
-      { text: 'Highest Total', value: 'total-desc' },
-      { text: 'Lowest Total', value: 'total-asc' }
-    ];
-    
-    // Table headers
-    const headers = [
-      { title: 'Order', key: 'orderNumber' },
-      { title: 'Customer', key: 'customer' },
-      { title: 'Items', key: 'items' },
-      { title: 'Total', key: 'total' },
-      { title: 'Status', key: 'status' },
-      { title: 'Actions', key: 'actions', sortable: false }
-    ];
-    
-    // Orders data
     const orders = ref([]);
+    const selectedOrder = ref(null);
+    const orderFilters = ref({
+      status: 'all',
+      dateRange: null,
+      searchQuery: ''
+    });
+
+    const orderDialog = ref({
+      show: false,
+      order: null,
+      loading: false,
+      note: ''
+    });
+
+    // Computed properties for order filtering
     const filteredOrders = computed(() => {
-      let filtered = [...orders.value];
+      let result = [...orders.value];
       
-      // Apply status filter
-      if (filters.value.status) {
-        filtered = filtered.filter(order => order.status === filters.value.status);
+      // Filter by status
+      if (orderFilters.value.status !== 'all') {
+        result = result.filter(order => order.status === orderFilters.value.status);
       }
       
-      // Apply search filter
-      if (filters.value.search) {
-        const search = filters.value.search.toLowerCase();
-        filtered = filtered.filter(order =>
-          order.orderNumber.toLowerCase().includes(search) ||
-          order.customer.name.toLowerCase().includes(search)
+      // Filter by date range
+      if (orderFilters.value.dateRange) {
+        const [start, end] = orderFilters.value.dateRange;
+        result = result.filter(order => {
+          const orderDate = new Date(order.createdAt);
+          return orderDate >= start && orderDate <= end;
+        });
+      }
+      
+      // Filter by search query
+      if (orderFilters.value.searchQuery) {
+        const query = orderFilters.value.searchQuery.toLowerCase();
+        result = result.filter(order => 
+          order.orderNumber.toLowerCase().includes(query) ||
+          order.customer.fullName.toLowerCase().includes(query)
         );
       }
       
-      // Apply sorting
-      switch (filters.value.sortBy) {
-        case 'oldest':
-          filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-          break;
-        case 'total-desc':
-          filtered.sort((a, b) => b.total - a.total);
-          break;
-        case 'total-asc':
-          filtered.sort((a, b) => a.total - b.total);
-          break;
-        default: // newest
-          filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      }
-      
-      return filtered;
+      return result;
     });
-    
-    // Order dialog
-    const orderDialog = ref({
-      show: false,
-      order: null
-    });
-    
-    // Load orders
+
+    // Order status groups
+    const orderGroups = computed(() => ({
+      new: filteredOrders.value.filter(order => order.status === 'pending'),
+      preparing: filteredOrders.value.filter(order => order.status === 'preparing'),
+      ready: filteredOrders.value.filter(order => order.status === 'ready'),
+      delivering: filteredOrders.value.filter(order => order.status === 'out_for_delivery'),
+      completed: filteredOrders.value.filter(order => order.status === 'delivered'),
+      cancelled: filteredOrders.value.filter(order => order.status === 'cancelled')
+    }));
+
+    // Load orders with real-time updates
     const loadOrders = async () => {
       loading.value = true;
       try {
-        orders.value = await store.dispatch('restaurant/getOrders');
+        const response = await store.dispatch('restaurantAdmin/fetchOrders');
+        orders.value = response.orders;
+        
+        // Initialize WebSocket connection for real-time updates
+        initializeWebSocket();
       } catch (error) {
         console.error('Failed to load orders:', error);
       } finally {
         loading.value = false;
       }
     };
-    
+
+    // WebSocket setup for real-time updates
+    const initializeWebSocket = () => {
+      const socket = store.state.restaurantAdmin.socket;
+      
+      if (!socket) return;
+      
+      socket.on('new_order', (data) => {
+        orders.value.unshift(data.order);
+        // Show notification
+        showNotification('New Order', `Order #${data.order.orderNumber} received`);
+      });
+
+      socket.on('order_status_updated', (data) => {
+        const index = orders.value.findIndex(order => order.id === data.orderId);
+        if (index !== -1) {
+          orders.value[index].status = data.status;
+          orders.value[index].updatedAt = data.updatedAt;
+        }
+      });
+    };
+
     // Update order status
-    const updateOrderStatus = async (orderId, newStatus) => {
+    const updateOrderStatus = async (order, newStatus) => {
       try {
-        await store.dispatch('restaurant/updateOrderStatus', {
-          orderId,
-          status: newStatus
+        await store.dispatch('restaurantAdmin/updateOrder', {
+          orderId: order.id,
+          status: newStatus,
+          note: orderDialog.value.note
         });
-        await loadOrders();
-        orderDialog.value.show = false;
+        
+        // Show success message
+        showNotification('Order Updated', `Order #${order.orderNumber} status changed to ${newStatus}`);
       } catch (error) {
         console.error('Failed to update order status:', error);
       }
     };
-    
-    // View order details
-    const viewOrderDetails = (order) => {
-      orderDialog.value.order = order;
-      orderDialog.value.show = true;
-    };
-    
-    // Helper functions
-    const formatDate = (date) => {
-      return format(new Date(date), 'MMM d, yyyy h:mm a');
-    };
-    
-    const getStatusColor = (status) => {
-      const colors = {
-        new: 'info',
-        confirmed: 'primary',
-        preparing: 'warning',
-        ready: 'success',
-        delivering: 'purple',
-        delivered: 'success',
-        cancelled: 'error'
-      };
-      return colors[status] || 'default';
-    };
-    
-    const getAvailableActions = (status) => {
-      switch (status) {
-        case 'new':
-          return [
-            { text: 'Confirm Order', value: 'confirmed', color: 'primary' },
-            { text: 'Cancel Order', value: 'cancelled', color: 'error' }
-          ];
-        case 'confirmed':
-          return [{ text: 'Start Preparing', value: 'preparing', color: 'warning' }];
-        case 'preparing':
-          return [{ text: 'Mark as Ready', value: 'ready', color: 'success' }];
-        case 'ready':
-          return [{ text: 'Out for Delivery', value: 'delivering', color: 'purple' }];
-        default:
-          return [];
+
+    // Show notification using native browser notification
+    const showNotification = (title, body) => {
+      if (!('Notification' in window)) return;
+      
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body });
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification(title, { body });
+          }
+        });
       }
     };
-    
-    // Load initial data
-    loadOrders();
-    
+
+    // Format order total
+    const formatCurrency = (value) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(value);
+    };
+
+    // Get status color for visual indication
+    const getStatusColor = (status) => {
+      const colors = {
+        pending: 'warning',
+        confirmed: 'info',
+        preparing: 'primary',
+        ready: 'success',
+        out_for_delivery: 'purple',
+        delivered: 'green',
+        cancelled: 'error'
+      };
+      return colors[status] || 'grey';
+    };
+
+    // Initialize component
+    onMounted(() => {
+      loadOrders();
+      
+      // Request notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    });
+
     return {
       loading,
-      filters,
-      orderStatuses,
-      sortOptions,
-      headers,
+      orders,
+      orderFilters,
       filteredOrders,
+      orderGroups,
       orderDialog,
-      formatDate,
-      getStatusColor,
-      getAvailableActions,
-      viewOrderDetails,
-      updateOrderStatus
+      updateOrderStatus,
+      formatCurrency,
+      getStatusColor
     };
-  }
+  }  
 };
 </script>
 

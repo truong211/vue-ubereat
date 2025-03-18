@@ -52,8 +52,22 @@ const Restaurant = sequelize.define('Restaurant', {
     allowNull: true
   },
   openingHours: {
-    type: DataTypes.JSON,
-    allowNull: true
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: {
+      Monday: { enabled: true, open: '09:00', close: '22:00' },
+      Tuesday: { enabled: true, open: '09:00', close: '22:00' },
+      Wednesday: { enabled: true, open: '09:00', close: '22:00' },
+      Thursday: { enabled: true, open: '09:00', close: '22:00' },
+      Friday: { enabled: true, open: '09:00', close: '22:00' },
+      Saturday: { enabled: true, open: '10:00', close: '23:00' },
+      Sunday: { enabled: true, open: '10:00', close: '22:00' }
+    }
+  },
+  specialHolidays: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: []
   },
   cuisineType: {
     type: DataTypes.STRING(50),
@@ -90,6 +104,30 @@ const Restaurant = sequelize.define('Restaurant', {
   longitude: {
     type: DataTypes.DECIMAL(11, 8),
     allowNull: true
+  },
+  deliverySettings: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: {
+      radius: 5, // delivery radius in km
+      minOrder: 10,
+      baseFee: 2,
+      perKmFee: 0.5,
+      autoAccept: false,
+      pickupEnabled: true
+    }
+  },
+  notificationPreferences: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: {
+      email: true,
+      sms: true,
+      push: true,
+      newOrders: true,
+      orderUpdates: true,
+      reviews: true
+    }
   }
 }, {
   timestamps: true,
@@ -99,4 +137,4 @@ const Restaurant = sequelize.define('Restaurant', {
 // Define associations
 Restaurant.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
 
-module.exports = Restaurant; 
+module.exports = Restaurant;

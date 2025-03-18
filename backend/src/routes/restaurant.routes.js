@@ -1,7 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const restaurantController = require('../controllers/restaurant.controller');
-const { authMiddleware, restrictTo } = require('../middleware/auth.middleware');
+const { authMiddleware, restrictTo, verifyRestaurantOwner } = require('../middleware/auth.middleware');
 const multer = require('multer');
 const path = require('path');
 
@@ -43,31 +43,80 @@ router.get('/featured', restaurantController.getFeaturedRestaurants);
 // Get popular restaurants
 router.get('/popular', restaurantController.getPopularRestaurants);
 
-// Search restaurants by location
-router.get('/search', restaurantController.searchRestaurantsByLocation);
+// Search and filter routes
+router.get('/search', restaurantController.searchRestaurants);
+router.get('/suggestions', restaurantController.getSearchSuggestions);
+router.get('/cuisines', restaurantController.getCuisineTypes);
 
-/**
- * @route GET /api/restaurants
- * @desc Get all restaurants
- * @access Public
- */
+// Existing routes
 router.get('/', restaurantController.getAllRestaurants);
-
-/**
- * @route GET /api/restaurants/:id
- * @desc Get restaurant by ID
- * @access Public
- */
 router.get('/:id', restaurantController.getRestaurantById);
+router.get('/:id/menu', restaurantController.getRestaurantMenu);
+router.get('/:id/reviews', restaurantController.getRestaurantReviews);
 
-/**
- * @route POST /api/restaurants
- * @desc Create restaurant
- * @access Private
- */
+const {
+  validateOpeningHours,
+  validateDeliverySettings,
+  validateNotificationPreferences,
+  validateSpecialHolidays
+} = require('../middleware/restaurantSettings.validator');
+
+// Restaurant settings routes
+router.patch(
+  '/:id/settings',
+  authMiddleware,
+  checkRole(['restaurant']),
+  restaurantController.updateRestaurantSettings
+);
+
+router.patch(
+  '/:id/settings/opening-hours',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateOpeningHours,
+  restaurantController.updateOpeningHours
+);
+
+router.patch(
+  '/:id/settings/delivery',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateDeliverySettings,
+  restaurantController.updateDeliverySettings
+);
+
+router.patch(
+  '/:id/settings/notifications',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateNotificationPreferences,
+  restaurantController.updateNotificationPreferences
+);
+
+router.patch(
+  '/:id/settings/holidays',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateSpecialHolidays,
+  restaurantController.updateSpecialHolidays
+);
+
+router.get(
+  '/:id/availability',
+  restaurantController.getRestaurantAvailability
+);
+
+router.patch(
+  '/:id/holidays',
+  authMiddleware,
+  checkRole(['restaurant']),
+  restaurantController.updateSpecialHolidays
+);
+
+// Protected routes for restaurant owners
+router.use(authMiddleware);
 router.post(
   '/',
-  authMiddleware,
   restrictTo('owner', 'admin'),
   upload.fields([
     { name: 'logo', maxCount: 1 },
@@ -102,14 +151,8 @@ router.post(
   restaurantController.createRestaurant
 );
 
-/**
- * @route PATCH /api/restaurants/:id
- * @desc Update restaurant
- * @access Private (Restaurant Owner)
- */
 router.patch(
   '/:id',
-  authMiddleware,
   restrictTo('owner', 'admin', 'restaurant'),
   upload.fields([
     { name: 'logo', maxCount: 1 },
@@ -140,30 +183,10 @@ router.patch(
   restaurantController.updateRestaurant
 );
 
-/**
- * @route DELETE /api/restaurants/:id
- * @desc Delete restaurant
- * @access Private (Restaurant Owner or Admin)
- */
 router.delete(
   '/:id',
-  authMiddleware,
   restrictTo('owner', 'admin', 'restaurant'),
   restaurantController.deleteRestaurant
 );
-
-/**
- * @route GET /api/restaurants/:id/menu
- * @desc Get restaurant menu
- * @access Public
- */
-router.get('/:id/menu', restaurantController.getRestaurantMenu);
-
-/**
- * @route GET /api/restaurants/:id/reviews
- * @desc Get restaurant reviews
- * @access Public
- */
-router.get('/:id/reviews', restaurantController.getRestaurantReviews);
 
 module.exports = router;

@@ -11,6 +11,7 @@ import VerifyEmail from '@/components/auth/VerifyEmail.vue';
 import UserProfile from '@/components/profile/UserProfile.vue';
 import OrderTracking from '@/components/order/OrderTracking.vue';
 import PaymentStatusPage from '@/components/payment/PaymentStatusPage.vue';
+import StaticPage from '@/components/static/StaticPage.vue';
 
 // Route definitions
 const routes = [
@@ -49,6 +50,12 @@ const routes = [
     name: 'VerifyEmail',
     component: VerifyEmail,
     meta: { title: 'Verify Email' }
+  },
+  {
+    path: '/verify-email/:token',
+    name: 'verify-email',
+    component: VerifyEmail,
+    meta: { requiresAuth: false }
   },
   {
     path: '/profile',
@@ -164,6 +171,13 @@ const routes = [
       requiresAuth: true,
       title: 'Payment Status'
     }
+  },
+  {
+    path: '/pages/:slug',
+    name: 'StaticPage',
+    component: StaticPage,
+    props: true,
+    meta: { title: route => route.params.slug }
   },
   // 404 page - using a simple component for now
   {

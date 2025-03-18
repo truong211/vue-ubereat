@@ -16,6 +16,7 @@ router.use(authMiddleware);
 router.get('/user', reviewController.getUserReviews);
 router.get('/dashboard/stats', restrictTo(['admin', 'restaurant']), reviewController.getReviewStats);
 
+// Create a review
 router.post('/',
   [
     body('orderId').isInt().withMessage('Order ID is required'),
@@ -26,6 +27,7 @@ router.post('/',
   reviewController.createReview
 );
 
+// Update a review
 router.put('/:id',
   [
     body('rating').optional().isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5'),
@@ -34,8 +36,10 @@ router.put('/:id',
   reviewController.updateReview
 );
 
+// Delete a review
 router.delete('/:id', reviewController.deleteReview);
 
+// Restaurant owner respond to review
 router.post('/:id/respond',
   restrictTo(['restaurant']),
   [
@@ -44,10 +48,19 @@ router.post('/:id/respond',
   reviewController.respondToReview
 );
 
-// Vote on a review
+// Update restaurant response to review
+router.put('/:id/respond',
+  restrictTo(['restaurant']),
+  [
+    body('response').isString().isLength({ min: 10, max: 1000 }).withMessage('Response must be between 10 and 1000 characters')
+  ],
+  reviewController.respondToReview  // We can reuse the same controller method for updating
+);
+
+// Vote on a review (helpful/unhelpful)
 router.post('/:id/vote',
   [
-    body('isHelpful').isBoolean().withMessage('isHelpful must be a boolean')
+    body('isHelpful').isBoolean().withMessage('isHelpful must be a boolean value')
   ],
   reviewController.voteReview
 );
@@ -70,6 +83,21 @@ router.post('/:id/images',
 router.get('/analytics',
   restrictTo(['admin', 'restaurant']),
   reviewController.getReviewAnalytics
+);
+
+// Moderation routes (admin only)
+router.get('/moderation',
+  restrictTo(['admin', 'moderator']),
+  reviewController.getPendingModeration
+);
+
+router.patch('/:id/moderate',
+  restrictTo(['admin', 'moderator']),
+  [
+    body('moderationStatus').isIn(['approved', 'rejected']).withMessage('Status must be approved or rejected'),
+    body('moderationReason').optional().isString().trim()
+  ],
+  reviewController.moderateReview
 );
 
 module.exports = router;

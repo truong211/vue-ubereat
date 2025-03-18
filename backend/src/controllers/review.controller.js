@@ -276,14 +276,16 @@ exports.getUserReviews = async (req, res, next) => {
  * @route POST /api/reviews
  * @access Private
  */
+const originalCreateReview = exports.createReview;
 exports.createReview = async (req, res, next) => {
   try {
+    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { orderId, restaurantId, rating, comment } = req.body;
+    const { orderId, restaurantId, productId, rating, comment, tags } = req.body;
     const userId = req.user.id;
 
     // Check if order exists and belongs to user
@@ -299,34 +301,59 @@ exports.createReview = async (req, res, next) => {
       return next(new AppError('Order not found or not eligible for review', 404));
     }
 
-    // Check if user already reviewed this order
+    // Check if user already reviewed this order (if product-specific, check that combination)
+    const whereClause = {
+      userId,
+      orderId
+    };
+    
+    if (productId) {
+      whereClause.productId = productId;
+    } else {
+      whereClause.productId = null;
+    }
+
     const existingReview = await Review.findOne({
-      where: {
-        userId,
-        orderId
-      }
+      where: whereClause
     });
 
     if (existingReview) {
-      return next(new AppError('You have already reviewed this order', 400));
+      return next(new AppError('You have already reviewed this item', 400));
     }
 
-    // Create review
-    const review = await Review.create({
+    // Create review object
+    const reviewData = {
       userId,
       orderId,
       restaurantId,
+      productId,
       rating,
-      comment
-    });
+      comment,
+      tags: tags || null
+    };
 
-    // Update restaurant rating
-    await updateRestaurantRating(restaurantId);
+    // Check if review needs moderation
+    if (requiresModeration({ rating, comment })) {
+      reviewData.moderationStatus = 'pending';
+      reviewData.isVisible = false;
+    }
+
+    // Create review
+    const review = await Review.create(reviewData);
+
+    // Update restaurant/product rating
+    if (restaurantId) {
+      await updateRestaurantRating(restaurantId);
+    }
+    if (productId) {
+      await updateProductRating(productId);
+    }
 
     res.status(201).json({
       status: 'success',
       data: {
-        review
+        review,
+        requiresModeration: review.moderationStatus === 'pending'
       }
     });
   } catch (error) {
@@ -945,4 +972,222 @@ exports.getReviewAnalytics = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * Vote on a review's helpfulness
+ * @route POST /api/reviews/:id/vote
+ * @access Private (User)
+ */
+exports.voteReview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isHelpful } = req.body;
+    const userId = req.user.id;
+
+    const review = await Review.findByPk(id);
+    if (!review) {
+      return next(new AppError('Review not found', 404));
+    }
+
+    // Check if user has already voted using ReviewVote
+    let vote = await ReviewVote.findOne({
+      where: { userId, reviewId: id }
+    });
+
+    let helpfulVotes = review.helpfulVotes;
+    let unhelpfulVotes = review.unhelpfulVotes;
+
+    if (vote) {
+      // Update existing vote
+      const previousVote = vote.isHelpful;
+      vote.isHelpful = isHelpful;
+      await vote.save();
+
+      // Adjust vote counts based on changed vote
+      if (previousVote !== isHelpful) {
+        if (isHelpful) {
+          helpfulVotes += 1;
+          unhelpfulVotes = Math.max(0, unhelpfulVotes - 1);
+        } else {
+          unhelpfulVotes += 1;
+          helpfulVotes = Math.max(0, helpfulVotes - 1);
+        }
+      }
+    } else {
+      // Create new vote
+      vote = await ReviewVote.create({
+        userId,
+        reviewId: id,
+        isHelpful
+      });
+
+      // Increment the appropriate counter
+      if (isHelpful) {
+        helpfulVotes += 1;
+      } else {
+        unhelpfulVotes += 1;
+      }
+    }
+
+    // Update review vote counts
+    await review.update({
+      helpfulVotes,
+      unhelpfulVotes
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        helpfulVotes,
+        unhelpfulVotes,
+        userVote: isHelpful
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Moderate a review (admin/moderator only)
+ * @route PATCH /api/reviews/:id/moderate
+ * @access Private (Admin/Moderator)
+ */
+exports.moderateReview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { moderationStatus, moderationReason } = req.body;
+    const userId = req.user.id;
+
+    // Verify user is admin/moderator
+    if (!['admin', 'moderator'].includes(req.user.role)) {
+      return next(new AppError('Unauthorized to perform this action', 403));
+    }
+
+    const review = await Review.findByPk(id);
+    if (!review) {
+      return next(new AppError('Review not found', 404));
+    }
+
+    // Update moderation status
+    await review.update({
+      moderationStatus,
+      moderationReason: moderationReason || null,
+      moderatedBy: userId,
+      moderatedAt: new Date(),
+      isVisible: moderationStatus === 'approved' // Only approved reviews are visible
+    });
+
+    // If the review is rejected, notify the author
+    if (moderationStatus === 'rejected') {
+      // In a real app, you would send a notification to the user
+      console.log(`Review ${id} rejected. Notification would be sent to user ${review.userId}`);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        review
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get all reviews pending moderation
+ * @route GET /api/reviews/moderation
+ * @access Private (Admin/Moderator)
+ */
+exports.getPendingModeration = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+
+    // Verify user is admin/moderator
+    if (!['admin', 'moderator'].includes(req.user.role)) {
+      return next(new AppError('Unauthorized to perform this action', 403));
+    }
+
+    // Calculate pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get reviews pending moderation
+    const reviews = await Review.findAndCountAll({
+      where: { 
+        moderationStatus: 'pending'
+      },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'email', 'profileImage']
+        },
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name', 'logo']
+        },
+        {
+          model: Product,
+          as: 'product',
+          attributes: ['id', 'name', 'image']
+        },
+        {
+          model: ReviewReport,
+          as: 'reports',
+          attributes: ['id', 'reason', 'description', 'createdAt'],
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'fullName']
+            }
+          ]
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: reviews.count,
+      totalPages: Math.ceil(reviews.count / parseInt(limit)),
+      currentPage: parseInt(page),
+      data: {
+        reviews: reviews.rows
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Set review to automatically require moderation based on criteria
+ * @param {Object} review - The review to check
+ * @returns {Boolean} - Whether the review requires moderation
+ */
+const requiresModeration = (review) => {
+  // Check for potentially problematic content
+  const sensitiveTerms = ['hate', 'kill', 'disgusting', 'awful', 'terrible', 'worst'];
+  
+  if (review.comment) {
+    const commentLower = review.comment.toLowerCase();
+    
+    // Check if any sensitive terms are present
+    if (sensitiveTerms.some(term => commentLower.includes(term))) {
+      return true;
+    }
+    
+    // Review is very negative (1-star) with a long comment
+    if (review.rating === 1 && review.comment.length > 200) {
+      return true;
+    }
+  }
+  
+  return false;
 };

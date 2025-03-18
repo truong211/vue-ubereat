@@ -463,9 +463,8 @@ exports.getRestaurantOrders = async (req, res, next) => {
 exports.updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status, restaurantNote } = req.body;
+    const { status, estimatedTime, restaurantNote } = req.body;
 
-    // Find order
     const order = await Order.findByPk(id, {
       include: [
         {
@@ -477,11 +476,6 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     if (!order) {
       return next(new AppError('Order not found', 404));
-    }
-
-    // Check if user is the restaurant owner
-    if (order.restaurant.userId !== req.user.id && req.user.role !== 'admin') {
-      return next(new AppError('You are not authorized to update this order', 403));
     }
 
     // Validate status transition
@@ -499,25 +493,28 @@ exports.updateOrderStatus = async (req, res, next) => {
       return next(new AppError(`Cannot transition from ${order.status} to ${status}`, 400));
     }
 
-    // Update order
+    // Update order status and details
     order.status = status;
     if (restaurantNote) {
       order.restaurantNote = restaurantNote;
     }
 
-    // Update delivery time if status is out_for_delivery
-    if (status === 'out_for_delivery') {
-      order.estimatedDeliveryTime = new Date(Date.now() + 30 * 60000); // 30 minutes from now
-    }
-
-    // Update actual delivery time if status is delivered
-    if (status === 'delivered') {
+    // Update estimated delivery time based on status
+    if (status === 'confirmed') {
+      order.estimatedDeliveryTime = estimatedTime || new Date(Date.now() + 45 * 60000); // Default 45 mins
+    } else if (status === 'preparing') {
+      // Update prep start time
+      order.preparationStartTime = new Date();
+    } else if (status === 'ready') {
+      // Update prep end time
+      order.preparationEndTime = new Date();
+    } else if (status === 'delivered') {
       order.actualDeliveryTime = new Date();
     }
 
     await order.save();
 
-    // Emit status update event
+    // Emit real-time updates
     emitToOrder(order.id, 'order_status_updated', {
       orderId: order.id,
       status,
@@ -534,6 +531,12 @@ exports.updateOrderStatus = async (req, res, next) => {
           estimatedDeliveryTime: order.estimatedDeliveryTime
         });
         break;
+      case 'preparing':
+        emitToUser(order.userId, 'order_preparing', {
+          orderId: order.id,
+          estimatedDeliveryTime: order.estimatedDeliveryTime
+        });
+        break;
       case 'ready':
         if (order.driverId) {
           emitToUser(order.driverId, 'order_ready', {
@@ -541,11 +544,19 @@ exports.updateOrderStatus = async (req, res, next) => {
             restaurantId: order.restaurantId
           });
         }
+        emitToUser(order.userId, 'order_ready', {
+          orderId: order.id
+        });
         break;
       case 'delivered':
         emitToUser(order.userId, 'order_delivered', {
+          orderId: order.id
+        });
+        break;
+      case 'cancelled':
+        emitToUser(order.userId, 'order_cancelled', {
           orderId: order.id,
-          actualDeliveryTime: order.actualDeliveryTime
+          reason: restaurantNote
         });
         break;
     }

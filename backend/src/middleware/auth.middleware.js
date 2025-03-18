@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { AppError } = require('./error.middleware');
 const User = require('../models/user.model');
+const Restaurant = require('../models/restaurant.model');
 
 /**
  * Authentication middleware
@@ -58,7 +59,35 @@ const restrictTo = (...roles) => {
   };
 };
 
+/**
+ * Middleware to verify restaurant ownership
+ */
+const verifyRestaurantOwner = async (req, res, next) => {
+  try {
+    const restaurantId = req.params.id;
+    const userId = req.user.id;
+
+    const restaurant = await Restaurant.findOne({
+      where: { id: restaurantId }
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found', 404));
+    }
+
+    if (restaurant.userId !== userId && req.user.role !== 'admin') {
+      return next(new AppError('You are not authorized to modify this restaurant', 403));
+    }
+
+    req.restaurant = restaurant;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   authMiddleware,
-  restrictTo
-}; 
+  restrictTo,
+  verifyRestaurantOwner
+};

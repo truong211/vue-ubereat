@@ -1,123 +1,210 @@
 <template>
   <v-card class="order-summary">
-    <v-card-title class="d-flex align-center">
-      <span>{{ title || 'Order Summary' }}</span>
-      <v-spacer></v-spacer>
-      <slot name="title-actions"></slot>
+    <v-card-title class="d-flex justify-space-between align-center">
+      <span>Order Summary</span>
+      <v-chip v-if="itemCount" size="small" color="primary">{{ itemCount }} items</v-chip>
     </v-card-title>
     
     <v-divider></v-divider>
     
-    <!-- Restaurant Info -->
-    <div v-if="restaurant" class="pa-4">
-      <div class="d-flex align-center">
-        <v-avatar size="40" class="mr-3">
-          <v-img v-if="restaurant.image" :src="restaurant.image" alt="Restaurant"></v-img>
-          <v-icon v-else size="24" color="grey">mdi-store</v-icon>
-        </v-avatar>
-        <div>
-          <div class="text-h6">{{ restaurant.name }}</div>
-          <div v-if="restaurant.address" class="text-caption text-medium-emphasis">
-            <v-icon size="small" class="mr-1">mdi-map-marker</v-icon>
-            {{ restaurant.address }}
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <v-divider v-if="restaurant"></v-divider>
-    
-    <!-- Items List -->
-    <v-list v-if="items && items.length > 0">
-      <v-list-subheader v-if="showSubheaders">Items</v-list-subheader>
-      
-      <v-list-item
-        v-for="(item, index) in items"
-        :key="index"
-        class="px-4"
-      >
-        <template v-slot:prepend>
-          <div class="item-quantity mr-2">{{ item.quantity }}x</div>
-        </template>
-        
-        <v-list-item-title>{{ item.name }}</v-list-item-title>
-        
-        <div v-if="hasOptions(item)" class="text-caption text-medium-emphasis">
-          {{ formatOptions(item) }}
-        </div>
-        
-        <template v-slot:append>
-          <div class="text-body-1 font-weight-medium">
-            ${{ calculateItemTotal(item).toFixed(2) }}
-          </div>
-        </template>
-      </v-list-item>
-    </v-list>
-    
-    <v-divider></v-divider>
-    
-    <!-- Price Summary -->
-    <v-card-text class="pa-4">
-      <div class="d-flex justify-space-between mb-2">
-        <span class="text-body-1">Subtotal</span>
-        <span class="text-body-1">${{ subtotal.toFixed(2) }}</span>
-      </div>
-      
-      <div v-if="discount > 0" class="d-flex justify-space-between mb-2 text-success">
-        <span class="text-body-1">Discount</span>
-        <span class="text-body-1">-${{ discount.toFixed(2) }}</span>
-      </div>
-      
-      <div v-if="promoCode" class="d-flex justify-space-between mb-2 text-success">
-        <span class="text-body-1">Promo: {{ promoCode }}</span>
-        <span class="text-body-1">-${{ promoDiscount.toFixed(2) }}</span>
-      </div>
-      
-      <div class="d-flex justify-space-between mb-2">
-        <span class="text-body-1">Delivery Fee</span>
-        <span class="text-body-1">${{ deliveryFee.toFixed(2) }}</span>
-      </div>
-      
-      <div v-if="showTip && tip > 0" class="d-flex justify-space-between mb-2">
-        <span class="text-body-1">Tip</span>
-        <span class="text-body-1">${{ tip.toFixed(2) }}</span>
-      </div>
-      
-      <div class="d-flex justify-space-between mb-4">
-        <span class="text-body-1">Tax</span>
-        <span class="text-body-1">${{ tax.toFixed(2) }}</span>
-      </div>
-      
-      <v-divider class="mb-4"></v-divider>
-      
-      <div class="d-flex justify-space-between">
-        <span class="text-h6 font-weight-bold">Total</span>
-        <span class="text-h6 font-weight-bold">${{ total.toFixed(2) }}</span>
-      </div>
-      
-      <slot name="summary-actions"></slot>
+    <v-card-text v-if="loading" class="text-center py-6">
+      <v-progress-circular indeterminate color="primary" size="32"></v-progress-circular>
+      <div class="mt-2">Calculating...</div>
     </v-card-text>
+    
+    <template v-else>
+      <!-- Empty Cart -->
+      <v-card-text v-if="!items || items.length === 0" class="text-center py-6">
+        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-cart-outline</v-icon>
+        <p class="text-body-1 mb-2">Your cart is empty</p>
+        <p class="text-caption text-grey">Add some items to place an order</p>
+      </v-card-text>
+      
+      <!-- Order Items List -->
+      <div v-else>
+        <div class="order-items px-4 py-2">
+          <div
+            v-for="(item, index) in items"
+            :key="index"
+            class="order-item d-flex align-start py-2"
+          >
+            <div class="flex-grow-1">
+              <div class="d-flex align-center">
+                <span class="text-body-1">{{ item.quantity }} × </span>
+                <span class="text-body-1 font-weight-medium ml-2">{{ item.name }}</span>
+              </div>
+              
+              <div v-if="item.options && item.options.length > 0" class="mt-1">
+                <div
+                  v-for="(option, optionIndex) in item.options"
+                  :key="optionIndex"
+                  class="text-caption text-grey-darken-1 ml-5"
+                >
+                  {{ option.name }}: {{ option.value }}
+                </div>
+              </div>
+              
+              <div v-if="item.notes" class="text-caption font-italic text-grey-darken-1 ml-5 mt-1">
+                {{ item.notes }}
+              </div>
+            </div>
+            
+            <div class="text-body-1 text-right ml-4">${{ formatPrice(item.price * item.quantity) }}</div>
+          </div>
+        </div>
+        
+        <v-divider></v-divider>
+        
+        <!-- Minimum Order Warning -->
+        <div 
+          v-if="subtotal < minOrderAmount" 
+          class="px-4 py-2 bg-warning-lighten-5"
+        >
+          <div class="d-flex align-center">
+            <v-icon color="warning" class="mr-2">mdi-alert-circle</v-icon>
+            <div>
+              <div class="text-warning text-body-2">Minimum order amount not met</div>
+              <div class="text-caption">
+                Add ${{ formatPrice(minOrderAmount - subtotal) }} more to place your order
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Cost Breakdown -->
+        <div class="cost-breakdown px-4 py-2">
+          <div class="d-flex justify-space-between mb-2">
+            <span class="text-body-2">Subtotal</span>
+            <span class="text-body-2">${{ formatPrice(subtotal) }}</span>
+          </div>
+          
+          <div class="d-flex justify-space-between mb-2">
+            <span class="text-body-2">Delivery Fee</span>
+            <span class="text-body-2" :class="{ 'text-success': deliveryFee === 0 }">
+              {{ deliveryFee === 0 ? 'Free' : '$' + formatPrice(deliveryFee) }}
+            </span>
+          </div>
+          
+          <div class="d-flex justify-space-between mb-2">
+            <span class="text-body-2">Tax</span>
+            <span class="text-body-2">${{ formatPrice(tax) }}</span>
+          </div>
+          
+          <div v-if="tip > 0" class="d-flex justify-space-between mb-2">
+            <span class="text-body-2">Driver Tip</span>
+            <span class="text-body-2">${{ formatPrice(tip) }}</span>
+          </div>
+          
+          <div v-if="discount > 0" class="d-flex justify-space-between mb-2">
+            <span class="text-body-2 text-success">Discount</span>
+            <span class="text-body-2 text-success">-${{ formatPrice(discount) }}</span>
+          </div>
+          
+          <div v-if="promoCode" class="d-flex justify-space-between mb-2 text-success">
+            <span class="text-body-2">
+              Promo Code: {{ promoCode }}
+              <v-btn
+                density="compact"
+                size="small"
+                variant="text"
+                icon="mdi-close"
+                color="error"
+                @click="removePromo"
+              ></v-btn>
+            </span>
+            <span class="text-body-2">-${{ formatPrice(promoDiscount) }}</span>
+          </div>
+          
+          <v-divider class="my-2"></v-divider>
+          
+          <div class="d-flex justify-space-between mt-2 font-weight-bold">
+            <span class="text-subtitle-1">Total</span>
+            <span class="text-subtitle-1">${{ formatPrice(total) }}</span>
+          </div>
+        </div>
+        
+        <!-- Promo Code Input -->
+        <div v-if="showPromoCodeInput" class="px-4 py-2">
+          <div v-if="!promoCode" class="d-flex align-center">
+            <v-text-field
+              v-model="promoInput"
+              label="Promo Code"
+              placeholder="Enter promo code"
+              variant="outlined"
+              density="compact"
+              hide-details
+              :error="promoError !== null"
+              :disabled="applyingPromo"
+              class="mr-2"
+            ></v-text-field>
+            <v-btn 
+              color="primary" 
+              variant="text" 
+              :loading="applyingPromo" 
+              :disabled="!promoInput || applyingPromo"
+              @click="applyPromoCode"
+            >
+              Apply
+            </v-btn>
+          </div>
+          <div v-if="promoError" class="text-caption text-error mt-1">{{ promoError }}</div>
+        </div>
+        
+        <!-- Fulfillment Time Estimate -->
+        <div v-if="estimatedTime" class="px-4 py-2 bg-grey-lighten-4">
+          <div class="d-flex align-center">
+            <v-icon color="primary" class="mr-2">mdi-clock-outline</v-icon>
+            <span class="text-body-2">Estimated delivery time: {{ estimatedTime }} min</span>
+          </div>
+        </div>
+        
+        <!-- Delivery Instructions -->
+        <div v-if="showDeliveryInstructions" class="px-4 py-2">
+          <v-text-field
+            v-model="specialInstructions"
+            label="Delivery Instructions (optional)"
+            placeholder="E.g., 'Please leave at door', 'Ring doorbell', etc."
+            variant="outlined"
+            density="compact"
+            hint="Special instructions for the delivery driver"
+            @input="updateInstructions"
+          ></v-text-field>
+        </div>
+        
+        <!-- Action Button -->
+        <v-card-actions v-if="showActions">
+          <v-btn
+            block
+            color="primary"
+            size="large"
+            :disabled="isButtonDisabled || loading"
+            :loading="processing"
+            @click="placeOrder"
+          >
+            {{ actionButtonText }}
+          </v-btn>
+        </v-card-actions>
+      </div>
+    </template>
   </v-card>
 </template>
 
 <script>
+import { ref, computed } from 'vue';
+
 export default {
   name: 'OrderSummary',
   
   props: {
-    title: {
-      type: String,
-      default: ''
-    },
     items: {
       type: Array,
-      required: true
+      default: () => []
     },
-    restaurant: {
-      type: Object,
+    restaurantId: {
+      type: [String, Number],
       default: null
     },
-    subtotal: {
+    minOrderAmount: {
       type: Number,
       default: 0
     },
@@ -125,15 +212,15 @@ export default {
       type: Number,
       default: 0
     },
-    tax: {
+    taxRate: {
       type: Number,
-      default: 0
-    },
-    tip: {
-      type: Number,
-      default: 0
+      default: 0.08 // Default 8% tax
     },
     discount: {
+      type: Number,
+      default: 0
+    },
+    promoDiscount: {
       type: Number,
       default: 0
     },
@@ -141,79 +228,168 @@ export default {
       type: String,
       default: ''
     },
-    promoDiscount: {
+    tip: {
       type: Number,
       default: 0
     },
-    showTip: {
+    estimatedTime: {
+      type: [String, Number],
+      default: null
+    },
+    showPromoCodeInput: {
       type: Boolean,
       default: true
     },
-    showSubheaders: {
+    showDeliveryInstructions: {
       type: Boolean,
       default: true
     },
-    editable: {
+    showActions: {
+      type: Boolean,
+      default: true
+    },
+    actionButtonText: {
+      type: String,
+      default: 'Place Order'
+    },
+    loading: {
+      type: Boolean,
+      default: false
+    },
+    processing: {
       type: Boolean,
       default: false
     }
   },
   
-  computed: {
-    total() {
-      return this.subtotal + this.deliveryFee + this.tax + this.tip - this.discount - this.promoDiscount
-    }
-  },
+  emits: [
+    'apply-promo',
+    'remove-promo',
+    'update-instructions',
+    'place-order'
+  ],
   
-  methods: {
-    hasOptions(item) {
-      return item.options && (
-        (Array.isArray(item.options) && item.options.length > 0) ||
-        (typeof item.options === 'object' && Object.keys(item.options).length > 0)
-      )
-    },
+  setup(props, { emit }) {
+    // Local state
+    const promoInput = ref('');
+    const promoError = ref(null);
+    const applyingPromo = ref(false);
+    const specialInstructions = ref('');
     
-    formatOptions(item) {
-      if (!item.options) return ''
-      
-      if (Array.isArray(item.options)) {
-        return item.options.join(', ')
-      } else if (typeof item.options === 'object') {
-        // Handle case where options is an object with addons, size, etc.
-        const optionParts = []
-        
-        if (item.options.size) {
-          optionParts.push(`Size: ${item.options.size}`)
-        }
-        
-        if (item.options.addons && Array.isArray(item.options.addons) && item.options.addons.length > 0) {
-          optionParts.push(`Add-ons: ${item.options.addons.join(', ')}`)
-        }
-        
-        return optionParts.join(' | ')
+    // Computed properties
+    const itemCount = computed(() => {
+      return props.items.reduce((count, item) => count + item.quantity, 0);
+    });
+    
+    const subtotal = computed(() => {
+      return props.items.reduce((total, item) => total + (item.price * item.quantity), 0);
+    });
+    
+    const tax = computed(() => {
+      return subtotal.value * props.taxRate;
+    });
+    
+    const total = computed(() => {
+      return subtotal.value + props.deliveryFee + tax.value + props.tip - props.discount - props.promoDiscount;
+    });
+    
+    const isButtonDisabled = computed(() => {
+      // Check if subtotal is less than minimum order amount
+      if (subtotal.value < props.minOrderAmount) {
+        return true;
       }
       
-      return ''
-    },
-    
-    calculateItemTotal(item) {
-      let total = item.price * item.quantity
-      
-      // Add option prices if available
-      if (item.optionPrice) {
-        total += item.optionPrice * item.quantity
+      // Check if cart is empty
+      if (!props.items || props.items.length === 0) {
+        return true;
       }
       
-      return total
-    }
+      return false;
+    });
+    
+    // Methods
+    const formatPrice = (price) => {
+      return price.toFixed(2);
+    };
+    
+    const applyPromoCode = async () => {
+      if (!promoInput.value) return;
+      
+      applyingPromo.value = true;
+      promoError.value = null;
+      
+      try {
+        emit('apply-promo', promoInput.value);
+        promoInput.value = ''; // Clear input on success
+      } catch (error) {
+        promoError.value = error.message || 'Invalid promo code';
+      } finally {
+        applyingPromo.value = false;
+      }
+    };
+    
+    const removePromo = () => {
+      emit('remove-promo');
+      promoInput.value = '';
+      promoError.value = null;
+    };
+    
+    const updateInstructions = () => {
+      emit('update-instructions', specialInstructions.value);
+    };
+    
+    const placeOrder = () => {
+      if (isButtonDisabled.value) return;
+      
+      emit('place-order', {
+        items: props.items,
+        subtotal: subtotal.value,
+        deliveryFee: props.deliveryFee,
+        tax: tax.value,
+        tip: props.tip,
+        total: total.value,
+        specialInstructions: specialInstructions.value,
+        promoCode: props.promoCode
+      });
+    };
+    
+    return {
+      promoInput,
+      promoError,
+      applyingPromo,
+      specialInstructions,
+      itemCount,
+      subtotal,
+      tax,
+      total,
+      isButtonDisabled,
+      
+      formatPrice,
+      applyPromoCode,
+      removePromo,
+      updateInstructions,
+      placeOrder
+    };
   }
-}
+};
 </script>
 
 <style scoped>
-.item-quantity {
-  min-width: 30px;
-  text-align: center;
-  font-weight: 500;
+.order-summary {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.order-items {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.order-item {
+  border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
+}
+
+.order-item:last-child {
+  border-bottom: none;
 }
 </style>

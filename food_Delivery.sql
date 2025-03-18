@@ -125,6 +125,47 @@ CREATE TABLE reviews (
     FOREIGN KEY (product_id) REFERENCES products(id)
 );
 
+-- Create banners table
+CREATE TABLE IF NOT EXISTS banners (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  image VARCHAR(255) NOT NULL,
+  position ENUM('home_top', 'home_middle', 'sidebar') DEFAULT 'home_top',
+  link VARCHAR(255),
+  active BOOLEAN DEFAULT true,
+  expiryDate DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create static_pages table
+CREATE TABLE IF NOT EXISTS static_pages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  published BOOLEAN DEFAULT false,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create site_config table
+CREATE TABLE IF NOT EXISTS site_config (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  contactEmail VARCHAR(255),
+  supportPhone VARCHAR(50),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Add indexes
+CREATE INDEX idx_banner_position ON banners(position);
+CREATE INDEX idx_banner_active ON banners(active);
+CREATE INDEX idx_page_slug ON static_pages(slug);
+CREATE INDEX idx_page_published ON static_pages(published);
+
 -- Insert sample users with simple plaintext passwords
 INSERT INTO users (username, password, email, full_name, phone, address, role) VALUES
 ('john_doe', 'password123', 'john@example.com', 'John Doe', '+1234567890', '123 Main St, City', 'customer'),

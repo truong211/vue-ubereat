@@ -11,6 +11,7 @@ import categories from './modules/categories'
 import restaurants from './modules/restaurants'
 import websocketService from '@/services/websocket'
 import chat from './modules/chat'
+import notifications from './modules/notifications'
 
 // Create a new store instance.
 export default createStore({
@@ -114,6 +115,20 @@ export default createStore({
     // Generic WebSocket message sender
     sendWebSocketMessage(_, { type, payload }) {
       websocketService.send(type, payload)
+    },
+    
+    // Handle incoming push notification
+    handlePushNotification({ dispatch }, notification) {
+      // Add to notifications module
+      dispatch('notifications/handlePushNotification', notification);
+      
+      // Play notification sound if enabled
+      if (notification.sound !== false) {
+        const audio = new Audio('/sounds/notification.mp3');
+        audio.play().catch(error => {
+          console.error('Failed to play notification sound:', error);
+        });
+      }
     }
   },
 
@@ -137,6 +152,7 @@ export default createStore({
     orderTracking,
     categories,
     restaurants,
-    chat
+    chat,
+    notifications
   }
 })

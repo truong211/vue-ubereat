@@ -62,6 +62,10 @@ const User = sequelize.define('User', {
   lastLogin: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  isEmailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 }, {
   timestamps: true,
@@ -92,4 +96,4 @@ User.prototype.toJSON = function() {
   return values;
 };
 
-module.exports = User; 
+module.exports = User;

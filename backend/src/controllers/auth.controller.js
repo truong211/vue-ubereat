@@ -4,6 +4,7 @@ const { validationResult } = require('express-validator');
 const { User } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
+const nodemailer = require('nodemailer');
 
 /**
  * Generate JWT token
@@ -20,6 +21,44 @@ const generateToken = (id) => {
 const generateRefreshToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN
+  });
+};
+
+/**
+ * Generate email verification token
+ */
+const generateVerificationToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_EMAIL_SECRET, {
+    expiresIn: '24h'
+  });
+};
+
+/**
+ * Send verification email
+ */
+const sendVerificationEmail = async (user, verificationToken) => {
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT,
+    secure: process.env.EMAIL_SECURE === 'true',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS
+    }
+  });
+
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to: user.email,
+    subject: 'Verify your email address',
+    html: `
+      <h1>Welcome to Food Delivery!</h1>
+      <p>Please click the link below to verify your email address:</p>
+      <a href="${verificationUrl}">${verificationUrl}</a>
+      <p>This link will expire in 24 hours.</p>
+    `
   });
 };
 
@@ -60,26 +99,70 @@ exports.register = async (req, res, next) => {
       fullName,
       phone,
       address,
-      role: role || 'customer'
+      role: role || 'customer',
+      isEmailVerified: false
     });
+
+    // Generate verification token
+    const verificationToken = generateVerificationToken(user.id);
+
+    // Send verification email
+    await sendVerificationEmail(user, verificationToken);
 
     // Generate tokens
     const token = generateToken(user.id);
     const refreshToken = generateRefreshToken(user.id);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
 
     res.status(201).json({
       status: 'success',
       token,
       refreshToken,
       data: {
-        user
+        user,
+        message: 'Registration successful. Please verify your email address.'
       }
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Verify email
+ * @route GET /api/auth/verify-email/:token
+ * @access Public
+ */
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_EMAIL_SECRET);
+
+    // Find and update user
+    const user = await User.findByPk(decoded.id);
+    if (!user) {
+      return next(new AppError('Invalid verification token', 400));
+    }
+
+    if (user.isEmailVerified) {
+      return next(new AppError('Email already verified', 400));
+    }
+
+    user.isEmailVerified = true;
+    await user.save();
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Email verified successfully'
+    });
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return next(new AppError('Invalid verification token', 400));
+    }
+    if (error.name === 'TokenExpiredError') {
+      return next(new AppError('Verification token has expired', 400));
+    }
     next(error);
   }
 };
@@ -308,4 +391,4 @@ exports.logout = (req, res) => {
     status: 'success',
     message: 'Logged out successfully'
   });
-}; 
+};

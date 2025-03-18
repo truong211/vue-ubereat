@@ -27,7 +27,13 @@ export default {
     categories: [],
     socket: null,
     loading: false,
-    error: null
+    error: null,
+    settings: {
+      openingHours: null,
+      deliverySettings: null,
+      notificationPreferences: null,
+      specialHolidays: []
+    }
   },
 
   mutations: {
@@ -118,6 +124,21 @@ export default {
     },
     setError(state, error) {
       state.error = error
+    },
+    SET_RESTAURANT_SETTINGS(state, settings) {
+      state.settings = settings;
+    },
+    UPDATE_OPENING_HOURS(state, hours) {
+      state.settings.openingHours = hours;
+    },
+    UPDATE_DELIVERY_SETTINGS(state, settings) {
+      state.settings.deliverySettings = settings;
+    },
+    UPDATE_NOTIFICATION_PREFERENCES(state, preferences) {
+      state.settings.notificationPreferences = preferences;
+    },
+    UPDATE_SPECIAL_HOLIDAYS(state, holidays) {
+      state.settings.specialHolidays = holidays;
     }
   },
 
@@ -358,6 +379,74 @@ export default {
       })
 
       commit('setSocket', socket)
+    },
+
+    async fetchRestaurantSettings({ commit }, restaurantId) {
+      try {
+        const response = await axios.get(`/api/restaurants/${restaurantId}`);
+        const { openingHours, deliverySettings, notificationPreferences, specialHolidays } = response.data.data.restaurant;
+        
+        commit('SET_RESTAURANT_SETTINGS', {
+          openingHours,
+          deliverySettings,
+          notificationPreferences,
+          specialHolidays: specialHolidays || []
+        });
+        
+        return response.data.data.restaurant;
+      } catch (error) {
+        console.error('Error fetching restaurant settings:', error);
+        throw error;
+      }
+    },
+
+    async updateRestaurantSettings({ commit }, { restaurantId, section, data }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${restaurantId}/settings`, {
+          [section]: data
+        });
+        
+        const mutationMap = {
+          openingHours: 'UPDATE_OPENING_HOURS',
+          deliverySettings: 'UPDATE_DELIVERY_SETTINGS',
+          notificationPreferences: 'UPDATE_NOTIFICATION_PREFERENCES'
+        };
+        
+        if (mutationMap[section]) {
+          commit(mutationMap[section], data);
+        }
+        
+        return response.data;
+      } catch (error) {
+        console.error('Error updating restaurant settings:', error);
+        throw error;
+      }
+    },
+
+    async updateSpecialHolidays({ commit }, { restaurantId, holidays }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${restaurantId}/holidays`, {
+          specialHolidays: holidays
+        });
+        
+        commit('UPDATE_SPECIAL_HOLIDAYS', holidays);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating special holidays:', error);
+        throw error;
+      }
+    },
+
+    async checkRestaurantAvailability({ commit }, { restaurantId, date }) {
+      try {
+        const response = await axios.get(`/api/restaurants/${restaurantId}/availability`, {
+          params: { date }
+        });
+        return response.data.data;
+      } catch (error) {
+        console.error('Error checking restaurant availability:', error);
+        throw error;
+      }
     }
   },
 

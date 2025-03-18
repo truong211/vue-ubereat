@@ -1,522 +1,482 @@
 import axios from 'axios'
+import { adminWebSocket } from '@/services/adminWebSocket.service';
+
+const state = {
+  // Dashboard stats
+  stats: {
+    orders: { total: 0, growth: 0 },
+    revenue: { total: 0, growth: 0 },
+    users: { total: 0, growth: 0 },
+    restaurants: { total: 0, growth: 0 }
+  },
+  restaurantStats: {
+    pending: 0,
+    active: 0,
+    suspended: 0
+  },
+  userStats: {
+    reported: 0,
+    suspended: 0
+  },
+  analyticsData: {
+    orderTrend: [],
+    revenueTrend: [],
+    userGrowth: [],
+    popularCategories: [],
+    topCities: []
+  },
+
+  // Recent activities
+  recentOrders: [],
+  recentUsers: [],
+  recentRestaurants: [],
+  recentActivities: {
+    orders: [],
+    users: [],
+    restaurants: []
+  },
+
+  // Notifications
+  notifications: [],
+  
+  // Content management
+  banners: [],
+  staticPages: [],
+  siteConfig: null,
+  
+  // Resource management
+  pendingRestaurants: 0,
+
+  preferences: {
+    notificationSound: true,
+    emailNotifications: true,
+    monitoredRestaurants: [],
+    monitoredUsers: []
+  },
+  monitoredEntities: {
+    restaurants: new Set(),
+    users: new Set()
+  },
+  systemAlerts: []
+}
+
+const mutations = {
+  SET_STATS(state, stats) {
+    state.stats = stats
+  },
+  SET_RESTAURANT_STATS(state, stats) {
+    state.restaurantStats = stats
+  },
+  SET_ANALYTICS_DATA(state, data) {
+    state.analyticsData = data
+  },
+  SET_RECENT_ACTIVITIES(state, { orders, users, restaurants }) {
+    state.recentOrders = orders
+    state.recentUsers = users
+    state.recentRestaurants = restaurants
+  },
+  ADD_NOTIFICATION(state, notification) {
+    state.notifications.unshift({
+      id: Date.now(),
+      timestamp: new Date(),
+      read: false,
+      ...notification
+    });
+  },
+  MARK_NOTIFICATIONS_READ(state) {
+    state.notifications = state.notifications.map(n => ({ ...n, read: true }))
+  },
+  SET_BANNERS(state, banners) {
+    state.banners = banners
+  },
+  SET_STATIC_PAGES(state, pages) {
+    state.staticPages = pages
+  },
+  SET_SITE_CONFIG(state, config) {
+    state.siteConfig = config
+  },
+  SET_PENDING_RESTAURANTS(state, count) {
+    state.pendingRestaurants = count
+  },
+  UPDATE_RESTAURANT_STATS(state, { type, value }) {
+    if (type in state.restaurantStats) {
+      state.restaurantStats[type] = value;
+    }
+  },
+  UPDATE_USER_STATS(state, { type, value }) {
+    if (type in state.userStats) {
+      state.userStats[type] = value;
+    }
+  },
+  ADD_RECENT_ACTIVITY(state, { type, activity }) {
+    if (type in state.recentActivities) {
+      state.recentActivities[type].unshift(activity);
+      state.recentActivities[type] = state.recentActivities[type].slice(0, 10);
+    }
+  },
+  UPDATE_PREFERENCES(state, preferences) {
+    state.preferences = { ...state.preferences, ...preferences };
+  },
+  ADD_MONITORED_ENTITY(state, { type, id }) {
+    if (type in state.monitoredEntities) {
+      state.monitoredEntities[type].add(id);
+    }
+  },
+  REMOVE_MONITORED_ENTITY(state, { type, id }) {
+    if (type in state.monitoredEntities) {
+      state.monitoredEntities[type].delete(id);
+    }
+  },
+  ADD_SYSTEM_ALERT(state, alert) {
+    state.systemAlerts.unshift({
+      id: Date.now(),
+      timestamp: new Date(),
+      ...alert
+    });
+  },
+  CLEAR_SYSTEM_ALERT(state, alertId) {
+    state.systemAlerts = state.systemAlerts.filter(alert => alert.id !== alertId);
+  }
+}
+
+const actions = {
+  async fetchDashboardData({ commit }) {
+    try {
+      const [statsRes, analyticsRes, activitiesRes] = await Promise.all([
+        axios.get('/api/admin/stats'),
+        axios.get('/api/admin/analytics'),
+        axios.get('/api/admin/recent-activities')
+      ])
+
+      commit('SET_STATS', statsRes.data.data.stats)
+      commit('SET_RESTAURANT_STATS', statsRes.data.data.restaurantStats)
+      commit('SET_ANALYTICS_DATA', analyticsRes.data.data)
+      commit('SET_RECENT_ACTIVITIES', activitiesRes.data.data)
+      commit('SET_PENDING_RESTAURANTS', statsRes.data.data.restaurantStats.pending)
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error)
+      throw error
+    }
+  },
+
+  async updateRestaurantStatus({ dispatch }, { id, status, adminNotes }) {
+    try {
+      await axios.patch(`/api/admin/restaurants/${id}/status`, { status, adminNotes })
+      dispatch('fetchDashboardData')
+    } catch (error) {
+      console.error('Failed to update restaurant status:', error)
+      throw error
+    }
+  },
+
+  async updateUserStatus({ dispatch }, { id, status }) {
+    try {
+      await axios.patch(`/api/admin/users/${id}/status`, { status })
+      dispatch('fetchDashboardData')
+    } catch (error) {
+      console.error('Failed to update user status:', error)
+      throw error
+    }
+  },
+
+  // Content Management
+  async fetchBanners({ commit }) {
+    try {
+      const res = await axios.get('/api/admin/banners')
+      commit('SET_BANNERS', res.data)
+    } catch (error) {
+      console.error('Failed to fetch banners:', error)
+      throw error
+    }
+  },
+
+  async createBanner({ dispatch }, formData) {
+    try {
+      await axios.post('/api/admin/banners', formData)
+      dispatch('fetchBanners')
+    } catch (error) {
+      console.error('Failed to create banner:', error)
+      throw error
+    }
+  },
+
+  async updateBanner({ dispatch }, { id, formData }) {
+    try {
+      await axios.put(`/api/admin/banners/${id}`, formData)
+      dispatch('fetchBanners')
+    } catch (error) {
+      console.error('Failed to update banner:', error)
+      throw error
+    }
+  },
+
+  async deleteBanner({ dispatch }, id) {
+    try {
+      await axios.delete(`/api/admin/banners/${id}`)
+      dispatch('fetchBanners')
+    } catch (error) {
+      console.error('Failed to delete banner:', error)
+      throw error
+    }
+  },
+
+  async fetchStaticPages({ commit }) {
+    try {
+      const res = await axios.get('/api/admin/pages')
+      commit('SET_STATIC_PAGES', res.data)
+    } catch (error) {
+      console.error('Failed to fetch static pages:', error)
+      throw error
+    }
+  },
+
+  async createStaticPage({ dispatch }, pageData) {
+    try {
+      await axios.post('/api/admin/pages', pageData)
+      dispatch('fetchStaticPages')
+    } catch (error) {
+      console.error('Failed to create static page:', error)
+      throw error
+    }
+  },
+
+  async updateStaticPage({ dispatch }, { id, pageData }) {
+    try {
+      await axios.put(`/api/admin/pages/${id}`, pageData)
+      dispatch('fetchStaticPages')
+    } catch (error) {
+      console.error('Failed to update static page:', error)
+      throw error
+    }
+  },
+
+  async deleteStaticPage({ dispatch }, id) {
+    try {
+      await axios.delete(`/api/admin/pages/${id}`)
+      dispatch('fetchStaticPages')
+    } catch (error) {
+      console.error('Failed to delete static page:', error)
+      throw error
+    }
+  },
+
+  async fetchSiteConfig({ commit }) {
+    try {
+      const res = await axios.get('/api/admin/config')
+      commit('SET_SITE_CONFIG', res.data)
+    } catch (error) {
+      console.error('Failed to fetch site config:', error)
+      throw error
+    }
+  },
+
+  async updateSiteConfig({ dispatch }, configData) {
+    try {
+      await axios.put('/api/admin/config', configData)
+      dispatch('fetchSiteConfig')
+    } catch (error) {
+      console.error('Failed to update site config:', error)
+      throw error
+    }
+  },
+
+  markNotificationsAsRead({ commit }) {
+    commit('MARK_NOTIFICATIONS_READ')
+  },
+
+  initWebSocket({ commit, state }) {
+    adminWebSocket.connect();
+  },
+
+  // Restaurant monitoring
+  async monitorRestaurant({ commit }, restaurantId) {
+    adminWebSocket.monitorRestaurant(restaurantId);
+    commit('ADD_MONITORED_ENTITY', { type: 'restaurants', id: restaurantId });
+  },
+
+  async stopMonitoringRestaurant({ commit }, restaurantId) {
+    adminWebSocket.stopMonitoringRestaurant(restaurantId);
+    commit('REMOVE_MONITORED_ENTITY', { type: 'restaurants', id: restaurantId });
+  },
+
+  // User monitoring
+  async monitorUser({ commit }, userId) {
+    adminWebSocket.monitorUser(userId);
+    commit('ADD_MONITORED_ENTITY', { type: 'users', id: userId });
+  },
+
+  async stopMonitoringUser({ commit }, userId) {
+    adminWebSocket.stopMonitoringUser(userId);
+    commit('REMOVE_MONITORED_ENTITY', { type: 'users', id: userId });
+  },
+
+  // WebSocket event handlers
+  handleNewRestaurantApplication({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'RESTAURANT_APPLICATION',
+      title: 'New Restaurant Application',
+      message: `${data.name} has applied for registration`,
+      data
+    });
+    commit('UPDATE_RESTAURANT_STATS', { type: 'pending', value: data.pendingCount });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'restaurants',
+      activity: {
+        type: 'application',
+        restaurantId: data.restaurantId,
+        name: data.name,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleRestaurantStatusChange({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'RESTAURANT_STATUS',
+      title: 'Restaurant Status Changed',
+      message: `Restaurant ${data.restaurantId} status changed to ${data.action}`,
+      data
+    });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'restaurants',
+      activity: {
+        type: 'status_change',
+        restaurantId: data.restaurantId,
+        action: data.action,
+        reason: data.reason,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleUserReport({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'USER_REPORT',
+      title: 'User Reported',
+      message: `User ${data.reportedUserId} reported for ${data.reason}`,
+      data
+    });
+    commit('UPDATE_USER_STATS', { type: 'reported', value: data.reportedCount });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'users',
+      activity: {
+        type: 'report',
+        userId: data.reportedUserId,
+        reason: data.reason,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleUserStatusChange({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'USER_STATUS',
+      title: 'User Status Changed',
+      message: `User ${data.userId} status changed to ${data.action}`,
+      data
+    });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'users',
+      activity: {
+        type: 'status_change',
+        userId: data.userId,
+        action: data.action,
+        reason: data.reason,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleOrderIssue({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'ORDER_ISSUE',
+      title: 'Order Issue Reported',
+      message: `Issue reported for order #${data.orderId}: ${data.message}`,
+      data
+    });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'orders',
+      activity: {
+        type: 'issue',
+        orderId: data.orderId,
+        issue: data.message,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleDeliveryIssue({ commit }, data) {
+    commit('ADD_NOTIFICATION', {
+      type: 'DELIVERY_ISSUE',
+      title: 'Delivery Issue',
+      message: `Delivery issue for order #${data.orderId}: ${data.status}`,
+      data
+    });
+    commit('ADD_RECENT_ACTIVITY', {
+      type: 'orders',
+      activity: {
+        type: 'delivery_issue',
+        orderId: data.orderId,
+        status: data.status,
+        driverId: data.driverId,
+        timestamp: data.timestamp
+      }
+    });
+  },
+
+  handleSystemAlert({ commit }, data) {
+    commit('ADD_SYSTEM_ALERT', data);
+    commit('ADD_NOTIFICATION', {
+      type: 'SYSTEM_ALERT',
+      title: 'System Alert',
+      message: data.message,
+      data
+    });
+  },
+
+  // Restaurant actions
+  async takeRestaurantAction({ commit }, { restaurantId, action, reason }) {
+    adminWebSocket.restaurantAction(restaurantId, action, reason);
+  },
+
+  // User actions
+  async takeUserAction({ commit }, { userId, action, reason }) {
+    adminWebSocket.userAction(userId, action, reason);
+  },
+
+  // System alerts
+  async emitSystemAlert({ commit }, alert) {
+    adminWebSocket.emitSystemAlert(alert);
+  },
+
+  // Preferences
+  updatePreferences({ commit }, preferences) {
+    commit('UPDATE_PREFERENCES', preferences);
+    // Save to localStorage or backend if needed
+  }
+}
+
+const getters = {
+  unreadNotifications: state => state.notifications.filter(n => !n.read),
+  pendingRestaurantsCount: state => state.restaurantStats.pending,
+  notificationCount: state => state.notifications.length,
+  unreadNotificationCount: (_, getters) => getters.unreadNotifications.length,
+  
+  activeSystemAlerts: state => state.systemAlerts.filter(alert => !alert.resolved),
+  systemAlertCount: (_, getters) => getters.activeSystemAlerts.length,
+  
+  isMonitoringRestaurant: state => restaurantId => state.monitoredEntities.restaurants.has(restaurantId),
+  isMonitoringUser: state => userId => state.monitoredEntities.users.has(userId),
+  
+  recentOrderActivities: state => state.recentActivities.orders,
+  recentUserActivities: state => state.recentActivities.users,
+  recentRestaurantActivities: state => state.recentActivities.restaurants
+}
 
 export default {
   namespaced: true,
-  
-  state: {
-    users: [],
-    restaurants: [],
-    drivers: [],
-    categories: [],
-    promotions: [],
-    stats: {
-      totalOrders: 0,
-      totalRevenue: 0,
-      totalUsers: 0,
-      totalRestaurants: 0,
-      totalDrivers: 0
-    },
-    loading: false,
-    error: null
-  },
-  
-  mutations: {
-    setLoading(state, status) {
-      state.loading = status
-    },
-    
-    setError(state, error) {
-      state.error = error
-    },
-    
-    setUsers(state, users) {
-      state.users = users
-    },
-    
-    addUser(state, user) {
-      state.users.push(user)
-    },
-    
-    updateUser(state, updatedUser) {
-      const index = state.users.findIndex(user => user.id === updatedUser.id)
-      if (index !== -1) {
-        state.users.splice(index, 1, updatedUser)
-      }
-    },
-    
-    removeUser(state, userId) {
-      state.users = state.users.filter(user => user.id !== userId)
-    },
-    
-    setRestaurants(state, restaurants) {
-      state.restaurants = restaurants
-    },
-    
-    addRestaurant(state, restaurant) {
-      state.restaurants.push(restaurant)
-    },
-    
-    updateRestaurant(state, updatedRestaurant) {
-      const index = state.restaurants.findIndex(restaurant => restaurant.id === updatedRestaurant.id)
-      if (index !== -1) {
-        state.restaurants.splice(index, 1, updatedRestaurant)
-      }
-    },
-    
-    removeRestaurant(state, restaurantId) {
-      state.restaurants = state.restaurants.filter(restaurant => restaurant.id !== restaurantId)
-    },
-    
-    setDrivers(state, drivers) {
-      state.drivers = drivers
-    },
-    
-    addDriver(state, driver) {
-      state.drivers.push(driver)
-    },
-    
-    updateDriver(state, updatedDriver) {
-      const index = state.drivers.findIndex(driver => driver.id === updatedDriver.id)
-      if (index !== -1) {
-        state.drivers.splice(index, 1, updatedDriver)
-      }
-    },
-    
-    removeDriver(state, driverId) {
-      state.drivers = state.drivers.filter(driver => driver.id !== driverId)
-    },
-    
-    setCategories(state, categories) {
-      state.categories = categories
-    },
-    
-    addCategory(state, category) {
-      state.categories.push(category)
-    },
-    
-    updateCategory(state, updatedCategory) {
-      const index = state.categories.findIndex(category => category.id === updatedCategory.id)
-      if (index !== -1) {
-        state.categories.splice(index, 1, updatedCategory)
-      }
-    },
-    
-    removeCategory(state, categoryId) {
-      state.categories = state.categories.filter(category => category.id !== categoryId)
-    },
-    
-    setPromotions(state, promotions) {
-      state.promotions = promotions
-    },
-    
-    addPromotion(state, promotion) {
-      state.promotions.push(promotion)
-    },
-    
-    updatePromotion(state, updatedPromotion) {
-      const index = state.promotions.findIndex(promotion => promotion.id === updatedPromotion.id)
-      if (index !== -1) {
-        state.promotions.splice(index, 1, updatedPromotion)
-      }
-    },
-    
-    removePromotion(state, promotionId) {
-      state.promotions = state.promotions.filter(promotion => promotion.id !== promotionId)
-    },
-    
-    setStats(state, stats) {
-      state.stats = { ...state.stats, ...stats }
-    }
-  },
-  
-  actions: {
-    // User management actions
-    async fetchUsers({ commit }, { page = 1, limit = 10, filter = '' } = {}) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/users', {
-          params: { page, limit, filter }
-        })
-        commit('setUsers', response.data.users)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch users'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async createUser({ commit }, userData) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.post('/api/admin/users', userData)
-        commit('addUser', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to create user'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async updateUser({ commit }, { id, ...userData }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.put(`/api/admin/users/${id}`, userData)
-        commit('updateUser', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to update user'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async deleteUser({ commit }, userId) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        await axios.delete(`/api/admin/users/${userId}`)
-        commit('removeUser', userId)
-        commit('setLoading', false)
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to delete user'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    // Restaurant management actions
-    async fetchRestaurants({ commit }, { page = 1, limit = 10, filter = '' } = {}) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/restaurants', {
-          params: { page, limit, filter }
-        })
-        commit('setRestaurants', response.data.restaurants)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch restaurants'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async createRestaurant({ commit }, restaurantData) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.post('/api/admin/restaurants', restaurantData)
-        commit('addRestaurant', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to create restaurant'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async updateRestaurant({ commit }, { id, ...restaurantData }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.put(`/api/admin/restaurants/${id}`, restaurantData)
-        commit('updateRestaurant', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to update restaurant'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async deleteRestaurant({ commit }, restaurantId) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        await axios.delete(`/api/admin/restaurants/${restaurantId}`)
-        commit('removeRestaurant', restaurantId)
-        commit('setLoading', false)
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to delete restaurant'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async approveRestaurant({ commit }, restaurantId) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.put(`/api/admin/restaurants/${restaurantId}/approve`)
-        commit('updateRestaurant', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to approve restaurant'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    // Driver management actions
-    async fetchDrivers({ commit }, { page = 1, limit = 10, filter = '' } = {}) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/drivers', {
-          params: { page, limit, filter }
-        })
-        commit('setDrivers', response.data.drivers)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch drivers'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    // Category management actions
-    async fetchCategories({ commit }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/categories')
-        commit('setCategories', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch categories'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async createCategory({ commit }, categoryData) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.post('/api/admin/categories', categoryData)
-        commit('addCategory', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to create category'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async updateCategory({ commit }, { id, ...categoryData }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.put(`/api/admin/categories/${id}`, categoryData)
-        commit('updateCategory', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to update category'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async deleteCategory({ commit }, categoryId) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        await axios.delete(`/api/admin/categories/${categoryId}`)
-        commit('removeCategory', categoryId)
-        commit('setLoading', false)
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to delete category'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    // Promotion management actions
-    async fetchPromotions({ commit }, { page = 1, limit = 10, filter = '' } = {}) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/promotions', {
-          params: { page, limit, filter }
-        })
-        commit('setPromotions', response.data.promotions)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch promotions'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async createPromotion({ commit }, promotionData) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.post('/api/admin/promotions', promotionData)
-        commit('addPromotion', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to create promotion'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async updatePromotion({ commit }, { id, ...promotionData }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.put(`/api/admin/promotions/${id}`, promotionData)
-        commit('updatePromotion', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to update promotion'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    async deletePromotion({ commit }, promotionId) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        await axios.delete(`/api/admin/promotions/${promotionId}`)
-        commit('removePromotion', promotionId)
-        commit('setLoading', false)
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to delete promotion'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    },
-    
-    // Dashboard statistics
-    async fetchDashboardStats({ commit }) {
-      commit('setLoading', true)
-      commit('setError', null)
-      
-      try {
-        const response = await axios.get('/api/admin/stats/dashboard')
-        commit('setStats', response.data)
-        commit('setLoading', false)
-        return response.data
-      } catch (error) {
-        const errorMsg = error.response?.data?.message || 'Failed to fetch dashboard statistics'
-        commit('setError', errorMsg)
-        commit('setLoading', false)
-        throw errorMsg
-      }
-    }
-  },
-  
-  getters: {
-    loading: state => state.loading,
-    error: state => state.error,
-    users: state => state.users,
-    restaurants: state => state.restaurants,
-    drivers: state => state.drivers,
-    categories: state => state.categories,
-    promotions: state => state.promotions,
-    stats: state => state.stats,
-    
-    // User getters
-    getUserById: state => id => {
-      return state.users.find(user => user.id === id)
-    },
-    
-    usersByRole: state => role => {
-      return state.users.filter(user => user.role === role)
-    },
-    
-    // Restaurant getters
-    getRestaurantById: state => id => {
-      return state.restaurants.find(restaurant => restaurant.id === id)
-    },
-    
-    pendingRestaurants: state => {
-      return state.restaurants.filter(restaurant => restaurant.status === 'pending')
-    },
-    
-    activeRestaurants: state => {
-      return state.restaurants.filter(restaurant => restaurant.status === 'active')
-    },
-    
-    // Driver getters
-    getDriverById: state => id => {
-      return state.drivers.find(driver => driver.id === id)
-    },
-    
-    activeDrivers: state => {
-      return state.drivers.filter(driver => driver.isActive)
-    },
-    
-    // Category getters
-    getCategoryById: state => id => {
-      return state.categories.find(category => category.id === id)
-    },
-    
-    // Promotion getters
-    getPromotionById: state => id => {
-      return state.promotions.find(promotion => promotion.id === id)
-    },
-    
-    activePromotions: state => {
-      return state.promotions.filter(promotion => promotion.isActive)
-    }
-  }
+  state,
+  mutations,
+  actions,
+  getters
 }

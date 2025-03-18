@@ -1,11 +1,8 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const config = require('../config/database');
-
-// Map to store user socket connections
-const userSockets = new Map();
-// Map to store order tracking rooms
-const orderRooms = new Map();
+const { userSockets, orderRooms, setIO, getIO } = require('./socketState');
+const { handleAdminEvents } = require('./adminHandlers');
 
 function initializeSocketIO(server) {
   const io = new Server(server, {
@@ -15,6 +12,9 @@ function initializeSocketIO(server) {
       credentials: true
     }
   });
+
+  // Store io instance
+  setIO(io);
 
   // Middleware to authenticate socket connections
   io.use(async (socket, next) => {
@@ -32,21 +32,36 @@ function initializeSocketIO(server) {
     }
   });
 
-  // Namespace for customers
+  // Admin namespace with role check middleware
+  const adminIo = io.of('/admin');
+  adminIo.use((socket, next) => {
+    if (socket.user && socket.user.role === 'admin') {
+      next();
+    } else {
+      next(new Error('Unauthorized: Admin access required'));
+    }
+  });
+
+  // Handle admin connections
+  adminIo.on('connection', (socket) => {
+    handleAdminEvents(socket, adminIo);
+  });
+
+  // Customer namespace
   const customerIo = io.of('/customer');
   customerIo.on('connection', (socket) => {
     console.log(`Customer connected: ${socket.user.id}`);
     handleCustomerEvents(socket, customerIo);
   });
 
-  // Namespace for restaurants
+  // Restaurant namespace
   const restaurantIo = io.of('/restaurant');
   restaurantIo.on('connection', (socket) => {
     console.log(`Restaurant connected: ${socket.user.id}`);
     handleRestaurantEvents(socket, restaurantIo);
   });
 
-  // Namespace for drivers
+  // Driver namespace
   const driverIo = io.of('/driver');
   driverIo.on('connection', (socket) => {
     console.log(`Driver connected: ${socket.user.id}`);
@@ -114,6 +129,17 @@ function handleRestaurantEvents(socket, io) {
       status,
       updatedAt: new Date().toISOString()
     });
+
+    // Notify admins of important status changes
+    if (['cancelled', 'rejected'].includes(status)) {
+      const adminIo = io.of('/admin');
+      adminIo.emit('order_status_alert', {
+        orderId,
+        restaurantId,
+        status,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   // Handle chat messages
@@ -168,6 +194,17 @@ function handleDriverEvents(socket, io) {
       status,
       updatedAt: new Date().toISOString()
     });
+
+    // Notify admins of delivery issues
+    if (['delivery_failed', 'cannot_deliver'].includes(status)) {
+      const adminIo = io.of('/admin');
+      adminIo.emit('delivery_issue', {
+        orderId,
+        driverId,
+        status,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   // Handle chat messages
@@ -203,6 +240,7 @@ function emitToUser(userId, event, data) {
 // Utility function to emit events to order rooms
 function emitToOrder(orderId, event, data) {
   const roomName = `order:${orderId}`;
+  const io = getIO();
   if (io) {
     io.to(roomName).emit(event, data);
   }

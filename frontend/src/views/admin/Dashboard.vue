@@ -220,440 +220,105 @@
 </template>
 
 <script>
-import AlertsPanel from '@/components/admin/AlertsPanel.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { adminAPI } from '@/services/api.service'
 import { useToast } from 'vue-toastification'
-import VChart from 'vue-echarts'
-import * as echarts from 'echarts/core'
-import { LineChart, BarChart, PieChart } from 'echarts/charts'
-import { TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
-
-// Register ECharts components
-echarts.use([
-  TooltipComponent,
-  GridComponent,
-  LegendComponent,
-  LineChart,
-  BarChart,
-  PieChart,
-  CanvasRenderer
-])
+import axios from 'axios'
 
 export default {
   name: 'AdminDashboard',
-  components: {
-    AlertsPanel,
-    VChart
-  },
+  
   setup() {
     const router = useRouter()
     const toast = useToast()
+    
+    // Dashboard state
     const loading = ref(true)
-    
-    // Timeframe for revenue chart
-    const revenueTimeframe = ref('month')
-    const timeframes = [
-      { title: 'Last 7 Days', value: 'week' },
-      { title: 'Last 30 Days', value: 'month' },
-      { title: 'Last 90 Days', value: 'quarter' },
-      { title: 'Last Year', value: 'year' }
-    ]
-    
-    // Dashboard statistics
+    const timeframe = ref('week')
     const stats = ref({
-      orders: {
-        total: 0,
-        growth: 0
-      },
-      revenue: {
-        total: 0,
-        growth: 0
-      },
-      users: {
-        total: 0,
-        growth: 0
-      },
-      restaurants: {
-        total: 0,
-        growth: 0
-      }
+      orders: { total: 0, growth: 0 },
+      revenue: { total: 0, growth: 0 },
+      users: { total: 0, growth: 0 },
+      restaurants: { total: 0, growth: 0 }
     })
     
-    // Top restaurants
-    const topRestaurants = ref([])
-    
-    // Recent orders
+    // Restaurant approval stats
+    const restaurantStats = ref({
+      pending: 0,
+      active: 0,
+      suspended: 0
+    })
+
+    // Analytics data
+    const analyticsData = ref({
+      orderTrend: [],
+      revenueTrend: [],
+      userGrowth: [],
+      popularCategories: [],
+      topCities: []
+    })
+
+    // Recent activities
     const recentOrders = ref([])
-    const orderHeaders = [
-      { title: 'Order ID', key: 'id', sortable: true },
-      { title: 'Date', key: 'date', sortable: true },
-      { title: 'Customer', key: 'customer', sortable: true },
-      { title: 'Restaurant', key: 'restaurant', sortable: true },
-      { title: 'Amount', key: 'amount', sortable: true },
-      { title: 'Status', key: 'status', sortable: true },
-      { title: '', key: 'actions', sortable: false, align: 'end' }
-    ]
-    
-    // Revenue chart
-    const revenueChartOption = computed(() => {
-      let dates = []
-      let revenues = []
-      let orders = []
-      
-      // Generate dates based on selected timeframe
-      const now = new Date()
-      let days
-      
-      switch (revenueTimeframe.value) {
-        case 'week':
-          days = 7
-          break
-        case 'month':
-          days = 30
-          break
-        case 'quarter':
-          days = 90
-          break
-        case 'year':
-          days = 365
-          break
-        default:
-          days = 30
-      }
-      
-      for (let i = days - 1; i >= 0; i--) {
-        const date = new Date(now)
-        date.setDate(date.getDate() - i)
-        
-        if (days <= 30) {
-          // Show day of month for shorter timeframes
-          dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))
-        } else if (days <= 90) {
-          // Show week number for quarter
-          const weekNumber = Math.ceil((date.getDate() + 6 - date.getDay()) / 7)
-          dates.push(`W${weekNumber}, ${date.toLocaleDateString('en-US', { month: 'short' })}`)
-        } else {
-          // Show month for year
-          dates.push(date.toLocaleDateString('en-US', { month: 'short' }))
-        }
-        
-        // For now, using mock data
-        // In a real app, this data would come from the API
-        revenues.push(Math.floor(Math.random() * 5000 + 1000))
-        orders.push(Math.floor(Math.random() * 50 + 10))
-      }
-      
-      return {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'cross',
-            label: {
-              backgroundColor: '#6a7985'
-            }
-          }
-        },
-        legend: {
-          data: ['Revenue', 'Orders']
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: [
-          {
-            type: 'category',
-            boundaryGap: false,
-            data: dates
-          }
-        ],
-        yAxis: [
-          {
-            type: 'value',
-            name: 'Revenue ($)',
-            position: 'left'
-          },
-          {
-            type: 'value',
-            name: 'Orders',
-            position: 'right'
-          }
-        ],
-        series: [
-          {
-            name: 'Revenue',
-            type: 'line',
-            smooth: true,
-            areaStyle: {},
-            emphasis: {
-              focus: 'series'
-            },
-            data: revenues
-          },
-          {
-            name: 'Orders',
-            type: 'bar',
-            yAxisIndex: 1,
-            emphasis: {
-              focus: 'series'
-            },
-            data: orders
-          }
-        ]
-      }
-    })
-    
-    // Order status chart
-    const orderStatusChartOption = computed(() => {
-      return {
-        tooltip: {
-          trigger: 'item',
-          formatter: '{a} <br/>{b}: {c} ({d}%)'
-        },
-        legend: {
-          orient: 'vertical',
-          left: 10,
-          data: ['Completed', 'In Progress', 'Cancelled', 'Refunded']
-        },
-        series: [
-          {
-            name: 'Order Status',
-            type: 'pie',
-            radius: ['50%', '70%'],
-            avoidLabelOverlap: false,
-            label: {
-              show: false,
-              position: 'center'
-            },
-            emphasis: {
-              label: {
-                show: true,
-                fontSize: '18',
-                fontWeight: 'bold'
-              }
-            },
-            labelLine: {
-              show: false
-            },
-            data: [
-              { value: 735, name: 'Completed', itemStyle: { color: '#4CAF50' } },
-              { value: 148, name: 'In Progress', itemStyle: { color: '#2196F3' } },
-              { value: 78, name: 'Cancelled', itemStyle: { color: '#F44336' } },
-              { value: 24, name: 'Refunded', itemStyle: { color: '#FF9800' } }
-            ]
-          }
-        ]
-      }
-    })
-    
-    // User growth chart
-    const userGrowthChartOption = computed(() => {
-      return {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'shadow'
-          }
-        },
-        legend: {
-          data: ['Customers', 'Restaurants', 'Drivers']
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-        },
-        yAxis: {
-          type: 'value'
-        },
-        series: [
-          {
-            name: 'Customers',
-            type: 'bar',
-            stack: 'total',
-            emphasis: { focus: 'series' },
-            data: [320, 302, 341, 374, 390, 450]
-          },
-          {
-            name: 'Restaurants',
-            type: 'bar',
-            stack: 'total',
-            emphasis: { focus: 'series' },
-            data: [120, 132, 101, 134, 190, 230]
-          },
-          {
-            name: 'Drivers',
-            type: 'bar',
-            stack: 'total',
-            emphasis: { focus: 'series' },
-            data: [220, 182, 191, 234, 290, 330]
-          }
-        ]
-      }
-    })
-    
-    // Top cities chart
-    const topCitiesChartOption = computed(() => {
-      return {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'shadow'
-          }
-        },
-        grid: {
-          top: 10,
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'value'
-        },
-        yAxis: {
-          type: 'category',
-          data: ['New York', 'Los Angeles', 'Chicago', 'Boston', 'Miami']
-        },
-        series: [
-          {
-            name: 'Orders',
-            type: 'bar',
-            data: [
-              { value: 5000, itemStyle: { color: '#4CAF50' } },
-              { value: 4200, itemStyle: { color: '#2196F3' } },
-              { value: 3800, itemStyle: { color: '#9C27B0' } },
-              { value: 3100, itemStyle: { color: '#FF9800' } },
-              { value: 2500, itemStyle: { color: '#F44336' } }
-            ]
-          }
-        ]
-      }
-    })
-    
-    // Methods
+    const recentUsers = ref([])
+    const recentRestaurants = ref([])
+
+    // Fetch dashboard data
     const loadDashboardData = async () => {
-      loading.value = true
-      
       try {
-        const response = await adminAPI.getDashboardStats()
+        loading.value = true
+        const [statsResponse, analyticsResponse, activitiesResponse] = await Promise.all([
+          axios.get('/api/admin/stats'),
+          axios.get('/api/admin/analytics', { params: { timeframe: timeframe.value }}),
+          axios.get('/api/admin/recent-activities')
+        ])
+
+        // Update stats
+        stats.value = statsResponse.data.stats
+        restaurantStats.value = statsResponse.data.restaurantStats
         
-        // Update dashboard stats
-        stats.value = response.data.stats || {
-          orders: {
-            total: 1247,
-            growth: 12.6
-          },
-          revenue: {
-            total: 95420,
-            growth: 15.3
-          },
-          users: {
-            total: 3865,
-            growth: 8.5
-          },
-          restaurants: {
-            total: 187,
-            growth: 5.2
-          }
-        }
+        // Update analytics
+        analyticsData.value = analyticsResponse.data
         
-        // Update top restaurants
-        topRestaurants.value = response.data.topRestaurants || [
-          {
-            name: 'Italian Delights',
-            logo: 'https://via.placeholder.com/40',
-            revenue: 12500
-          },
-          {
-            name: 'Burger Heaven',
-            logo: 'https://via.placeholder.com/40',
-            revenue: 11200
-          },
-          {
-            name: 'Sushi Oasis',
-            logo: 'https://via.placeholder.com/40',
-            revenue: 9800
-          },
-          {
-            name: 'Mexican Fiesta',
-            logo: 'https://via.placeholder.com/40',
-            revenue: 8500
-          },
-          {
-            name: 'Bangkok Kitchen',
-            logo: 'https://via.placeholder.com/40',
-            revenue: 7300
-          }
-        ]
-        
-        // Update recent orders
-        recentOrders.value = response.data.recentOrders || [
-          {
-            id: 'ORD-12345',
-            date: new Date(Date.now() - 2 * 60 * 60 * 1000),
-            customer: 'John Smith',
-            restaurant: 'Italian Delights',
-            amount: 45.90,
-            status: 'completed'
-          },
-          {
-            id: 'ORD-12344',
-            date: new Date(Date.now() - 3 * 60 * 60 * 1000),
-            customer: 'Emma Johnson',
-            restaurant: 'Burger Heaven',
-            amount: 32.50,
-            status: 'completed'
-          },
-          {
-            id: 'ORD-12343',
-            date: new Date(Date.now() - 5 * 60 * 60 * 1000),
-            customer: 'Michael Davis',
-            restaurant: 'Sushi Oasis',
-            amount: 78.20,
-            status: 'in-progress'
-          },
-          {
-            id: 'ORD-12342',
-            date: new Date(Date.now() - 6 * 60 * 60 * 1000),
-            customer: 'Sarah Wilson',
-            restaurant: 'Thai Spice',
-            amount: 29.95,
-            status: 'completed'
-          },
-          {
-            id: 'ORD-12341',
-            date: new Date(Date.now() - 12 * 60 * 60 * 1000),
-            customer: 'Robert Brown',
-            restaurant: 'Mexican Fiesta',
-            amount: 52.75,
-            status: 'cancelled'
-          }
-        ]
+        // Update activities
+        recentOrders.value = activitiesResponse.data.orders
+        recentUsers.value = activitiesResponse.data.users
+        recentRestaurants.value = activitiesResponse.data.restaurants
+
       } catch (error) {
-        toast.error('Failed to load dashboard data: ' + (error.response?.data?.message || error.message))
+        toast.error('Failed to load dashboard data')
+        console.error('Dashboard data error:', error)
       } finally {
         loading.value = false
       }
     }
-    
-    const formatMoney = (value) => {
-      return parseFloat(value).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })
+
+    // Quick actions
+    const viewPendingRestaurants = () => {
+      router.push('/admin/restaurants?status=pending')
     }
-    
+
+    const viewRecentOrders = () => {
+      router.push('/admin/orders')
+    }
+
+    const viewUserManagement = () => {
+      router.push('/admin/users')
+    }
+
+    // Format values
+    const formatCurrency = (value) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2
+      }).format(value)
+    }
+
+    const formatNumber = (value) => {
+      return new Intl.NumberFormat('en-US').format(value)
+    }
+
     const formatDate = (date) => {
       return new Date(date).toLocaleString('en-US', {
         month: 'short',
@@ -662,42 +327,45 @@ export default {
         minute: '2-digit'
       })
     }
-    
-    const getOrderStatusColor = (status) => {
-      switch (status) {
-        case 'completed': return 'success'
-        case 'in-progress': return 'info'
-        case 'cancelled': return 'error'
-        case 'refunded': return 'warning'
-        default: return 'grey'
+
+    const getStatusColor = (status) => {
+      const colors = {
+        pending: 'warning',
+        active: 'success',
+        suspended: 'error',
+        completed: 'success',
+        processing: 'info',
+        cancelled: 'error'
       }
+      return colors[status] || 'grey'
     }
-    
-    const viewOrder = (order) => {
-      router.push(`/admin/orders/${order.id}`)
-    }
-    
-    // Initialize data
+
+    // Watch for timeframe changes
+    watch(timeframe, () => {
+      loadDashboardData()
+    })
+
+    // Load initial data
     onMounted(() => {
       loadDashboardData()
     })
-    
+
     return {
       loading,
+      timeframe,
       stats,
-      revenueTimeframe,
-      timeframes,
-      topRestaurants,
+      restaurantStats,
+      analyticsData,
       recentOrders,
-      orderHeaders,
-      revenueChartOption,
-      orderStatusChartOption,
-      userGrowthChartOption,
-      topCitiesChartOption,
-      formatMoney,
+      recentUsers,
+      recentRestaurants,
+      viewPendingRestaurants,
+      viewRecentOrders,
+      viewUserManagement,
+      formatCurrency,
+      formatNumber,
       formatDate,
-      getOrderStatusColor,
-      viewOrder
+      getStatusColor
     }
   }
 }
@@ -723,5 +391,19 @@ export default {
 
 .timeframe-select {
   max-width: 180px;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
+.stats-card {
+  height: 100%;
+}
+
+.chart-container {
+  height: 300px;
 }
 </style>

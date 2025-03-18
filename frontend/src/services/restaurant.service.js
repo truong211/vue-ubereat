@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '../config';
+import { api } from './api';
 
 const API_ENDPOINT = `${API_URL}/restaurants`;
 
@@ -148,5 +149,68 @@ export const restaurantService = {
    */
   deleteRestaurant(id) {
     return axios.delete(`${API_ENDPOINT}/${id}`);
+  },
+
+  /**
+   * Search restaurants with filters
+   * @param {Object} params - Search parameters
+   * @returns {Promise} Promise with restaurant data
+   */
+  async searchRestaurants(params = {}) {
+    const {
+      search = '',
+      cuisine = null,
+      sortBy = 'rating',
+      rating = null,
+      priceRange = null,
+      maxDeliveryTime = null,
+      maxDistance = null,
+      page = 1,
+      limit = 12,
+      latitude = null,
+      longitude = null
+    } = params
+
+    const response = await api.get('/restaurants/search', {
+      params: {
+        search,
+        cuisine,
+        sort: sortBy,
+        minRating: rating,
+        priceRange,
+        maxDeliveryTime,
+        maxDistance,
+        page,
+        limit,
+        latitude,
+        longitude
+      }
+    })
+
+    return response.data
+  },
+
+  /**
+   * Get restaurant suggestions based on partial search
+   * @param {string} query - Partial search query
+   * @returns {Promise} Promise with suggestions data
+   */
+  async getSearchSuggestions(query) {
+    if (!query || query.length < 2) return []
+    
+    const response = await api.get('/restaurants/suggestions', {
+      params: { query }
+    })
+
+    return response.data
+  },
+
+  /**
+   * Get popular cuisine types
+   * @returns {Promise} Promise with cuisine types data
+   */
+  async getCuisineTypes() {
+    const response = await api.get('/restaurants/cuisines')
+    return response.data
   }
 };
