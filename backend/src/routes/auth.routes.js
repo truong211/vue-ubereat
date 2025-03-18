@@ -2,9 +2,48 @@ const express = require('express');
 const { body } = require('express-validator');
 const authController = require('../controllers/auth.controller');
 const { authMiddleware } = require('../middleware/auth.middleware');
+const passport = require('../config/passport');
 
 const router = express.Router();
 
+// Social login routes
+/**
+ * @route GET /api/auth/google
+ * @desc Authenticate with Google
+ * @access Public
+ */
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+/**
+ * @route GET /api/auth/google/callback
+ * @desc Google auth callback
+ * @access Public
+ */
+router.get(
+  '/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  authController.googleCallback
+);
+
+/**
+ * @route GET /api/auth/facebook
+ * @desc Authenticate with Facebook
+ * @access Public
+ */
+router.get('/facebook', passport.authenticate('facebook', { scope: ['email'] }));
+
+/**
+ * @route GET /api/auth/facebook/callback
+ * @desc Facebook auth callback
+ * @access Public
+ */
+router.get(
+  '/facebook/callback',
+  passport.authenticate('facebook', { session: false, failureRedirect: '/login' }),
+  authController.facebookCallback
+);
+
+// Regular auth routes
 /**
  * @route POST /api/auth/register
  * @desc Register a new user

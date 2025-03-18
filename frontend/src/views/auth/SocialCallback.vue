@@ -1,144 +1,97 @@
 <template>
-  <v-container class="fill-height">
-    <v-row justify="center" align="center">
-      <v-col cols="12" sm="8" md="6" lg="4">
-        <v-card class="text-center pa-6">
-          <v-progress-circular
-            v-if="loading"
-            indeterminate
-            color="primary"
-            size="64"
-            class="mb-4"
-          ></v-progress-circular>
-          
-          <v-icon
-            v-else-if="success"
-            icon="mdi-check-circle"
-            color="success"
-            size="64"
-            class="mb-4"
-          ></v-icon>
-          
-          <v-icon
-            v-else
-            icon="mdi-alert-circle"
-            color="error"
-            size="64"
-            class="mb-4"
-          ></v-icon>
-          
-          <h2 class="text-h5 mb-2">{{ statusTitle }}</h2>
-          <p class="text-body-1 mb-6">{{ statusMessage }}</p>
-          
-          <v-btn
-            v-if="!loading"
-            color="primary"
-            block
-            @click="redirectToHome"
-          >
-            Continue
-          </v-btn>
-        </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+  <div class="social-callback-container">
+    <div class="loader">
+      <div class="spinner"></div>
+      <p>Finishing login, please wait...</p>
+    </div>
+  </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { useStore } from 'vuex';
+<script>
+import { useRoute, useRouter } from 'vue-router';
+import { useAuthStore } from '@/store/auth';
+import { onMounted } from 'vue';
 
-const router = useRouter();
-const route = useRoute();
-const store = useStore();
+export default {
+  name: 'SocialCallback',
+  setup() {
+    const route = useRoute();
+    const router = useRouter();
+    const authStore = useAuthStore();
 
-// Status state
-const loading = ref(true);
-const success = ref(false);
-const error = ref(null);
+    onMounted(async () => {
+      try {
+        // Get the token and refreshToken from URL parameters
+        const token = route.query.token;
+        const refreshToken = route.query.refreshToken;
 
-// Computed properties
-const provider = computed(() => route.meta.provider || '');
+        if (!token || !refreshToken) {
+          throw new Error('Missing authentication tokens');
+        }
 
-const statusTitle = computed(() => {
-  if (loading.value) return 'Processing Login';
-  if (success.value) return 'Login Successful';
-  return 'Login Failed';
-});
+        // Save the tokens in the store
+        await authStore.setTokens(token, refreshToken);
+        
+        // Fetch the user info using the new token
+        await authStore.fetchUserProfile();
+        
+        // Redirect to home or dashboard based on user role
+        if (authStore.user?.role === 'admin') {
+          router.push('/admin/dashboard');
+        } else if (authStore.user?.role === 'restaurant') {
+          router.push('/restaurant/dashboard');
+        } else if (authStore.user?.role === 'driver') {
+          router.push('/driver/dashboard');
+        } else {
+          router.push('/');
+        }
+      } catch (error) {
+        console.error('Social login error:', error);
+        // Redirect to login with error
+        router.push({ 
+          path: '/login',
+          query: { error: 'Authentication failed. Please try again.' }
+        });
+      }
+    });
 
-const statusMessage = computed(() => {
-  if (loading.value) return `Please wait while we complete your ${provider.value} login...`;
-  if (success.value) return 'You have been successfully logged in.';
-  return error.value || 'We encountered an error processing your login. Please try again.';
-});
-
-// Methods
-const processCallback = async () => {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    
-    if (provider.value === 'google') {
-      // Handle Google callback
-      const code = params.get('code');
-      if (!code) throw new Error('Authorization code missing');
-      
-      // Exchange code for tokens - in a real app this would call your backend
-      // For this demo, we're mocking it
-      const result = await mockExchangeCodeForTokens(code, provider.value);
-      
-      // Complete login
-      await store.dispatch('auth/loginWithSocial', { 
-        provider: provider.value,
-        token: result.access_token
-      });
-      
-      success.value = true;
-    } 
-    else if (provider.value === 'facebook') {
-      // Handle Facebook callback
-      const accessToken = params.get('access_token');
-      if (!accessToken) throw new Error('Access token missing');
-      
-      // Complete login
-      await store.dispatch('auth/loginWithSocial', { 
-        provider: provider.value,
-        token: accessToken
-      });
-      
-      success.value = true;
-    }
-    else {
-      throw new Error(`Unsupported provider: ${provider.value}`);
-    }
-  } catch (err) {
-    console.error('Social login callback error:', err);
-    error.value = err.message || 'Authentication failed';
-    success.value = false;
-  } finally {
-    loading.value = false;
+    return {};
   }
-};
+}
+</script>
 
-// Mock function to simulate token exchange - in a real app, this would make a backend call
-const mockExchangeCodeForTokens = async (code, provider) => {
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Return mock tokens
-  return {
-    access_token: 'mock_access_token',
-    refresh_token: 'mock_refresh_token',
-    provider
-  };
-};
+<style scoped>
+.social-callback-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  text-align: center;
+}
 
-const redirectToHome = () => {
-  router.push('/');
-};
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 
-// Process callback when component mounts
-onMounted(() => {
-  processCallback();
-});
-</script> 
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #3498db;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+p {
+  font-size: 18px;
+  color: #666;
+}
+</style>

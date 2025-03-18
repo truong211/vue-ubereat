@@ -3,6 +3,8 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
+const passport = require('./config/passport');
+const session = require('express-session');
 const { initializeSocketIO } = require('./socket/handlers');
 const { setIO } = require('./socket/socketServer');
 const socketStateMonitor = require('./socket/stateMonitor');
@@ -48,6 +50,18 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+
+// Session configuration for Passport
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'uber_eats_clone_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: process.env.NODE_ENV === 'production' }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '..', process.env.UPLOAD_DIR || 'uploads')));

@@ -4,14 +4,16 @@ const { validationResult } = require('express-validator');
 const { User } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
-const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const emailService = require('../services/email.service');
+const oauthConfig = require('../config/oauth.config');
 
 /**
  * Generate JWT token
  */
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN
+  return jwt.sign({ id }, oauthConfig.jwt.secret, {
+    expiresIn: oauthConfig.jwt.expiresIn
   });
 };
 
@@ -19,47 +21,16 @@ const generateToken = (id) => {
  * Generate refresh token
  */
 const generateRefreshToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN
+  return jwt.sign({ id }, oauthConfig.jwt.secret, {
+    expiresIn: '30d'
   });
 };
 
 /**
- * Generate email verification token
+ * Generate random token for verification or password reset
  */
-const generateVerificationToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_EMAIL_SECRET, {
-    expiresIn: '24h'
-  });
-};
-
-/**
- * Send verification email
- */
-const sendVerificationEmail = async (user, verificationToken) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_SECURE === 'true',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-
-  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
-
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM,
-    to: user.email,
-    subject: 'Verify your email address',
-    html: `
-      <h1>Welcome to Food Delivery!</h1>
-      <p>Please click the link below to verify your email address:</p>
-      <a href="${verificationUrl}">${verificationUrl}</a>
-      <p>This link will expire in 24 hours.</p>
-    `
-  });
+const generateRandomToken = () => {
+  return crypto.randomBytes(32).toString('hex');
 };
 
 /**
@@ -91,6 +62,10 @@ exports.register = async (req, res, next) => {
       return next(new AppError('User already exists with this username or email', 400));
     }
 
+    // Generate verification token
+    const verificationToken = generateRandomToken();
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     // Create new user
     const user = await User.create({
       username,
@@ -100,14 +75,13 @@ exports.register = async (req, res, next) => {
       phone,
       address,
       role: role || 'customer',
-      isEmailVerified: false
+      isEmailVerified: false,
+      verificationToken,
+      verificationExpires
     });
 
-    // Generate verification token
-    const verificationToken = generateVerificationToken(user.id);
-
     // Send verification email
-    await sendVerificationEmail(user, verificationToken);
+    await emailService.sendVerificationEmail(email, verificationToken, fullName);
 
     // Generate tokens
     const token = generateToken(user.id);
@@ -118,7 +92,7 @@ exports.register = async (req, res, next) => {
       token,
       refreshToken,
       data: {
-        user,
+        user: user.toJSON(),
         message: 'Registration successful. Please verify your email address.'
       }
     });
@@ -136,20 +110,28 @@ exports.verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.params;
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_EMAIL_SECRET);
+    // Find user with this verification token and token hasn't expired
+    const user = await User.findOne({
+      where: {
+        verificationToken: token,
+        verificationExpires: {
+          [Op.gt]: new Date()
+        }
+      }
+    });
 
-    // Find and update user
-    const user = await User.findByPk(decoded.id);
     if (!user) {
-      return next(new AppError('Invalid verification token', 400));
+      return next(new AppError('Invalid or expired verification token', 400));
     }
 
     if (user.isEmailVerified) {
       return next(new AppError('Email already verified', 400));
     }
 
+    // Update user
     user.isEmailVerified = true;
+    user.verificationToken = null;
+    user.verificationExpires = null;
     await user.save();
 
     res.status(200).json({
@@ -157,12 +139,6 @@ exports.verifyEmail = async (req, res, next) => {
       message: 'Email verified successfully'
     });
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return next(new AppError('Invalid verification token', 400));
-    }
-    if (error.name === 'TokenExpiredError') {
-      return next(new AppError('Verification token has expired', 400));
-    }
     next(error);
   }
 };
@@ -214,9 +190,124 @@ exports.login = async (req, res, next) => {
       token,
       refreshToken,
       data: {
-        user
+        user: user.toJSON()
       }
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Google OAuth login callback
+ * @route GET /api/auth/google/callback
+ * @access Public
+ */
+exports.googleCallback = async (req, res, next) => {
+  try {
+    // The user data will be available in req.user by Passport
+    const { id, emails, displayName, photos } = req.user;
+    
+    // Check if user exists
+    let user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { socialId: id, socialProvider: 'google' },
+          { email: emails[0].value }
+        ]
+      }
+    });
+
+    if (!user) {
+      // Create new user
+      const username = `google_${id}`;
+      
+      user = await User.create({
+        username,
+        email: emails[0].value,
+        fullName: displayName,
+        profileImage: photos[0]?.value || null,
+        socialProvider: 'google',
+        socialId: id,
+        isEmailVerified: true,  // Email already verified through Google
+        password: null          // No password for social login
+      });
+    } else if (user.socialProvider !== 'google') {
+      // If user exists but used different login method before
+      user.socialProvider = 'google';
+      user.socialId = id;
+      user.isEmailVerified = true;
+      await user.save();
+    }
+
+    // Generate tokens
+    const token = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/auth/social?token=${token}&refreshToken=${refreshToken}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Facebook OAuth login callback
+ * @route GET /api/auth/facebook/callback
+ * @access Public
+ */
+exports.facebookCallback = async (req, res, next) => {
+  try {
+    // The user data will be available in req.user by Passport
+    const { id, emails, displayName, photos } = req.user;
+    
+    // Check if user exists
+    let user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { socialId: id, socialProvider: 'facebook' },
+          emails && emails[0]?.value ? { email: emails[0].value } : {}
+        ]
+      }
+    });
+
+    if (!user) {
+      // Create new user
+      const username = `fb_${id}`;
+      const email = emails && emails[0]?.value ? emails[0].value : `${id}@facebook.com`;
+      
+      user = await User.create({
+        username,
+        email,
+        fullName: displayName,
+        profileImage: photos && photos[0]?.value ? photos[0].value : null,
+        socialProvider: 'facebook',
+        socialId: id,
+        isEmailVerified: true,  // Email already verified through Facebook
+        password: null          // No password for social login
+      });
+    } else if (user.socialProvider !== 'facebook') {
+      // If user exists but used different login method before
+      user.socialProvider = 'facebook';
+      user.socialId = id;
+      user.isEmailVerified = true;
+      await user.save();
+    }
+
+    // Generate tokens
+    const token = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:8080'}/auth/social?token=${token}&refreshToken=${refreshToken}`);
   } catch (error) {
     next(error);
   }
@@ -236,7 +327,7 @@ exports.refreshToken = async (req, res, next) => {
     }
 
     // Verify refresh token
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const decoded = jwt.verify(refreshToken, oauthConfig.jwt.secret);
 
     // Check if user exists
     const user = await User.findByPk(decoded.id);
@@ -277,14 +368,31 @@ exports.forgotPassword = async (req, res, next) => {
       return next(new AppError('There is no user with this email address', 404));
     }
 
-    // Generate password reset token (in a real app, you would send this via email)
-    const resetToken = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+    // Generate password reset token
+    const resetToken = generateRandomToken();
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Password reset token sent to email',
-      resetToken // In production, don't send this in the response
-    });
+    // Save token and expiry to user
+    user.resetPasswordToken = resetToken;
+    user.resetPasswordExpires = resetExpires;
+    await user.save();
+
+    // Send password reset email
+    try {
+      await emailService.sendPasswordResetEmail(email, resetToken, user.fullName);
+      
+      res.status(200).json({
+        status: 'success',
+        message: 'Password reset instructions sent to email'
+      });
+    } catch (error) {
+      // Reset the token fields if email sending fails
+      user.resetPasswordToken = null;
+      user.resetPasswordExpires = null;
+      await user.save();
+      
+      return next(new AppError('Error sending email. Please try again.', 500));
+    }
   } catch (error) {
     next(error);
   }
@@ -300,27 +408,37 @@ exports.resetPassword = async (req, res, next) => {
     const { token } = req.params;
     const { password } = req.body;
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Find user with this reset token and token hasn't expired
+    const user = await User.findOne({
+      where: {
+        resetPasswordToken: token,
+        resetPasswordExpires: {
+          [Op.gt]: new Date()
+        }
+      }
+    });
 
-    // Find user
-    const user = await User.findByPk(decoded.id);
     if (!user) {
-      return next(new AppError('Token is invalid or has expired', 400));
+      return next(new AppError('Password reset token is invalid or has expired', 400));
     }
 
     // Update password
     user.password = password; // Will be hashed by the model hook
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
     await user.save();
+
+    // Generate new tokens
+    const newToken = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
 
     res.status(200).json({
       status: 'success',
+      token: newToken,
+      refreshToken,
       message: 'Password has been reset successfully'
     });
   } catch (error) {
-    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-      return next(new AppError('Token is invalid or has expired', 400));
-    }
     next(error);
   }
 };
@@ -354,6 +472,11 @@ exports.updatePassword = async (req, res, next) => {
 
     // Get user from database
     const user = await User.findByPk(req.user.id);
+
+    // Check if user has a password (might be social login)
+    if (!user.password) {
+      return next(new AppError('You need to set a password first', 400));
+    }
 
     // Check if current password is correct
     if (!(await user.correctPassword(currentPassword))) {

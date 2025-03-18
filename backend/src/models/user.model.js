@@ -30,7 +30,7 @@ const User = sequelize.define('User', {
   },
   password: {
     type: DataTypes.STRING(255),
-    allowNull: false,
+    allowNull: true, // Changed to allow null for social login
     validate: {
       len: [6, 255]
     }
@@ -48,7 +48,7 @@ const User = sequelize.define('User', {
     allowNull: true
   },
   role: {
-    type: DataTypes.ENUM('admin', 'customer', 'restaurant'),
+    type: DataTypes.ENUM('admin', 'customer', 'restaurant', 'driver'),
     defaultValue: 'customer'
   },
   profileImage: {
@@ -66,6 +66,35 @@ const User = sequelize.define('User', {
   isEmailVerified: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  // New fields for social login
+  socialProvider: {
+    type: DataTypes.ENUM('local', 'google', 'facebook'),
+    defaultValue: 'local'
+  },
+  socialId: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  socialToken: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  verificationToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  verificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  resetPasswordToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  resetPasswordExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
   timestamps: true,
@@ -77,7 +106,7 @@ const User = sequelize.define('User', {
       }
     },
     beforeUpdate: async (user) => {
-      if (user.changed('password')) {
+      if (user.changed('password') && user.password) {
         user.password = await bcrypt.hash(user.password, 12);
       }
     }
@@ -86,6 +115,7 @@ const User = sequelize.define('User', {
 
 // Instance method to check if password is correct
 User.prototype.correctPassword = async function(candidatePassword) {
+  if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
@@ -93,6 +123,9 @@ User.prototype.correctPassword = async function(candidatePassword) {
 User.prototype.toJSON = function() {
   const values = { ...this.get() };
   delete values.password;
+  delete values.socialToken;
+  delete values.verificationToken;
+  delete values.resetPasswordToken;
   return values;
 };
 
