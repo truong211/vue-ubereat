@@ -12,6 +12,7 @@ import UserProfile from '@/components/profile/UserProfile.vue';
 import OrderTracking from '@/components/order/OrderTracking.vue';
 import PaymentStatusPage from '@/components/payment/PaymentStatusPage.vue';
 import StaticPage from '@/components/static/StaticPage.vue';
+import SocialCallback from '@/views/auth/SocialCallback.vue';
 
 // Route definitions
 const routes = [
@@ -56,6 +57,13 @@ const routes = [
     name: 'verify-email',
     component: VerifyEmail,
     meta: { requiresAuth: false }
+  },
+  // Add social login callback route
+  {
+    path: '/auth/social',
+    name: 'SocialCallback',
+    component: SocialCallback,
+    meta: { title: 'Completing Login', guest: true }
   },
   {
     path: '/profile',

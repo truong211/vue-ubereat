@@ -77,35 +77,8 @@
         Log In
       </v-btn>
       
-      <!-- Social Login Divider -->
-      <div class="text-center mb-4 position-relative">
-        <span class="divider-text">or continue with</span>
-      </div>
-      
-      <!-- Social Login Buttons -->
-      <div class="d-flex justify-space-between mb-6">
-        <v-btn
-          variant="outlined"
-          prepend-icon="mdi-google"
-          width="48%"
-          :loading="socialLoading.google"
-          :disabled="loading"
-          @click="socialLogin('google')"
-        >
-          Google
-        </v-btn>
-        
-        <v-btn
-          variant="outlined"
-          prepend-icon="mdi-facebook"
-          width="48%"
-          :loading="socialLoading.facebook"
-          :disabled="loading"
-          @click="socialLogin('facebook')"
-        >
-          Facebook
-        </v-btn>
-      </div>
+      <!-- Social Login Component -->
+      <SocialLogin title="" buttonText="Login with" :showDivider="true" />
       
       <!-- Register Link -->
       <div class="text-center">
@@ -125,9 +98,14 @@
 
 <script>
 import { mapActions } from 'vuex';
+import SocialLogin from '@/components/SocialLogin.vue';
 
 export default {
   name: 'LoginForm',
+  
+  components: {
+    SocialLogin
+  },
   
   data() {
     return {
@@ -138,10 +116,6 @@ export default {
       loading: false,
       error: '',
       isFormValid: false,
-      socialLoading: {
-        google: false,
-        facebook: false
-      },
       rules: {
         required: v => !!v || 'This field is required',
         email: v => /.+@.+\..+/.test(v) || 'Please enter a valid email',
@@ -150,10 +124,20 @@ export default {
     };
   },
   
+  created() {
+    // Check if there's an error query parameter (from social login callback)
+    if (this.$route.query.error) {
+      this.error = this.$route.query.error;
+      
+      // Remove the error parameter from URL
+      const { error, ...query } = this.$route.query;
+      this.$router.replace({ query });
+    }
+  },
+  
   methods: {
     ...mapActions({
-      loginAction: 'auth/login',
-      socialLoginAction: 'auth/socialLogin'
+      loginAction: 'auth/login'
     }),
     
     async login() {
@@ -178,24 +162,6 @@ export default {
       } finally {
         this.loading = false;
       }
-    },
-    
-    async socialLogin(provider) {
-      this.socialLoading[provider] = true;
-      this.error = '';
-      
-      try {
-        await this.socialLoginAction({ provider });
-        
-        // Redirect to home or previous page
-        const redirectPath = this.$route.query.redirect || '/';
-        this.$router.push(redirectPath);
-      } catch (error) {
-        this.error = `${provider.charAt(0).toUpperCase() + provider.slice(1)} login failed. Please try again.`;
-        console.error(`${provider} login error:`, error);
-      } finally {
-        this.socialLoading[provider] = false;
-      }
     }
   }
 };
@@ -206,23 +172,5 @@ export default {
   max-width: 450px;
   margin: 0 auto;
   padding: 20px;
-}
-
-.divider-text {
-  background-color: white;
-  padding: 0 10px;
-  position: relative;
-  z-index: 1;
-}
-
-.text-center.mb-4.position-relative::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: rgba(0, 0, 0, 0.12);
-  z-index: 0;
 }
 </style>
