@@ -79,6 +79,33 @@
               </div>
             </template>
           </v-radio>
+
+          <v-radio value="momo">
+            <template v-slot:label>
+              <div class="d-flex align-center">
+                <span>Momo Wallet</span>
+                <v-img src="/img/momo-icon.png" max-width="24" class="ml-2"></v-img>
+              </div>
+            </template>
+          </v-radio>
+
+          <v-radio value="zalopay">
+            <template v-slot:label>
+              <div class="d-flex align-center">
+                <span>ZaloPay</span>
+                <v-img src="/img/zalopay-icon.png" max-width="24" class="ml-2"></v-img>
+              </div>
+            </template>
+          </v-radio>
+
+          <v-radio value="vnpay">
+            <template v-slot:label>
+              <div class="d-flex align-center">
+                <span>VNPay</span>
+                <v-img src="/img/vnpay-icon.png" max-width="24" class="ml-2"></v-img>
+              </div>
+            </template>
+          </v-radio>
         </v-radio-group>
         
         <!-- Credit Card Form -->
@@ -603,4 +630,4 @@ export default {
   max-width: 800px;
   margin: 0 auto;
 }
-</style> 
+</style>

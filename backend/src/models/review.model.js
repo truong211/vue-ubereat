@@ -86,9 +86,10 @@ Review.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
 Review.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
 Review.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
 
+// Add reverse associations
 User.hasMany(Review, { foreignKey: 'userId', as: 'reviews' });
 Order.hasMany(Review, { foreignKey: 'orderId', as: 'reviews' });
 Restaurant.hasMany(Review, { foreignKey: 'restaurantId', as: 'reviews' });
 Product.hasMany(Review, { foreignKey: 'productId', as: 'reviews' });
 
-module.exports = Review; 
+module.exports = Review;

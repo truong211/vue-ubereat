@@ -102,19 +102,15 @@ export default {
     const additionalInfo = ref('')
 
     const reportReasons = [
-      { title: t('review.reasons.inappropriate'), value: 'inappropriate' },
-      { title: t('review.reasons.spam'), value: 'spam' },
-      { title: t('review.reasons.fake'), value: 'fake' },
-      { title: t('review.reasons.harassment'), value: 'harassment' },
-      { title: t('review.reasons.other'), value: 'other' }
+      { text: t('review.reportReasons.inappropriate'), value: 'inappropriate' },
+      { text: t('review.reportReasons.spam'), value: 'spam' },
+      { text: t('review.reportReasons.fake'), value: 'fake' },
+      { text: t('review.reportReasons.offensive'), value: 'offensive' },
+      { text: t('review.reportReasons.other'), value: 'other' }
     ]
 
     const submitReport = async () => {
-      const isValid = await form.value?.validate()
-      if (!isValid?.valid) return
-
       isSubmitting.value = true
-
       try {
         await store.dispatch('reviews/reportReview', {
           reviewId: props.reviewId,
@@ -124,17 +120,17 @@ export default {
           additionalInfo: additionalInfo.value
         })
 
-        // Reset form and close dialog
-        dialog.value = false
-        reportReason.value = null
-        additionalInfo.value = ''
-
-        // Show success notification
         store.dispatch('showNotification', {
           type: 'success',
           message: t('review.reportSubmitted')
         })
+
+        // Reset form
+        reportReason.value = ''
+        additionalInfo.value = ''
+        dialog.value = false
       } catch (error) {
+        console.error('Failed to submit report:', error)
         store.dispatch('showNotification', {
           type: 'error',
           message: t('review.reportError')

@@ -3,7 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
-const socketIo = require('socket.io');
+const { initializeSocketIO } = require('./socket/handlers');
 require('dotenv').config();
 
 // Import routes
@@ -28,13 +28,9 @@ const db = require('./config/database');
 // Create Express app
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: process.env.CORS_ORIGIN,
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
+
+// Initialize Socket.IO with our handlers
+const io = initializeSocketIO(server);
 
 // Middleware
 app.use(cors({
@@ -70,36 +66,6 @@ app.use(notFound);
 
 // Error handling middleware
 app.use(errorHandler);
-
-// Socket.io connection
-io.on('connection', (socket) => {
-  console.log('New client connected');
-  
-  // Join a room based on user ID
-  socket.on('join', (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`User ${userId} joined their room`);
-  });
-  
-  // Join a restaurant room for restaurant staff
-  socket.on('joinRestaurant', (restaurantId) => {
-    socket.join(`restaurant_${restaurantId}`);
-    console.log(`Joined restaurant room ${restaurantId}`);
-  });
-  
-  // Handle order status updates
-  socket.on('orderStatusUpdate', (data) => {
-    // Broadcast to specific user
-    io.to(`user_${data.userId}`).emit('orderUpdate', data);
-    // Broadcast to restaurant staff
-    io.to(`restaurant_${data.restaurantId}`).emit('orderUpdate', data);
-  });
-  
-  // Handle disconnect
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
-});
 
 // Test database connection
 db.authenticate()

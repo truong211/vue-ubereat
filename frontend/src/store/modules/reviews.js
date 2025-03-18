@@ -1,400 +1,267 @@
-import axios from 'axios'
+import axios from 'axios';
 
-export default {
-  state: {
-    restaurantReviews: {},  // Store reviews by restaurantId
-    menuItemReviews: {},    // Store reviews by menuItemId
-    userReviews: [],        // Reviews created by the current user
-    loading: false,
-    error: null
+const state = {
+  reviews: [],
+  restaurantReviews: {},
+  productReviews: {},
+  userReviews: [],
+  loading: false,
+  error: null,
+  stats: {
+    average: 0,
+    total: 0,
+    distribution: []
+  }
+};
+
+const mutations = {
+  SET_LOADING(state, status) {
+    state.loading = status;
   },
-  
-  mutations: {
-    SET_RESTAURANT_REVIEWS(state, { restaurantId, reviews }) {
-      state.restaurantReviews = {
-        ...state.restaurantReviews,
-        [restaurantId]: reviews
-      }
-    },
-    
-    SET_MENU_ITEM_REVIEWS(state, { menuItemId, reviews }) {
-      state.menuItemReviews = {
-        ...state.menuItemReviews,
-        [menuItemId]: reviews
-      }
-    },
-    
-    SET_USER_REVIEWS(state, reviews) {
-      state.userReviews = reviews
-    },
-    
-    ADD_RESTAURANT_REVIEW(state, { restaurantId, review }) {
-      if (!state.restaurantReviews[restaurantId]) {
-        state.restaurantReviews[restaurantId] = []
-      }
-      state.restaurantReviews[restaurantId].unshift(review)
-      state.userReviews.unshift(review)
-    },
-    
-    ADD_MENU_ITEM_REVIEW(state, { menuItemId, review }) {
-      if (!state.menuItemReviews[menuItemId]) {
-        state.menuItemReviews[menuItemId] = []
-      }
-      state.menuItemReviews[menuItemId].unshift(review)
-      state.userReviews.unshift(review)
-    },
-    
-    UPDATE_REVIEW(state, { reviewId, updates }) {
-      // Update review in restaurantReviews
-      Object.keys(state.restaurantReviews).forEach(restaurantId => {
-        const review = state.restaurantReviews[restaurantId].find(r => r.id === reviewId)
-        if (review) {
-          Object.assign(review, updates)
-        }
-      })
-      
-      // Update review in menuItemReviews
-      Object.keys(state.menuItemReviews).forEach(menuItemId => {
-        const review = state.menuItemReviews[menuItemId].find(r => r.id === reviewId)
-        if (review) {
-          Object.assign(review, updates)
-        }
-      })
-      
-      // Update review in userReviews
-      const userReview = state.userReviews.find(r => r.id === reviewId)
-      if (userReview) {
-        Object.assign(userReview, updates)
-      }
-    },
-    
-    DELETE_REVIEW(state, { reviewId, itemType, itemId }) {
-      if (itemType === 'restaurant') {
-        state.restaurantReviews[itemId] = state.restaurantReviews[itemId].filter(
-          review => review.id !== reviewId
-        )
-      } else if (itemType === 'menuItem') {
-        state.menuItemReviews[itemId] = state.menuItemReviews[itemId].filter(
-          review => review.id !== reviewId
-        )
-      }
-      
-      state.userReviews = state.userReviews.filter(review => review.id !== reviewId)
-    },
-    
-    SET_LOADING(state, loading) {
-      state.loading = loading
-    },
-    
-    SET_ERROR(state, error) {
-      state.error = error
+
+  SET_ERROR(state, error) {
+    state.error = error;
+  },
+
+  SET_REVIEWS(state, reviews) {
+    state.reviews = reviews;
+  },
+
+  SET_RESTAURANT_REVIEWS(state, { restaurantId, reviews, stats }) {
+    state.restaurantReviews[restaurantId] = reviews;
+    if (stats) {
+      state.stats = stats;
     }
   },
-  
-  actions: {
-    // Fetch reviews for a restaurant
-    async fetchRestaurantReviews({ commit, state }, restaurantId) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        const response = await axios.get(`/api/restaurants/${restaurantId}/reviews`)
-        const reviews = response.data
-        
-        commit('SET_RESTAURANT_REVIEWS', { restaurantId, reviews })
-        commit('SET_LOADING', false)
-        
-        return reviews
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to fetch restaurant reviews')
-        commit('SET_LOADING', false)
-        throw error
+
+  SET_PRODUCT_REVIEWS(state, { productId, reviews }) {
+    state.productReviews[productId] = reviews;
+  },
+
+  SET_USER_REVIEWS(state, reviews) {
+    state.userReviews = reviews;
+  },
+
+  ADD_REVIEW(state, { review, type, id }) {
+    if (type === 'restaurant') {
+      if (!state.restaurantReviews[id]) {
+        state.restaurantReviews[id] = [];
       }
-    },
-    
-    // Fetch reviews for a menu item
-    async fetchMenuItemReviews({ commit, state }, { restaurantId, menuItemId }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        const response = await axios.get(`/api/restaurants/${restaurantId}/menu-items/${menuItemId}/reviews`)
-        const reviews = response.data
-        
-        commit('SET_MENU_ITEM_REVIEWS', { menuItemId, reviews })
-        commit('SET_LOADING', false)
-        
-        return reviews
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to fetch menu item reviews')
-        commit('SET_LOADING', false)
-        throw error
+      state.restaurantReviews[id].unshift(review);
+    } else if (type === 'product') {
+      if (!state.productReviews[id]) {
+        state.productReviews[id] = [];
       }
-    },
-    
-    // Fetch reviews created by the current user
-    async fetchUserReviews({ commit }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        const response = await axios.get('/api/user/reviews')
-        const reviews = response.data
-        
-        commit('SET_USER_REVIEWS', reviews)
-        commit('SET_LOADING', false)
-        
-        return reviews
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to fetch user reviews')
-        commit('SET_LOADING', false)
-        throw error
+      state.productReviews[id].unshift(review);
+    }
+    state.userReviews.unshift(review);
+  },
+
+  UPDATE_REVIEW(state, { reviewId, updates, type, id }) {
+    const updateReview = (reviews) => {
+      const index = reviews.findIndex(r => r.id === reviewId);
+      if (index !== -1) {
+        reviews[index] = { ...reviews[index], ...updates };
       }
-    },
-    
-    // Submit a review for a restaurant
-    async submitRestaurantReview({ commit }, { restaurantId, rating, comment }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        const response = await axios.post(`/api/restaurants/${restaurantId}/reviews`, {
-          rating,
-          comment
-        })
-        
-        const review = response.data
-        
-        commit('ADD_RESTAURANT_REVIEW', { restaurantId, review })
-        commit('SET_LOADING', false)
-        
-        return review
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to submit restaurant review')
-        commit('SET_LOADING', false)
-        throw error
+    };
+
+    if (type === 'restaurant' && state.restaurantReviews[id]) {
+      updateReview(state.restaurantReviews[id]);
+    } else if (type === 'product' && state.productReviews[id]) {
+      updateReview(state.productReviews[id]);
+    }
+    updateReview(state.userReviews);
+  },
+
+  DELETE_REVIEW(state, { reviewId, type, id }) {
+    const removeReview = (reviews) => {
+      const index = reviews.findIndex(r => r.id === reviewId);
+      if (index !== -1) {
+        reviews.splice(index, 1);
       }
-    },
-    
-    // Submit a review for a menu item
-    async submitMenuItemReview({ commit }, { restaurantId, menuItemId, rating, comment }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        const response = await axios.post(`/api/restaurants/${restaurantId}/menu-items/${menuItemId}/reviews`, {
-          rating,
-          comment
-        })
-        
-        const review = response.data
-        
-        commit('ADD_MENU_ITEM_REVIEW', { menuItemId, review })
-        commit('SET_LOADING', false)
-        
-        return review
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to submit menu item review')
-        commit('SET_LOADING', false)
-        throw error
-      }
-    },
-    
-    // Update a review
-    async updateReview({ commit }, { reviewId, itemType, itemId, rating, comment }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}`
-        }
-        
-        const response = await axios.put(endpoint, {
-          rating,
-          comment
-        })
-        
-        const updatedReview = response.data
-        
-        commit('UPDATE_REVIEW', { reviewId, updates: updatedReview })
-        commit('SET_LOADING', false)
-        
-        return updatedReview
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to update review')
-        commit('SET_LOADING', false)
-        throw error
-      }
-    },
-    
-    // Delete a review
-    async deleteReview({ commit }, { reviewId, itemType, itemId }) {
-      try {
-        commit('SET_LOADING', true)
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}`
-        }
-        
-        await axios.delete(endpoint)
-        
-        commit('DELETE_REVIEW', { reviewId, itemType, itemId })
-        commit('SET_LOADING', false)
-        
-        return true
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to delete review')
-        commit('SET_LOADING', false)
-        throw error
-      }
-    },
-    
-    // Add like to a review
-    async addReviewLike({ commit }, { reviewId, itemType, itemId }) {
-      try {
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}/like`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}/like`
-        }
-        
-        const response = await axios.post(endpoint)
-        
-        // Update the review with the new like count
-        const updates = {
-          likes: response.data.likes,
-          userLiked: true,
-          userDisliked: false
-        }
-        
-        commit('UPDATE_REVIEW', { reviewId, updates })
-        
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to like review')
-        throw error
-      }
-    },
-    
-    // Remove like from a review
-    async removeReviewLike({ commit }, { reviewId, itemType, itemId }) {
-      try {
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}/like`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}/like`
-        }
-        
-        const response = await axios.delete(endpoint)
-        
-        // Update the review with the new like count
-        const updates = {
-          likes: response.data.likes,
-          userLiked: false
-        }
-        
-        commit('UPDATE_REVIEW', { reviewId, updates })
-        
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to remove like from review')
-        throw error
-      }
-    },
-    
-    // Add dislike to a review
-    async addReviewDislike({ commit }, { reviewId, itemType, itemId }) {
-      try {
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}/dislike`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}/dislike`
-        }
-        
-        const response = await axios.post(endpoint)
-        
-        // Update the review with the new dislike count
-        const updates = {
-          dislikes: response.data.dislikes,
-          userDisliked: true,
-          userLiked: false
-        }
-        
-        commit('UPDATE_REVIEW', { reviewId, updates })
-        
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to dislike review')
-        throw error
-      }
-    },
-    
-    // Remove dislike from a review
-    async removeReviewDislike({ commit }, { reviewId, itemType, itemId }) {
-      try {
-        commit('SET_ERROR', null)
-        
-        let endpoint = ''
-        if (itemType === 'restaurant') {
-          endpoint = `/api/restaurants/${itemId}/reviews/${reviewId}/dislike`
-        } else if (itemType === 'menuItem') {
-          endpoint = `/api/restaurants/${itemId.split('_')[0]}/menu-items/${itemId.split('_')[1]}/reviews/${reviewId}/dislike`
-        }
-        
-        const response = await axios.delete(endpoint)
-        
-        // Update the review with the new dislike count
-        const updates = {
-          dislikes: response.data.dislikes,
-          userDisliked: false
-        }
-        
-        commit('UPDATE_REVIEW', { reviewId, updates })
-        
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message || 'Failed to remove dislike from review')
-        throw error
-      }
+    };
+
+    if (type === 'restaurant' && state.restaurantReviews[id]) {
+      removeReview(state.restaurantReviews[id]);
+    } else if (type === 'product' && state.productReviews[id]) {
+      removeReview(state.productReviews[id]);
+    }
+    removeReview(state.userReviews);
+  }
+};
+
+const actions = {
+  // Fetch reviews for a restaurant
+  async fetchRestaurantReviews({ commit }, { restaurantId, page = 1, limit = 10, sort = 'recent' }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.get(`/api/reviews/restaurant/${restaurantId}`, {
+        params: { page, limit, sort }
+      });
+      commit('SET_RESTAURANT_REVIEWS', {
+        restaurantId,
+        reviews: response.data.data.reviews,
+        stats: response.data.data.stats
+      });
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch reviews');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
     }
   },
-  
-  getters: {
-    getRestaurantReviews: (state) => (restaurantId) => {
-      return state.restaurantReviews[restaurantId] || []
-    },
-    
-    getMenuItemReviews: (state) => (menuItemId) => {
-      return state.menuItemReviews[menuItemId] || []
-    },
-    
-    getUserReviews: (state) => {
-      return state.userReviews
-    },
-    
-    getReviewsLoading: (state) => {
-      return state.loading
-    },
-    
-    getReviewsError: (state) => {
-      return state.error
+
+  // Fetch reviews for a product
+  async fetchProductReviews({ commit }, { productId, page = 1, limit = 10 }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.get(`/api/reviews/product/${productId}`, {
+        params: { page, limit }
+      });
+      commit('SET_PRODUCT_REVIEWS', {
+        productId,
+        reviews: response.data.data.reviews
+      });
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch reviews');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Fetch reviews by current user
+  async fetchUserReviews({ commit }, { page = 1, limit = 10 }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.get('/api/reviews/user', {
+        params: { page, limit }
+      });
+      commit('SET_USER_REVIEWS', response.data.data.reviews);
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch reviews');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Create a new review
+  async createReview({ commit }, { orderId, restaurantId, productId, rating, comment }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.post('/api/reviews', {
+        orderId,
+        restaurantId,
+        productId,
+        rating,
+        comment
+      });
+      
+      const review = response.data.data.review;
+      if (restaurantId) {
+        commit('ADD_REVIEW', { review, type: 'restaurant', id: restaurantId });
+      }
+      if (productId) {
+        commit('ADD_REVIEW', { review, type: 'product', id: productId });
+      }
+      
+      return review;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to create review');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Update a review
+  async updateReview({ commit }, { reviewId, rating, comment, type, id }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.put(`/api/reviews/${reviewId}`, {
+        rating,
+        comment
+      });
+      
+      const updates = response.data.data.review;
+      commit('UPDATE_REVIEW', { reviewId, updates, type, id });
+      
+      return updates;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to update review');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Delete a review
+  async deleteReview({ commit }, { reviewId, type, id }) {
+    try {
+      commit('SET_LOADING', true);
+      await axios.delete(`/api/reviews/${reviewId}`);
+      commit('DELETE_REVIEW', { reviewId, type, id });
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to delete review');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Restaurant owner respond to review
+  async respondToReview({ commit }, { reviewId, response }) {
+    try {
+      commit('SET_LOADING', true);
+      const res = await axios.post(`/api/reviews/${reviewId}/respond`, { response });
+      const updates = res.data.data.review;
+      commit('UPDATE_REVIEW', { 
+        reviewId, 
+        updates,
+        type: 'restaurant',
+        id: updates.restaurantId
+      });
+      return updates;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to respond to review');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Fetch review statistics
+  async fetchReviewStats({ commit }) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.get('/api/reviews/dashboard/stats');
+      return response.data.data;
+    } catch (error) {
+      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch review statistics');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
     }
   }
-} 
+};
+
+const getters = {
+  isLoading: state => state.loading,
+  getError: state => state.error,
+  getRestaurantReviews: state => restaurantId => state.restaurantReviews[restaurantId] || [],
+  getProductReviews: state => productId => state.productReviews[productId] || [],
+  getUserReviews: state => state.userReviews,
+  getStats: state => state.stats
+};
+
+export default {
+  namespaced: true,
+  state,
+  mutations,
+  actions,
+  getters
+};

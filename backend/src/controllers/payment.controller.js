@@ -220,45 +220,60 @@ class PaymentController {
   // Process card payment
   async processCardPayment(req, res) {
     try {
-      const { order_id, card_number, expiry, cvv, save_card } = req.body;
+      const { order_id, card_token, save_card } = req.body;
       const order = await Order.findByPk(order_id);
 
       if (!order) {
         return res.status(404).json({ message: 'Order not found' });
       }
 
-      // In a real application, you would integrate with a payment gateway like Stripe
-      // For demo purposes, we'll simulate a successful payment
-      const transactionId = `CARD_${Date.now()}_${order.id}`;
+      // Create payment intent with Stripe
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(order.total_amount * 100), // Convert to cents
+        currency: 'usd',
+        payment_method: card_token,
+        confirm: true,
+        return_url: `${config.baseUrl}/payment/callback`,
+        metadata: {
+          order_id: order.id
+        }
+      });
 
-      // Save payment record
+      // Save card if requested
+      if (save_card && req.user) {
+        await this.saveCardForUser(req.user.id, card_token);
+      }
+
+      // Create payment record
       await PaymentHistory.create({
         order_id: order.id,
+        user_id: req.user?.id,
         payment_method: 'card',
         amount: order.total_amount,
-        status: 'completed',
-        transaction_ref: transactionId
+        status: paymentIntent.status,
+        transaction_ref: paymentIntent.id,
+        payment_details: {
+          last4: paymentIntent.payment_method_details.card.last4,
+          brand: paymentIntent.payment_method_details.card.brand
+        }
       });
 
       // Update order status
       await order.update({
-        payment_status: 'paid',
-        payment_method: 'card'
+        payment_status: paymentIntent.status === 'succeeded' ? 'paid' : 'pending',
+        payment_id: paymentIntent.id
       });
-
-      // If user wants to save the card, store last 4 digits (in real app, use proper tokenization)
-      if (save_card) {
-        // Implementation for card saving would go here
-      }
 
       res.json({
         success: true,
-        transaction_id: transactionId,
-        message: 'Payment processed successfully'
+        payment_intent: paymentIntent.client_secret,
+        status: paymentIntent.status
       });
     } catch (error) {
       console.error('Card payment error:', error);
-      res.status(500).json({ message: 'Failed to process card payment' });
+      res.status(400).json({
+        message: error.message || 'Payment processing failed'
+      });
     }
   }
 
@@ -472,6 +487,126 @@ class PaymentController {
       console.error('Error deleting saved card:', error);
       res.status(500).json({ message: 'Failed to delete saved card' });
     }
+  }
+
+  // Verify payment callback
+  async verifyPayment(req, res) {
+    try {
+      const { provider, transaction_ref } = req.params;
+      const payment = await PaymentHistory.findOne({
+        where: { transaction_ref }
+      });
+
+      if (!payment) {
+        return res.status(404).json({ message: 'Payment not found' });
+      }
+
+      let verificationResult;
+      
+      switch (provider) {
+        case 'momo':
+          verificationResult = await this.verifyMomoPayment(req.body);
+          break;
+        case 'vnpay':
+          verificationResult = await this.verifyVNPayPayment(req.query);
+          break;
+        case 'card':
+          verificationResult = await this.verifyCardPayment(transaction_ref);
+          break;
+        default:
+          throw new Error('Unsupported payment provider');
+      }
+
+      // Update payment status
+      await payment.update({
+        status: verificationResult.status,
+        verification_data: verificationResult.data
+      });
+
+      // Update order status
+      const order = await Order.findByPk(payment.order_id);
+      if (order) {
+        await order.update({
+          payment_status: verificationResult.status === 'succeeded' ? 'paid' : 'failed'
+        });
+      }
+
+      res.json({
+        success: true,
+        status: verificationResult.status
+      });
+    } catch (error) {
+      console.error('Payment verification error:', error);
+      res.status(400).json({
+        message: error.message || 'Payment verification failed'
+      });
+    }
+  }
+
+  // Helper method to sort object by key
+  sortObject(obj) {
+    return Object.keys(obj)
+      .sort()
+      .reduce((result, key) => {
+        result[key] = obj[key];
+        return result;
+      }, {});
+  }
+
+  // Helper methods for payment verification
+  async verifyMomoPayment(payload) {
+    // Verify Momo signature and payment status
+    const { signature, requestId, orderId, resultCode, ...rest } = payload;
+    const rawSignature = Object.entries(this.sortObject(rest))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+    
+    const checkSignature = crypto
+      .createHmac('sha256', this.momoConfig.secretKey)
+      .update(rawSignature)
+      .digest('hex');
+
+    if (signature !== checkSignature) {
+      throw new Error('Invalid signature');
+    }
+
+    return {
+      status: resultCode === '0' ? 'succeeded' : 'failed',
+      data: payload
+    };
+  }
+
+  async verifyVNPayPayment(params) {
+    const secureHash = params.vnp_SecureHash;
+    const { vnp_SecureHash, vnp_SecureHashType, ...rest } = params;
+    
+    const sortedParams = this.sortObject(rest);
+    const signData = Object.entries(sortedParams)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('&');
+    
+    const hmac = crypto
+      .createHmac('sha512', this.vnpayConfig.hashSecret)
+      .update(signData)
+      .digest('hex');
+
+    if (secureHash !== hmac) {
+      throw new Error('Invalid signature');
+    }
+
+    return {
+      status: params.vnp_ResponseCode === '00' ? 'succeeded' : 'failed',
+      data: params
+    };
+  }
+
+  async verifyCardPayment(paymentIntentId) {
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    
+    return {
+      status: paymentIntent.status,
+      data: paymentIntent
+    };
   }
 }
 

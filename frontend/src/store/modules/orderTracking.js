@@ -1,5 +1,6 @@
 import websocketService from '@/services/websocket'
 import axios from 'axios'
+import { api } from '@/services/api';
 
 export default {
   namespaced: true,
@@ -13,7 +14,9 @@ export default {
     lastUpdateTime: null,
     error: null,
     notifications: [],
-    loading: false
+    loading: false,
+    orderHistory: [],
+    driverLocationUpdates: {}
   },
   
   mutations: {
@@ -129,6 +132,67 @@ export default {
     
     SET_LOADING(state, loading) {
       state.loading = loading;
+    },
+
+    SET_ORDER_HISTORY(state, orders) {
+      state.orderHistory = orders;
+    },
+    ADD_TO_ORDER_HISTORY(state, order) {
+      // Add only if not already in history
+      if (!state.orderHistory.some(o => o.id === order.id)) {
+        state.orderHistory.push(order);
+      }
+    },
+    UPDATE_ORDER_STATUS(state, { orderId, status, timestamp }) {
+      if (state.currentOrder && state.currentOrder.id === orderId) {
+        state.currentOrder.status = status;
+        
+        // Update status history
+        if (!state.currentOrder.statusHistory) {
+          state.currentOrder.statusHistory = [];
+        }
+        
+        // Add to status history if not already there
+        if (!state.currentOrder.statusHistory.some(s => s.status === status)) {
+          state.currentOrder.statusHistory.push({
+            status,
+            timestamp: timestamp || new Date()
+          });
+        }
+      }
+      
+      // Also update in order history
+      const orderIndex = state.orderHistory.findIndex(o => o.id === orderId);
+      if (orderIndex !== -1) {
+        state.orderHistory[orderIndex].status = status;
+      }
+    },
+    UPDATE_DRIVER_LOCATION(state, { orderId, location, trafficCondition }) {
+      // Update in current order
+      if (state.currentOrder && state.currentOrder.id === orderId && state.currentOrder.driver) {
+        state.currentOrder.driver.location = location;
+        if (trafficCondition) {
+          state.currentOrder.trafficCondition = trafficCondition;
+        }
+      }
+      
+      // Store latest update in driverLocationUpdates
+      state.driverLocationUpdates[orderId] = {
+        location,
+        timestamp: new Date(),
+        trafficCondition
+      };
+    },
+    UPDATE_ETA(state, { orderId, eta }) {
+      if (state.currentOrder && state.currentOrder.id === orderId) {
+        state.currentOrder.estimatedDeliveryTime = eta;
+      }
+      
+      // Also update in order history
+      const orderIndex = state.orderHistory.findIndex(o => o.id === orderId);
+      if (orderIndex !== -1) {
+        state.orderHistory[orderIndex].estimatedDeliveryTime = eta;
+      }
     }
   },
   
@@ -519,6 +583,190 @@ export default {
       } catch (error) {
         console.error('Error saving notifications to localStorage', error);
       }
+    },
+
+    // Fetch details for a specific order
+    async getOrderDetails({ commit }, orderId) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        const response = await api.get(`/orders/${orderId}`);
+        const order = response.data;
+        
+        commit('SET_CURRENT_ORDER', order);
+        commit('ADD_TO_ORDER_HISTORY', order);
+        commit('SET_LOADING', false);
+        
+        return order;
+      } catch (error) {
+        console.error('Error fetching order details:', error);
+        commit('SET_ERROR', 'Failed to load order details');
+        commit('SET_LOADING', false);
+        throw error;
+      }
+    },
+    
+    // Fetch updates for the current order
+    async getOrderUpdates({ commit, state }, orderId) {
+      try {
+        const response = await api.get(`/orders/${orderId}/updates`);
+        const updatedOrder = response.data;
+        
+        if (updatedOrder) {
+          commit('SET_CURRENT_ORDER', updatedOrder);
+          return updatedOrder;
+        }
+        
+        return state.currentOrder;
+      } catch (error) {
+        console.error('Error fetching order updates:', error);
+        return state.currentOrder;
+      }
+    },
+    
+    // Fetch order history for the current user
+    async getOrderHistory({ commit }) {
+      commit('SET_LOADING', true);
+      
+      try {
+        const response = await api.get('/orders/history');
+        const orders = response.data;
+        
+        commit('SET_ORDER_HISTORY', orders);
+        commit('SET_LOADING', false);
+        
+        return orders;
+      } catch (error) {
+        console.error('Error fetching order history:', error);
+        commit('SET_ERROR', 'Failed to load order history');
+        commit('SET_LOADING', false);
+        return [];
+      }
+    },
+    
+    // Handle real-time order status update
+    updateOrderStatus({ commit }, { orderId, status, timestamp }) {
+      commit('UPDATE_ORDER_STATUS', { orderId, status, timestamp });
+    },
+    
+    // Handle real-time driver location update
+    updateDriverLocation({ commit }, { orderId, location, trafficCondition }) {
+      commit('UPDATE_DRIVER_LOCATION', { orderId, location, trafficCondition });
+    },
+    
+    // Update estimated delivery time
+    updateETA({ commit }, { orderId, eta }) {
+      commit('UPDATE_ETA', { orderId, eta });
+    },
+    
+    // Mock data for demonstration purposes
+    // In a real app, this would be replaced by WebSocket events
+    startMockOrderUpdates({ commit, state, dispatch }, orderId) {
+      if (!state.currentOrder || state.currentOrder.id !== orderId) {
+        return;
+      }
+      
+      // Mock status progression
+      const statusSequence = [
+        { status: 'confirmed', delay: 5000 },
+        { status: 'preparing', delay: 15000 },
+        { status: 'ready_for_pickup', delay: 20000 },
+        { status: 'out_for_delivery', delay: 10000 },
+        { status: 'delivered', delay: 30000 }
+      ];
+      
+      // Find current status index
+      const currentStatus = state.currentOrder.status;
+      let startIndex = statusSequence.findIndex(s => s.status === currentStatus);
+      if (startIndex === -1) startIndex = 0;
+      
+      // Process each status update in sequence
+      let cumulativeDelay = 0;
+      for (let i = startIndex; i < statusSequence.length; i++) {
+        cumulativeDelay += statusSequence[i].delay;
+        
+        setTimeout(() => {
+          dispatch('updateOrderStatus', {
+            orderId,
+            status: statusSequence[i].status,
+            timestamp: new Date()
+          });
+          
+          // If we're starting delivery, add driver
+          if (statusSequence[i].status === 'out_for_delivery' && state.currentOrder) {
+            // Mock driver data
+            const driverData = {
+              id: 'driver-123',
+              name: 'John Driver',
+              phone: '+1234567890',
+              rating: 4.8,
+              totalRatings: 243,
+              avatarUrl: null,
+              location: {
+                lat: state.currentOrder.restaurant.location.lat - 0.01,
+                lng: state.currentOrder.restaurant.location.lng - 0.01
+              }
+            };
+            
+            // Update order with driver info
+            commit('SET_CURRENT_ORDER', {
+              ...state.currentOrder,
+              driver: driverData
+            });
+            
+            // Start mock driver location updates
+            dispatch('startMockDriverLocationUpdates', orderId);
+          }
+        }, cumulativeDelay);
+      }
+    },
+    
+    // Mock driver location updates
+    startMockDriverLocationUpdates({ commit, state }, orderId) {
+      if (!state.currentOrder || !state.currentOrder.driver || state.currentOrder.status === 'delivered') {
+        return;
+      }
+      
+      // Get start and end coordinates
+      const startLat = state.currentOrder.restaurant.location.lat;
+      const startLng = state.currentOrder.restaurant.location.lng;
+      const endLat = state.currentOrder.deliveryAddress.lat;
+      const endLng = state.currentOrder.deliveryAddress.lng;
+      
+      // Calculate movement step values
+      const steps = 10;
+      const latStep = (endLat - startLat) / steps;
+      const lngStep = (endLng - startLng) / steps;
+      
+      // Get initial driver position (or use from state)
+      let currentLat = state.currentOrder.driver.location.lat;
+      let currentLng = state.currentOrder.driver.location.lng;
+      
+      const intervalId = setInterval(() => {
+        // Move driver closer to destination
+        currentLat += latStep;
+        currentLng += lngStep;
+        
+        // Update driver location
+        commit('UPDATE_DRIVER_LOCATION', {
+          orderId,
+          location: { lat: currentLat, lng: currentLng },
+          trafficCondition: Math.random() > 0.8 ? 'heavy' : 'normal' // Randomly simulate traffic changes
+        });
+        
+        // Check if driver has reached destination or order is delivered
+        const distanceRemaining = Math.sqrt(
+          Math.pow(endLat - currentLat, 2) + Math.pow(endLng - currentLng, 2)
+        );
+        
+        if (distanceRemaining < 0.001 || state.currentOrder.status === 'delivered') {
+          clearInterval(intervalId);
+        }
+      }, 3000); // Update every 3 seconds
+      
+      // Store interval ID to clear later if needed
+      return intervalId;
     }
   },
   
@@ -545,7 +793,29 @@ export default {
     
     loading: state => state.loading,
     
-    unreadNotificationsCount: state => state.notifications.filter(n => !n.read).length
+    unreadNotificationsCount: state => state.notifications.filter(n => !n.read).length,
+
+    currentOrder: state => state.currentOrder,
+    orderHistory: state => state.orderHistory,
+    isLoading: state => state.loading,
+    orderError: state => state.error,
+    getOrderById: state => id => {
+      // Check in current order
+      if (state.currentOrder && state.currentOrder.id === id) {
+        return state.currentOrder;
+      }
+      
+      // Check in order history
+      return state.orderHistory.find(order => order.id === id);
+    },
+    getDriverLocation: state => orderId => {
+      const update = state.driverLocationUpdates[orderId];
+      if (update) {
+        return update.location;
+      }
+      
+      return null;
+    }
   }
 }
 
@@ -749,4 +1019,4 @@ function getStatusText(status) {
   };
   
   return statusMap[status] || status;
-} 
+}

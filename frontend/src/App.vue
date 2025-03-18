@@ -23,17 +23,31 @@
         ></v-btn>
       </template>
     </v-snackbar>
+    
+    <!-- Order Chat Dialog -->
+    <order-chat-dialog
+      v-if="isChatOpen"
+      :order-id="activeChatOrderId"
+      :driver-id="activeChatDriverId"
+      :driver-name="activeChatDriverName"
+      :is-open="isChatOpen"
+      @close="closeChat"
+    />
   </main-layout>
 </template>
 
 <script>
 import MainLayout from '@/components/layout/MainLayout.vue';
+import OrderChatDialog from '@/components/order/OrderChatDialog.vue';
+import { computed } from 'vue';
+import { useStore } from 'vuex';
 
 export default {
   name: 'App',
   
   components: {
-    MainLayout
+    MainLayout,
+    OrderChatDialog
   },
   
   data() {
@@ -58,6 +72,29 @@ export default {
     
     // Make toast available globally
     this.$root.$toast = this.$toast;
+  },
+  
+  setup() {
+    const store = useStore();
+    
+    // Chat state
+    const isChatOpen = computed(() => store.getters['chat/isChatOpen']);
+    const activeChat = computed(() => store.getters['chat/activeChat']);
+    const activeChatOrderId = computed(() => activeChat.value?.orderId || '');
+    const activeChatDriverId = computed(() => activeChat.value?.driverId || '');
+    const activeChatDriverName = computed(() => activeChat.value?.driverName || 'Driver');
+    
+    const closeChat = () => {
+      store.dispatch('chat/closeChatDialog');
+    };
+    
+    return {
+      isChatOpen,
+      activeChatOrderId,
+      activeChatDriverId,
+      activeChatDriverName,
+      closeChat
+    };
   },
   
   methods: {

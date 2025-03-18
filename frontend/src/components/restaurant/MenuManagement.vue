@@ -1,409 +1,414 @@
-<!-- Previous template content remains the same until the script section -->
+<template>
+  <div class="menu-management">
+    <!-- Menu Actions Header -->
+    <div class="d-flex align-center mb-4">
+      <h2 class="text-h5">Menu Management</h2>
+      <v-spacer></v-spacer>
+      <v-btn
+        color="primary"
+        prepend-icon="mdi-plus"
+        @click="openItemDialog()"
+      >
+        Add Menu Item
+      </v-btn>
+    </div>
 
-<script setup lang="ts">
+    <!-- Category Filter and Search -->
+    <v-row class="mb-4">
+      <v-col cols="12" sm="4">
+        <v-select
+          v-model="selectedCategory"
+          :items="categories"
+          label="Filter by Category"
+          clearable
+          density="comfortable"
+        ></v-select>
+      </v-col>
+      <v-col cols="12" sm="4">
+        <v-text-field
+          v-model="search"
+          label="Search Items"
+          prepend-inner-icon="mdi-magnify"
+          density="comfortable"
+          clearable
+        ></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="4" class="d-flex align-center">
+        <v-btn-toggle
+          v-model="viewMode"
+          density="comfortable"
+          color="primary"
+        >
+          <v-btn value="grid" icon="mdi-grid"></v-btn>
+          <v-btn value="list" icon="mdi-format-list-bulleted"></v-btn>
+        </v-btn-toggle>
+      </v-col>
+    </v-row>
+
+    <!-- Grid View -->
+    <v-row v-if="viewMode === 'grid'" class="menu-grid">
+      <v-col 
+        v-for="item in filteredItems" 
+        :key="item.id"
+        cols="12"
+        sm="6"
+        md="4"
+        lg="3"
+      >
+        <v-card class="h-100">
+          <v-img
+            :src="item.image || '/img/placeholder-food.png'"
+            height="200"
+            cover
+          ></v-img>
+          
+          <v-card-text>
+            <div class="d-flex justify-space-between align-center mb-2">
+              <div class="text-h6">{{ item.name }}</div>
+              <div class="text-h6">${{ item.price.toFixed(2) }}</div>
+            </div>
+            <div class="text-subtitle-2 mb-2">{{ item.category }}</div>
+            <div class="text-body-2">{{ item.description }}</div>
+          </v-card-text>
+
+          <v-divider></v-divider>
+
+          <v-card-actions>
+            <v-btn
+              variant="text"
+              color="primary"
+              @click="openItemDialog(item)"
+            >
+              Edit
+            </v-btn>
+            <v-spacer></v-spacer>
+            <v-switch
+              v-model="item.available"
+              color="success"
+              :label="item.available ? 'Available' : 'Unavailable'"
+              hide-details
+              density="comfortable"
+              @change="toggleItemAvailability(item)"
+            ></v-switch>
+          </v-card-actions>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- List View -->
+    <v-table v-else>
+      <thead>
+        <tr>
+          <th>Image</th>
+          <th>Name</th>
+          <th>Category</th>
+          <th>Price</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in filteredItems" :key="item.id">
+          <td>
+            <v-avatar size="48">
+              <v-img :src="item.image || '/img/placeholder-food.png'" cover></v-img>
+            </v-avatar>
+          </td>
+          <td>{{ item.name }}</td>
+          <td>{{ item.category }}</td>
+          <td>${{ item.price.toFixed(2) }}</td>
+          <td>
+            <v-switch
+              v-model="item.available"
+              color="success"
+              hide-details
+              density="comfortable"
+              @change="toggleItemAvailability(item)"
+            ></v-switch>
+          </td>
+          <td>
+            <v-btn
+              icon="mdi-pencil"
+              variant="text"
+              color="primary"
+              size="small"
+              @click="openItemDialog(item)"
+            ></v-btn>
+            <v-btn
+              icon="mdi-delete"
+              variant="text"
+              color="error"
+              size="small"
+              @click="confirmDeleteItem(item)"
+            ></v-btn>
+          </td>
+        </tr>
+      </tbody>
+    </v-table>
+
+    <!-- Item Dialog -->
+    <v-dialog v-model="itemDialog.show" max-width="600">
+      <v-card>
+        <v-card-title>
+          {{ itemDialog.editMode ? 'Edit Item' : 'Add New Item' }}
+        </v-card-title>
+
+        <v-card-text>
+          <v-form ref="itemForm" @submit.prevent="saveItem">
+            <v-row>
+              <v-col cols="12">
+                <v-text-field
+                  v-model="itemDialog.item.name"
+                  label="Item Name"
+                  :rules="[v => !!v || 'Name is required']"
+                  required
+                ></v-text-field>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <v-text-field
+                  v-model.number="itemDialog.item.price"
+                  label="Price"
+                  prefix="$"
+                  type="number"
+                  step="0.01"
+                  :rules="[
+                    v => !!v || 'Price is required',
+                    v => v > 0 || 'Price must be greater than 0'
+                  ]"
+                  required
+                ></v-text-field>
+              </v-col>
+
+              <v-col cols="12" sm="6">
+                <v-select
+                  v-model="itemDialog.item.category"
+                  :items="categories"
+                  label="Category"
+                  :rules="[v => !!v || 'Category is required']"
+                  required
+                ></v-select>
+              </v-col>
+
+              <v-col cols="12">
+                <v-textarea
+                  v-model="itemDialog.item.description"
+                  label="Description"
+                  rows="3"
+                  :rules="[v => !!v || 'Description is required']"
+                  required
+                ></v-textarea>
+              </v-col>
+
+              <v-col cols="12">
+                <v-file-input
+                  v-model="itemDialog.item.imageFile"
+                  label="Item Image"
+                  accept="image/*"
+                  prepend-icon="mdi-camera"
+                  :show-size="true"
+                ></v-file-input>
+              </v-col>
+
+              <v-col cols="12">
+                <v-switch
+                  v-model="itemDialog.item.available"
+                  color="success"
+                  label="Available"
+                  hide-details
+                ></v-switch>
+              </v-col>
+            </v-row>
+          </v-form>
+        </v-card-text>
+
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="itemDialog.show = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="primary"
+            @click="saveItem"
+            :loading="itemDialog.loading"
+          >
+            Save
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Delete Confirmation Dialog -->
+    <v-dialog v-model="deleteDialog.show" max-width="400">
+      <v-card>
+        <v-card-title>Delete Item</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete "{{ deleteDialog.item?.name }}"?
+          This action cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="deleteDialog.show = false"
+          >
+            Cancel
+          </v-btn>
+          <v-btn
+            color="error"
+            @click="deleteItem"
+            :loading="deleteDialog.loading"
+          >
+            Delete
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+  </div>
+</template>
+
+<script setup>
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { useStore } from 'vuex'
+import { useToast } from 'vue-toastification'
 
-interface Category {
-  id: string
-  name: string
-  icon?: string
-  description?: string
-}
-
-interface MenuItem {
-  id: string
-  name: string
-  description: string
-  price: number
-  image: string
-  tags: string[]
-  available: boolean
-  categoryId: string
-  createdAt: string // Added missing field
-}
-
-interface CategoryForm {
-  id?: string
-  name: string
-  icon: string
-  description: string
-}
-
-interface MenuItemForm {
-  id?: string
-  name: string
-  description: string
-  price: number
-  image: File | null
-  tags: string[]
-  available: boolean
-  categoryId?: string
-}
-
-const { t } = useI18n()
 const store = useStore()
+const toast = useToast()
 
 // State
-const categories = ref<Category[]>([])
-const menuItems = ref<MenuItem[]>([])
-const selectedCategory = ref<Category | null>(null)
 const search = ref('')
-const showOutOfStock = ref(false)
-const sortBy = ref('name')
+const selectedCategory = ref(null)
+const viewMode = ref('grid')
+const itemForm = ref(null)
 
-// Dialog states
-const categoryDialog = ref(false)
-const itemDialog = ref(false)
-const deleteDialog = ref(false)
-const editingCategory = ref<Category | null>(null)
-const editingItem = ref<MenuItem | null>(null)
-
-// Form refs & states
-const categoryFormRef = ref()
-const itemFormRef = ref()
-const isCategoryFormValid = ref(false)
-const isItemFormValid = ref(false)
-const isSaving = ref(false)
-const isDeleting = ref(false)
-
-// Forms
-const categoryForm = ref<CategoryForm>({
-  name: '',
-  icon: '',
-  description: ''
+const itemDialog = ref({
+  show: false,
+  editMode: false,
+  loading: false,
+  item: {
+    name: '',
+    price: 0,
+    category: '',
+    description: '',
+    available: true,
+    image: '',
+    imageFile: null
+  }
 })
 
-const itemForm = ref<MenuItemForm>({
-  name: '',
-  description: '',
-  price: 0,
-  image: null,
-  tags: [],
-  available: true
+const deleteDialog = ref({
+  show: false,
+  loading: false,
+  item: null
 })
-
-// Delete handling
-const deleteType = ref<'category' | 'item'>('item')
-const deleteItemId = ref('')
-const deleteMessage = computed(() => 
-  deleteType.value === 'category' 
-    ? t('restaurant.deleteCategoryConfirm') 
-    : t('restaurant.deleteItemConfirm')
-)
-
-// Sort options
-const sortOptions = computed(() => [
-  { title: t('restaurant.sortOptions.name'), value: 'name' },
-  { title: t('restaurant.sortOptions.priceAsc'), value: 'priceAsc' },
-  { title: t('restaurant.sortOptions.priceDesc'), value: 'priceDesc' },
-  { title: t('restaurant.sortOptions.newest'), value: 'newest' }
-])
-
-// Validation rules
-const nameRules = [
-  (v: string) => !!v || t('validation.required'),
-  (v: string) => v.length >= 2 || t('validation.minLength', { length: 2 })
-]
-
-const priceRules = [
-  (v: number) => !!v || t('validation.required'),
-  (v: number) => v > 0 || t('validation.positive')
-]
-
-const descriptionRules = [
-  (v: string) => !!v || t('validation.required'),
-  (v: string) => v.length >= 10 || t('validation.minLength', { length: 10 })
-]
-
-const imageRules = [
-  (v: File) => !v || v.size <= 5000000 || t('validation.fileSize', { size: '5MB' })
-]
 
 // Computed
+const menuItems = computed(() => store.state.restaurantAdmin.menuItems)
+const categories = computed(() => store.state.restaurantAdmin.categories)
+
 const filteredItems = computed(() => {
   let items = [...menuItems.value]
-
-  // Filter by category
-  if (selectedCategory.value) {
-    items = items.filter(item => item.categoryId === selectedCategory.value?.id)
-  }
-
-  // Filter by search
+  
   if (search.value) {
-    const searchLower = search.value.toLowerCase()
-    items = items.filter(item =>
-      item.name.toLowerCase().includes(searchLower) ||
-      item.description.toLowerCase().includes(searchLower) ||
-      item.tags.some(tag => tag.toLowerCase().includes(searchLower))
+    const searchTerm = search.value.toLowerCase()
+    items = items.filter(item => 
+      item.name.toLowerCase().includes(searchTerm) ||
+      item.description.toLowerCase().includes(searchTerm)
     )
   }
 
-  // Filter by availability
-  if (!showOutOfStock.value) {
-    items = items.filter(item => item.available)
-  }
-
-  // Sort items
-  switch (sortBy.value) {
-    case 'priceAsc':
-      items.sort((a, b) => a.price - b.price)
-      break
-    case 'priceDesc':
-      items.sort((a, b) => b.price - a.price)
-      break
-    case 'newest':
-      items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      break
-    default:
-      items.sort((a, b) => a.name.localeCompare(b.name))
+  if (selectedCategory.value) {
+    items = items.filter(item => item.category === selectedCategory.value)
   }
 
   return items
 })
 
 // Methods
-const loadCategories = async () => {
-  try {
-    const response = await store.dispatch('restaurant/getCategories')
-    categories.value = response
-  } catch (error) {
-    console.error('Error loading categories:', error)
-  }
-}
-
-const loadMenuItems = async () => {
-  try {
-    const response = await store.dispatch('restaurant/getMenuItems')
-    menuItems.value = response
-  } catch (error) {
-    console.error('Error loading menu items:', error)
-  }
-}
-
-const selectCategory = (category: Category) => {
-  selectedCategory.value = category
-}
-
-const openCategoryDialog = (category?: Category) => {
-  if (category) {
-    editingCategory.value = category
-    categoryForm.value = {
-      id: category.id,
-      name: category.name,
-      icon: category.icon || '',
-      description: category.description || ''
-    }
-  } else {
-    editingCategory.value = null
-    categoryForm.value = {
-      name: '',
-      icon: '',
-      description: ''
-    }
-  }
-  categoryDialog.value = true
-}
-
-const openItemDialog = (item?: MenuItem) => {
-  if (item) {
-    editingItem.value = item
-    itemForm.value = {
-      id: item.id,
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      image: null,
-      tags: [...item.tags],
-      available: item.available,
-      categoryId: item.categoryId
-    }
-  } else {
-    editingItem.value = null
-    itemForm.value = {
-      name: '',
-      description: '',
-      price: 0,
-      image: null,
-      tags: [],
-      available: true,
-      categoryId: selectedCategory.value?.id
-    }
-  }
-  itemDialog.value = true
-}
-
-const saveCategory = async () => {
-  const isValid = await categoryFormRef.value?.validate()
-  if (!isValid?.valid) return
-
-  isSaving.value = true
-  try {
-    await store.dispatch('restaurant/saveCategory', categoryForm.value)
-    await loadCategories()
-    categoryDialog.value = false
-    store.dispatch('showNotification', {
-      type: 'success',
-      message: t('restaurant.categorySaved')
-    })
-  } catch (error) {
-    store.dispatch('showNotification', {
-      type: 'error',
-      message: t('restaurant.saveFailed')
-    })
-  } finally {
-    isSaving.value = false
-  }
+const openItemDialog = (item = null) => {
+  itemDialog.value.editMode = !!item
+  itemDialog.value.item = item 
+    ? { ...item, imageFile: null }
+    : {
+        name: '',
+        price: 0,
+        category: '',
+        description: '',
+        available: true,
+        image: '',
+        imageFile: null
+      }
+  itemDialog.value.show = true
 }
 
 const saveItem = async () => {
-  const isValid = await itemFormRef.value?.validate()
-  if (!isValid?.valid) return
+  if (!itemForm.value.validate()) return
 
-  isSaving.value = true
+  itemDialog.value.loading = true
   try {
     const formData = new FormData()
-
-    // Add all string/number fields as strings
-    formData.append('name', itemForm.value.name)
-    formData.append('description', itemForm.value.description)
-    formData.append('price', String(itemForm.value.price))
-    formData.append('available', String(itemForm.value.available))
-    formData.append('categoryId', itemForm.value.categoryId || selectedCategory.value?.id || '')
-
-    // Add array as JSON string
-    formData.append('tags', JSON.stringify(itemForm.value.tags))
-
-    // Add ID if editing
-    if (editingItem.value) {
-      formData.append('id', editingItem.value.id)
-    }
-
-    // Add image if selected
-    if (itemForm.value.image) {
-      formData.append('image', itemForm.value.image)
-    }
-
-    await store.dispatch('restaurant/saveMenuItem', formData)
-    await loadMenuItems()
-    itemDialog.value = false
-    store.dispatch('showNotification', {
-      type: 'success',
-      message: t('restaurant.itemSaved')
+    Object.keys(itemDialog.value.item).forEach(key => {
+      if (key === 'imageFile' && itemDialog.value.item[key]) {
+        formData.append('image', itemDialog.value.item[key])
+      } else if (key !== 'imageFile') {
+        formData.append(key, itemDialog.value.item[key])
+      }
     })
-  } catch (error) {
-    store.dispatch('showNotification', {
-      type: 'error',
-      message: t('restaurant.saveFailed')
-    })
-  } finally {
-    isSaving.value = false
-  }
-}
 
-const confirmDeleteCategory = (category: Category) => {
-  deleteType.value = 'category'
-  deleteItemId.value = category.id
-  deleteDialog.value = true
-}
-
-const confirmDeleteItem = (item: MenuItem) => {
-  deleteType.value = 'item'
-  deleteItemId.value = item.id
-  deleteDialog.value = true
-}
-
-const confirmDelete = async () => {
-  isDeleting.value = true
-  try {
-    if (deleteType.value === 'category') {
-      await store.dispatch('restaurant/deleteCategory', deleteItemId.value)
-      await loadCategories()
+    if (itemDialog.value.editMode) {
+      await store.dispatch('restaurantAdmin/updateMenuItem', {
+        id: itemDialog.value.item.id,
+        data: formData
+      })
+      toast.success('Item updated successfully')
     } else {
-      await store.dispatch('restaurant/deleteMenuItem', deleteItemId.value)
-      await loadMenuItems()
+      await store.dispatch('restaurantAdmin/createMenuItem', formData)
+      toast.success('Item created successfully')
     }
-    deleteDialog.value = false
-    store.dispatch('showNotification', {
-      type: 'success',
-      message: t(`restaurant.${deleteType.value}Deleted`)
-    })
+
+    itemDialog.value.show = false
   } catch (error) {
-    store.dispatch('showNotification', {
-      type: 'error',
-      message: t('restaurant.deleteFailed')
-    })
+    toast.error(error.message || 'Failed to save item')
   } finally {
-    isDeleting.value = false
+    itemDialog.value.loading = false
   }
 }
 
-const updateItemAvailability = async (item: MenuItem) => {
+const toggleItemAvailability = async (item) => {
   try {
-    await store.dispatch('restaurant/updateMenuItemAvailability', {
+    await store.dispatch('restaurantAdmin/updateMenuItem', {
       id: item.id,
-      available: item.available
+      data: { available: item.available }
     })
+    toast.success(`Item ${item.available ? 'enabled' : 'disabled'} successfully`)
   } catch (error) {
-    item.available = !item.available // Revert on failure
-    store.dispatch('showNotification', {
-      type: 'error',
-      message: t('restaurant.updateFailed')
-    })
+    item.available = !item.available // Revert the change
+    toast.error('Failed to update item availability')
   }
 }
 
-const formatPrice = (price: number): string => {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND'
-  }).format(price)
+const confirmDeleteItem = (item) => {
+  deleteDialog.value.item = item
+  deleteDialog.value.show = true
 }
 
-// Load initial data
-loadCategories()
-loadMenuItems()
+const deleteItem = async () => {
+  if (!deleteDialog.value.item) return
 
-// Expose to template
-defineExpose({
-  categories,
-  menuItems,
-  selectedCategory,
-  search,
-  showOutOfStock,
-  sortBy,
-  sortOptions,
-  filteredItems,
-  categoryDialog,
-  itemDialog,
-  deleteDialog,
-  categoryForm,
-  itemForm,
-  categoryFormRef,
-  itemFormRef,
-  isCategoryFormValid,
-  isItemFormValid,
-  isSaving,
-  isDeleting,
-  deleteMessage,
-  nameRules,
-  priceRules,
-  descriptionRules,
-  imageRules,
-  selectCategory,
-  openCategoryDialog,
-  openItemDialog,
-  saveCategory,
-  saveItem,
-  confirmDeleteCategory,
-  confirmDeleteItem,
-  confirmDelete,
-  updateItemAvailability,
-  formatPrice,
-  editingCategory,
-  editingItem
-})
+  deleteDialog.value.loading = true
+  try {
+    await store.dispatch('restaurantAdmin/deleteMenuItem', deleteDialog.value.item.id)
+    toast.success('Item deleted successfully')
+    deleteDialog.value.show = false
+  } catch (error) {
+    toast.error('Failed to delete item')
+  } finally {
+    deleteDialog.value.loading = false
+  }
+}
 </script>
 
 <style scoped>
@@ -411,15 +416,15 @@ defineExpose({
   padding: 16px;
 }
 
-.v-card {
-  border-radius: 8px;
+.menu-grid {
+  gap: 16px;
 }
 
-.menu-item-image {
+.v-card {
   transition: transform 0.2s;
 }
 
-.menu-item-image:hover {
-  transform: scale(1.05);
+.v-card:hover {
+  transform: translateY(-2px);
 }
 </style>

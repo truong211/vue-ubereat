@@ -4,6 +4,7 @@ const { AppError } = require('../middleware/error.middleware');
 const { v4: uuidv4 } = require('uuid');
 const { Op } = require('sequelize');
 const sequelize = require('../config/database');
+const { emitToOrder, emitToUser } = require('../socket/handlers');
 
 /**
  * Get user orders
@@ -124,7 +125,6 @@ exports.getOrderDetails = async (req, res, next) => {
  * @access Private
  */
 exports.createOrder = async (req, res, next) => {
-  // Start a transaction
   const transaction = await sequelize.transaction();
 
   try {
@@ -296,6 +296,18 @@ exports.createOrder = async (req, res, next) => {
       ]
     });
 
+    // Emit order creation event
+    emitToOrder(order.id, 'order_status_updated', {
+      orderId: order.id,
+      status: 'pending',
+      updatedAt: new Date().toISOString()
+    });
+
+    // Notify restaurant
+    emitToUser(restaurant.userId, 'new_order', {
+      order: completeOrder
+    });
+
     res.status(201).json({
       status: 'success',
       data: {
@@ -341,6 +353,22 @@ exports.cancelOrder = async (req, res, next) => {
     order.status = 'cancelled';
     order.cancellationReason = cancellationReason;
     await order.save();
+
+    // Emit cancellation event
+    emitToOrder(order.id, 'order_status_updated', {
+      orderId: order.id,
+      status: 'cancelled',
+      updatedAt: new Date().toISOString(),
+      reason: cancellationReason
+    });
+
+    // If driver was assigned, notify them
+    if (order.driverId) {
+      emitToUser(order.driverId, 'order_cancelled', {
+        orderId: order.id,
+        reason: cancellationReason
+      });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -489,6 +517,39 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     await order.save();
 
+    // Emit status update event
+    emitToOrder(order.id, 'order_status_updated', {
+      orderId: order.id,
+      status,
+      updatedAt: new Date().toISOString(),
+      estimatedDeliveryTime: order.estimatedDeliveryTime,
+      actualDeliveryTime: order.actualDeliveryTime
+    });
+
+    // Send specific notifications based on status
+    switch (status) {
+      case 'confirmed':
+        emitToUser(order.userId, 'order_confirmed', {
+          orderId: order.id,
+          estimatedDeliveryTime: order.estimatedDeliveryTime
+        });
+        break;
+      case 'ready':
+        if (order.driverId) {
+          emitToUser(order.driverId, 'order_ready', {
+            orderId: order.id,
+            restaurantId: order.restaurantId
+          });
+        }
+        break;
+      case 'delivered':
+        emitToUser(order.userId, 'order_delivered', {
+          orderId: order.id,
+          actualDeliveryTime: order.actualDeliveryTime
+        });
+        break;
+    }
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -545,6 +606,26 @@ exports.assignDriver = async (req, res, next) => {
     order.driverId = driverId;
     await order.save();
 
+    // Emit driver assignment event
+    emitToOrder(order.id, 'driver_assigned', {
+      orderId: order.id,
+      driver: {
+        id: driver.id,
+        name: driver.fullName,
+        phone: driver.phone,
+        profileImage: driver.profileImage
+      }
+    });
+
+    // Notify the driver
+    emitToUser(driverId, 'new_order_assigned', {
+      orderId: order.id,
+      restaurantId: order.restaurantId,
+      restaurantName: order.restaurant.name,
+      restaurantAddress: order.restaurant.address,
+      deliveryAddress: order.deliveryAddress
+    });
+
     res.status(200).json({
       status: 'success',
       data: {
@@ -554,4 +635,4 @@ exports.assignDriver = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};

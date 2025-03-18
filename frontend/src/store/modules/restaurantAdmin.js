@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { io } from 'socket.io-client'
 
 export default {
   namespaced: true,
@@ -14,11 +15,17 @@ export default {
       monthlyRevenue: 0,
       avgDeliveryTime: 0,
       avgRating: 0,
+      avgOrderValue: 0,
+      avgOrderTrend: 0,
+      ordersTrend: 0,
+      revenueTrend: 0
     },
     menuItems: [],
     reviews: [],
     notifications: [],
     promotions: [],
+    categories: [],
+    socket: null,
     loading: false,
     error: null
   },
@@ -99,6 +106,12 @@ export default {
     },
     removePromotion(state, promotionId) {
       state.promotions = state.promotions.filter(p => p.id !== promotionId)
+    },
+    setCategories(state, categories) {
+      state.categories = categories
+    },
+    setSocket(state, socket) {
+      state.socket = socket
     },
     setLoading(state, loading) {
       state.loading = loading
@@ -307,6 +320,44 @@ export default {
         commit('setError', error.response?.data?.message || 'Failed to delete promotion')
         throw error
       }
+    },
+
+    async fetchCategories({ commit }) {
+      try {
+        const response = await axios.get('/api/restaurant/categories')
+        commit('setCategories', response.data)
+      } catch (error) {
+        commit('setError', error.message)
+        throw error
+      }
+    },
+
+    initializeWebSocket({ commit, dispatch }) {
+      const socket = io('/restaurant', {
+        auth: {
+          token: localStorage.getItem('token')
+        }
+      })
+
+      socket.on('connect', () => {
+        console.log('WebSocket connected')
+      })
+
+      socket.on('new_order', (order) => {
+        commit('addOrder', order)
+        // Trigger notification sound and update metrics
+        dispatch('fetchMetrics')
+      })
+
+      socket.on('order_updated', (order) => {
+        commit('updateOrder', order)
+      })
+
+      socket.on('error', (error) => {
+        commit('setError', error)
+      })
+
+      commit('setSocket', socket)
     }
   },
 
@@ -322,6 +373,29 @@ export default {
     getNotifications: state => state.notifications,
     getUnreadNotifications: state => state.notifications.filter(n => !n.read),
     getPromotions: state => state.promotions,
-    getActivePromotions: state => state.promotions.filter(p => p.active)
+    getActivePromotions: state => state.promotions.filter(p => p.active),
+    pendingOrders: state => {
+      return state.orders.filter(order => order.status === 'pending')
+    },
+    preparingOrders: state => {
+      return state.orders.filter(order => order.status === 'preparing')
+    },
+    readyOrders: state => {
+      return state.orders.filter(order => order.status === 'ready')
+    },
+    inProgressOrders: state => {
+      return state.orders.filter(order => 
+        ['pending', 'preparing', 'ready'].includes(order.status)
+      )
+    },
+    menuItemsByCategory: state => {
+      return state.menuItems.reduce((acc, item) => {
+        if (!acc[item.category]) {
+          acc[item.category] = []
+        }
+        acc[item.category].push(item)
+        return acc
+      }, {})
+    }
   }
 }

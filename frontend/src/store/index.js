@@ -10,6 +10,7 @@ import orderTracking from './modules/orderTracking'
 import categories from './modules/categories'
 import restaurants from './modules/restaurants'
 import websocketService from '@/services/websocket'
+import chat from './modules/chat'
 
 // Create a new store instance.
 export default createStore({
@@ -135,6 +136,7 @@ export default createStore({
     reviews,
     orderTracking,
     categories,
-    restaurants
+    restaurants,
+    chat
   }
 })

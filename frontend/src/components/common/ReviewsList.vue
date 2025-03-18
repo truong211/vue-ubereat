@@ -1,5 +1,222 @@
 <template>
-<!-- Previous template content remains the same -->
+  <div class="reviews-list">
+    <!-- Rating overview -->
+    <div v-if="showOverview && reviews.length > 0" class="rating-overview mb-6">
+      <v-row>
+        <v-col cols="12" sm="4" class="text-center">
+          <div class="text-h3 font-weight-bold">{{ averageRating.toFixed(1) }}</div>
+          <v-rating
+            :model-value="averageRating"
+            color="amber"
+            half-increments
+            readonly
+            class="justify-center my-2"
+          ></v-rating>
+          <div class="text-subtitle-1">{{ reviews.length }} {{ $t('review.reviews') }}</div>
+        </v-col>
+        
+        <v-col cols="12" sm="8">
+          <div v-for="n in 5" :key="n" class="d-flex align-center mb-2">
+            <div class="text-body-2 mr-4">{{ 6-n }}</div>
+            <v-progress-linear
+              :model-value="getRatingPercentage(6-n)"
+              color="amber"
+              height="8"
+              class="flex-grow-1 mr-4"
+              rounded
+            ></v-progress-linear>
+            <div class="text-body-2" style="min-width: 40px">{{ getRatingCount(6-n) }}</div>
+          </div>
+        </v-col>
+      </v-row>
+    </div>
+
+    <!-- Write review form -->
+    <div v-if="showWriteReview && canReview" class="write-review mb-6">
+      <v-form ref="reviewForm" v-model="isReviewFormValid">
+        <v-card variant="outlined" class="pa-4">
+          <div class="mb-4">
+            <div class="text-subtitle-1 mb-2">{{ $t('review.yourRating') }}</div>
+            <v-rating
+              v-model="userReview.rating"
+              color="amber"
+              hover
+              half-increments
+              size="large"
+            ></v-rating>
+          </div>
+          
+          <v-textarea
+            v-model="userReview.comment"
+            :label="$t('review.yourReview')"
+            :placeholder="$t('review.reviewPlaceholder')"
+            variant="outlined"
+            rows="4"
+            counter="500"
+            :rules="reviewRules"
+          ></v-textarea>
+          
+          <div class="d-flex justify-end mt-4">
+            <v-btn
+              color="primary"
+              :loading="isSubmittingReview"
+              :disabled="!isReviewFormValid || isSubmittingReview"
+              @click="submitReview"
+            >
+              {{ $t('review.submit') }}
+            </v-btn>
+          </div>
+        </v-card>
+      </v-form>
+    </div>
+
+    <!-- Review filters -->
+    <div v-if="reviews.length > 0" class="review-filters d-flex align-center mb-4 flex-wrap">
+      <v-select
+        v-model="reviewFilters.sort"
+        :items="sortOptions"
+        label="Sort by"
+        variant="outlined"
+        density="compact"
+        hide-details
+        class="mr-4 mb-2"
+        style="max-width: 200px"
+      ></v-select>
+      
+      <v-btn-toggle
+        v-model="reviewFilters.rating"
+        mandatory
+        color="primary"
+        class="mb-2"
+      >
+        <v-btn value="all">{{ $t('review.all') }}</v-btn>
+        <v-btn value="positive">{{ $t('review.positive') }}</v-btn>
+        <v-btn value="critical">{{ $t('review.critical') }}</v-btn>
+      </v-btn-toggle>
+      
+      <v-spacer></v-spacer>
+      
+      <v-text-field
+        v-model="reviewFilters.search"
+        :placeholder="$t('review.searchPlaceholder')"
+        prepend-inner-icon="mdi-magnify"
+        variant="outlined"
+        density="compact"
+        hide-details
+        class="mb-2"
+        style="max-width: 250px"
+      ></v-text-field>
+    </div>
+
+    <!-- Reviews list -->
+    <v-card v-if="paginatedReviews.length > 0" variant="outlined">
+      <v-list lines="three">
+        <template v-for="(review, index) in paginatedReviews" :key="review.id">
+          <v-list-item>
+            <template v-slot:prepend>
+              <v-avatar :image="review.userAvatar" :color="!review.userAvatar ? 'grey-lighten-1' : undefined">
+                <template v-if="!review.userAvatar">
+                  <v-icon icon="mdi-account"></v-icon>
+                </template>
+              </v-avatar>
+            </template>
+
+            <v-list-item-title class="d-flex align-center justify-space-between mb-2">
+              <div class="d-flex align-center">
+                <span class="font-weight-medium">{{ review.userName }}</span>
+                <v-chip
+                  v-if="review.isVerified"
+                  size="x-small"
+                  color="success"
+                  class="ml-2"
+                >
+                  {{ $t('review.verified') }}
+                </v-chip>
+              </div>
+              <v-rating
+                :model-value="review.rating"
+                color="amber"
+                density="compact"
+                half-increments
+                readonly
+                size="small"
+              ></v-rating>
+            </v-list-item-title>
+
+            <v-list-item-subtitle class="text-caption mb-2">
+              {{ formatDate(review.date) }}
+            </v-list-item-subtitle>
+
+            <v-list-item-text class="text-body-1 mb-3">
+              {{ review.comment }}
+            </v-list-item-text>
+
+            <!-- Voting and actions -->
+            <div class="d-flex align-center">
+              <div class="d-flex align-center">
+                <v-btn
+                  variant="text"
+                  density="comfortable"
+                  :color="review.userLiked ? 'success' : undefined"
+                  prepend-icon="mdi-thumb-up"
+                  @click="likeReview(review)"
+                >
+                  {{ review.likes || 0 }}
+                </v-btn>
+                <v-btn
+                  variant="text"
+                  density="comfortable"
+                  :color="review.userDisliked ? 'error' : undefined"
+                  prepend-icon="mdi-thumb-down"
+                  @click="dislikeReview(review)"
+                >
+                  {{ review.dislikes || 0 }}
+                </v-btn>
+              </div>
+              
+              <v-spacer></v-spacer>
+              
+              <report-review
+                v-if="review.id"
+                :review-id="review.id"
+                :item-type="itemType"
+                :item-id="itemId"
+              />
+            </div>
+
+            <!-- Restaurant response -->
+            <restaurant-response
+              v-if="restaurantId"
+              :review-id="review.id"
+              :restaurant-id="restaurantId"
+              :response="review.restaurantResponse"
+              class="mt-3"
+              @response-updated="handleResponseUpdate"
+            />
+          </v-list-item>
+          
+          <v-divider v-if="index < paginatedReviews.length - 1"></v-divider>
+        </template>
+      </v-list>
+
+      <!-- Pagination -->
+      <v-card-actions v-if="filteredReviews.length > reviewsPerPage">
+        <v-spacer></v-spacer>
+        <v-pagination
+          v-model="reviewPage"
+          :length="Math.ceil(filteredReviews.length / reviewsPerPage)"
+          :total-visible="7"
+        ></v-pagination>
+        <v-spacer></v-spacer>
+      </v-card-actions>
+    </v-card>
+
+    <!-- No reviews message -->
+    <v-card v-else class="text-center py-8">
+      <v-icon size="64" color="grey">mdi-message-text-outline</v-icon>
+      <div class="text-h6 mt-4">{{ $t(noReviewsMessage) }}</div>
+    </v-card>
+  </div>
 </template>
 
 <script lang="ts">
@@ -209,31 +426,51 @@ export default defineComponent({
       }
     }
 
-    const likeReview = async (review: Review) => {
+    const handleVote = async (review: Review, type: 'like' | 'dislike') => {
       if (!store.getters.isAuthenticated) {
         store.dispatch('auth/showLoginPrompt')
         return
       }
-
-      await store.dispatch('reviews/likeReview', {
-        reviewId: review.id,
-        itemType: props.itemType,
-        itemId: props.itemId
-      })
-    }
-
-    const dislikeReview = async (review: Review) => {
-      if (!store.getters.isAuthenticated) {
-        store.dispatch('auth/showLoginPrompt')
-        return
+    
+      try {
+        await store.dispatch('reviews/voteReview', {
+          reviewId: review.id,
+          itemType: props.itemType,
+          itemId: props.itemId,
+          voteType: type
+        })
+    
+        // Optimistic update
+        const isPositive = type === 'like'
+        const wasOppositeVote = isPositive ? review.userDisliked : review.userLiked
+        
+        if (isPositive) {
+          review.userLiked = !review.userLiked
+          review.likes = (review.likes || 0) + (review.userLiked ? 1 : -1)
+          if (wasOppositeVote) {
+            review.userDisliked = false
+            review.dislikes = Math.max(0, (review.dislikes || 0) - 1)
+          }
+        } else {
+          review.userDisliked = !review.userDisliked
+          review.dislikes = (review.dislikes || 0) + (review.userDisliked ? 1 : -1)
+          if (wasOppositeVote) {
+            review.userLiked = false
+            review.likes = Math.max(0, (review.likes || 0) - 1)
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to ${type} review:`, error)
+        store.dispatch('showNotification', {
+          type: 'error',
+          message: t('review.voteError')
+        })
       }
-
-      await store.dispatch('reviews/dislikeReview', {
-        reviewId: review.id,
-        itemType: props.itemType,
-        itemId: props.itemId
-      })
     }
+    
+    // Replace existing likeReview and dislikeReview methods
+    const likeReview = (review: Review) => handleVote(review, 'like')
+    const dislikeReview = (review: Review) => handleVote(review, 'dislike')
 
     const handleResponseUpdate = (response: any) => {
       emit('response-updated', response)

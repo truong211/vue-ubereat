@@ -1,144 +1,158 @@
 <template>
-  <div class="dashboard">
-    <div class="stats-grid">
-      <div class="stat-card">
-        <h3>Today's Orders</h3>
-        <p class="value">{{ stats.todayOrders }}</p>
-      </div>
-      <div class="stat-card">
-        <h3>Total Revenue</h3>
-        <p class="value">${{ stats.totalRevenue }}</p>
-      </div>
-      <div class="stat-card">
-        <h3>Average Rating</h3>
-        <p class="value">{{ stats.avgRating }}/5</p>
-      </div>
-    </div>
+  <div class="restaurant-dashboard">
+    <!-- Quick Stats -->
+    <v-row>
+      <v-col cols="12" sm="6" md="3">
+        <v-card>
+          <v-card-text>
+            <div class="text-overline mb-1">Today's Orders</div>
+            <div class="d-flex align-center">
+              <div class="text-h4">{{ metrics.todayOrders }}</div>
+              <v-chip
+                :color="metrics.ordersTrend >= 0 ? 'success' : 'error'"
+                size="small"
+                class="ml-4"
+              >
+                {{ metrics.ordersTrend >= 0 ? '+' : '' }}{{ metrics.ordersTrend }}%
+              </v-chip>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
 
-    <div class="charts">
-      <div class="chart-container">
-        <h3>Revenue Last 7 Days</h3>
-        <LineChart :data="revenueData" />
-      </div>
-      <div class="chart-container">
-        <h3>Order Status Distribution</h3>
-        <DoughnutChart :data="orderStatusData" />
-      </div>
-    </div>
+      <v-col cols="12" sm="6" md="3">
+        <v-card>
+          <v-card-text>
+            <div class="text-overline mb-1">Today's Revenue</div>
+            <div class="d-flex align-center">
+              <div class="text-h4">${{ formatPrice(metrics.todayRevenue) }}</div>
+              <v-chip
+                :color="metrics.revenueTrend >= 0 ? 'success' : 'error'"
+                size="small"
+                class="ml-4"
+              >
+                {{ metrics.revenueTrend >= 0 ? '+' : '' }}{{ metrics.revenueTrend }}%
+              </v-chip>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
 
-    <div class="recent-orders">
-      <h3>Recent Orders</h3>
-      <OrderList :orders="recentOrders" />
-    </div>
+      <v-col cols="12" sm="6" md="3">
+        <v-card>
+          <v-card-text>
+            <div class="text-overline mb-1">Avg Order Value</div>
+            <div class="d-flex align-center">
+              <div class="text-h4">${{ formatPrice(metrics.avgOrderValue) }}</div>
+              <v-chip
+                :color="metrics.avgOrderTrend >= 0 ? 'success' : 'error'"
+                size="small"
+                class="ml-4"
+              >
+                {{ metrics.avgOrderTrend >= 0 ? '+' : '' }}{{ metrics.avgOrderTrend }}%
+              </v-chip>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12" sm="6" md="3">
+        <v-card>
+          <v-card-text>
+            <div class="text-overline mb-1">Customer Rating</div>
+            <div class="d-flex align-center">
+              <div class="text-h4">{{ metrics.avgRating.toFixed(1) }}</div>
+              <v-rating
+                :model-value="metrics.avgRating"
+                color="amber"
+                density="compact"
+                half-increments
+                readonly
+                class="ml-2"
+              ></v-rating>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Main Content -->
+    <v-tabs v-model="activeTab" class="mt-4">
+      <v-tab value="orders">
+        <v-icon start>mdi-clipboard-list</v-icon>
+        Orders
+      </v-tab>
+      <v-tab value="menu">
+        <v-icon start>mdi-food</v-icon>
+        Menu
+      </v-tab>
+      <v-tab value="analytics">
+        <v-icon start>mdi-chart-line</v-icon>
+        Analytics
+      </v-tab>
+    </v-tabs>
+
+    <v-window v-model="activeTab" class="mt-4">
+      <!-- Orders Tab -->
+      <v-window-item value="orders">
+        <OrderProcessing />
+      </v-window-item>
+
+      <!-- Menu Tab -->
+      <v-window-item value="menu">
+        <MenuManagement />
+      </v-window-item>
+
+      <!-- Analytics Tab -->
+      <v-window-item value="analytics">
+        <RestaurantAnalytics :restaurant-id="restaurantId" />
+      </v-window-item>
+    </v-window>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { fetchRestaurantStats } from '@/services/analytics.service'
-import LineChart from '@/components/charts/LineChart.vue'
-import DoughnutChart from '@/components/charts/DoughnutChart.vue'
-import OrderList from '@/components/orders/OrderList.vue'
+import { ref, onMounted, computed } from 'vue'
+import { useStore } from 'vuex'
+import OrderProcessing from '@/components/restaurant/OrderProcessing.vue'
+import MenuManagement from '@/components/restaurant/MenuManagement.vue'
+import RestaurantAnalytics from '@/components/restaurant/RestaurantAnalytics.vue'
 
-const route = useRoute()
-const restaurantId = route.params.id
+const store = useStore()
+const activeTab = ref('orders')
 
-const stats = ref({
-  todayOrders: 0,
-  totalRevenue: 0,
-  avgRating: 0
-})
+// Restaurant ID should come from auth store or route params
+const restaurantId = computed(() => store.state.auth.restaurant?.id)
 
-const revenueData = ref({
-  labels: [],
-  datasets: [{
-    label: 'Revenue',
-    data: []
-  }]
-})
+// Metrics from store
+const metrics = computed(() => store.state.restaurantAdmin.metrics)
 
-const orderStatusData = ref({
-  labels: ['Pending', 'Preparing', 'Delivering', 'Delivered'],
-  datasets: [{
-    data: [0, 0, 0, 0],
-    backgroundColor: ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0']
-  }]
-})
-
-const recentOrders = ref([])
-
-onMounted(async () => {
-  const data = await fetchRestaurantStats(restaurantId)
-  stats.value = data.stats
-  revenueData.value = transformRevenueData(data.revenue)
-  orderStatusData.value.datasets[0].data = data.orderStatus
-  recentOrders.value = data.recentOrders
-})
-
-function transformRevenueData(rawData) {
-  return {
-    labels: rawData.map(d => d.date),
-    datasets: [{
-      label: 'Revenue',
-      data: rawData.map(d => d.amount),
-      borderColor: '#4bc0c0',
-      tension: 0.1
-    }]
-  }
+// Format price with 2 decimal places
+const formatPrice = (value) => {
+  return value.toFixed(2)
 }
+
+// Initialize dashboard data
+onMounted(async () => {
+  await Promise.all([
+    store.dispatch('restaurantAdmin/fetchMetrics'),
+    store.dispatch('restaurantAdmin/fetchOrders'),
+    store.dispatch('restaurantAdmin/fetchMenuItems')
+  ])
+
+  // Set up WebSocket connection for real-time updates
+  store.dispatch('restaurantAdmin/initializeWebSocket')
+})
 </script>
 
 <style scoped>
-.dashboard {
-  padding: 2rem;
+.restaurant-dashboard {
+  padding: 16px;
+  max-width: 1600px;
+  margin: 0 auto;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.stat-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #666;
-}
-
-.stat-card .value {
-  font-size: 2rem;
-  margin: 0;
-  font-weight: bold;
-  color: #333;
-}
-
-.charts {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 2rem;
-  margin-bottom: 2rem;
-}
-
-.chart-container {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.recent-orders {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 10px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+.v-card {
+  height: 100%;
 }
 </style>

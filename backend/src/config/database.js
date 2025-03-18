@@ -24,4 +24,30 @@ const sequelize = new Sequelize(
   }
 );
 
-module.exports = sequelize; 
+module.exports = sequelize;
+
+module.exports = {
+  // Payment gateway configurations
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET
+  },
+
+  momo: {
+    partnerCode: process.env.MOMO_PARTNER_CODE,
+    accessKey: process.env.MOMO_ACCESS_KEY,
+    secretKey: process.env.MOMO_SECRET_KEY,
+    apiUrl: process.env.MOMO_API_URL || 'https://test-payment.momo.vn/v2/gateway/api/create',
+    notifyUrl: process.env.MOMO_NOTIFY_URL
+  },
+
+  vnpay: {
+    tmnCode: process.env.VNPAY_TMN_CODE,
+    hashSecret: process.env.VNPAY_HASH_SECRET,
+    apiUrl: process.env.VNPAY_API_URL || 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html',
+    returnUrl: process.env.VNPAY_RETURN_URL
+  },
+
+  baseUrl: process.env.BASE_URL || 'http://localhost:3000'
+};
