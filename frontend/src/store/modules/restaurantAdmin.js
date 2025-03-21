@@ -32,7 +32,19 @@ export default {
       openingHours: null,
       deliverySettings: null,
       notificationPreferences: null,
-      specialHolidays: []
+      specialHolidays: [],
+      menuAvailability: {
+        scheduleEnabled: false,
+        defaultAvailability: true,
+        schedules: []
+      },
+      tempClosureSettings: {
+        isTemporarilyClosed: false,
+        reopenDate: null,
+        closureReason: null,
+        showReason: true,
+        acceptPreOrders: false
+      }
     }
   },
 
@@ -139,6 +151,12 @@ export default {
     },
     UPDATE_SPECIAL_HOLIDAYS(state, holidays) {
       state.settings.specialHolidays = holidays;
+    },
+    UPDATE_MENU_AVAILABILITY(state, settings) {
+      state.settings.menuAvailability = settings;
+    },
+    UPDATE_TEMP_CLOSURE(state, settings) {
+      state.settings.tempClosureSettings = settings;
     }
   },
 
@@ -384,13 +402,32 @@ export default {
     async fetchRestaurantSettings({ commit }, restaurantId) {
       try {
         const response = await axios.get(`/api/restaurants/${restaurantId}`);
-        const { openingHours, deliverySettings, notificationPreferences, specialHolidays } = response.data.data.restaurant;
+        const { 
+          openingHours, 
+          deliverySettings, 
+          notificationPreferences, 
+          specialHolidays,
+          menuAvailability,
+          tempClosureSettings
+        } = response.data.data.restaurant;
         
         commit('SET_RESTAURANT_SETTINGS', {
           openingHours,
           deliverySettings,
           notificationPreferences,
-          specialHolidays: specialHolidays || []
+          specialHolidays: specialHolidays || [],
+          menuAvailability: menuAvailability || {
+            scheduleEnabled: false,
+            defaultAvailability: true,
+            schedules: []
+          },
+          tempClosureSettings: tempClosureSettings || {
+            isTemporarilyClosed: false,
+            reopenDate: null,
+            closureReason: null,
+            showReason: true,
+            acceptPreOrders: false
+          }
         });
         
         return response.data.data.restaurant;
@@ -445,6 +482,32 @@ export default {
         return response.data.data;
       } catch (error) {
         console.error('Error checking restaurant availability:', error);
+        throw error;
+      }
+    },
+
+    async updateMenuAvailability({ commit }, { restaurantId, settings }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${restaurantId}/menu-availability`, {
+          menuAvailability: settings
+        });
+        commit('UPDATE_MENU_AVAILABILITY', settings);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating menu availability:', error);
+        throw error;
+      }
+    },
+
+    async updateTempClosure({ commit }, { restaurantId, settings }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${restaurantId}/temp-closure`, {
+          tempClosureSettings: settings
+        });
+        commit('UPDATE_TEMP_CLOSURE', settings);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating temporary closure settings:', error);
         throw error;
       }
     }

@@ -314,6 +314,161 @@ exports.facebookCallback = async (req, res, next) => {
 };
 
 /**
+ * Google login with ID token
+ * @route POST /api/auth/google-login
+ * @access Public
+ */
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { idToken } = req.body;
+    
+    if (!idToken) {
+      return next(new AppError('Google ID token is required', 400));
+    }
+    
+    // Verify Google token using Google API client
+    const { OAuth2Client } = require('google-auth-library');
+    const client = new OAuth2Client(oauthConfig.google.clientId);
+    
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: oauthConfig.google.clientId
+    });
+    
+    const payload = ticket.getPayload();
+    const { sub: id, email, name, picture } = payload;
+    
+    // Check if user exists
+    let user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { socialId: id, socialProvider: 'google' },
+          { email }
+        ]
+      }
+    });
+    
+    if (!user) {
+      // Create new user
+      const username = `google_${id}`;
+      
+      user = await User.create({
+        username,
+        email,
+        fullName: name,
+        profileImage: picture || null,
+        socialProvider: 'google',
+        socialId: id,
+        isEmailVerified: true,  // Email already verified through Google
+        password: null          // No password for social login
+      });
+    } else if (user.socialProvider !== 'google') {
+      // If user exists but used different login method before
+      user.socialProvider = 'google';
+      user.socialId = id;
+      user.isEmailVerified = true;
+      await user.save();
+    }
+    
+    // Generate tokens
+    const token = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+    
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+    
+    res.status(200).json({
+      status: 'success',
+      token,
+      refreshToken,
+      data: {
+        user: user.toJSON()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Facebook login with access token
+ * @route POST /api/auth/facebook-login
+ * @access Public
+ */
+exports.facebookLogin = async (req, res, next) => {
+  try {
+    const { accessToken } = req.body;
+    
+    if (!accessToken) {
+      return next(new AppError('Facebook access token is required', 400));
+    }
+    
+    // Verify Facebook token by fetching profile from Facebook
+    const fetch = require('node-fetch');
+    const response = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`);
+    const data = await response.json();
+    
+    if (data.error) {
+      return next(new AppError('Invalid Facebook token', 401));
+    }
+    
+    const { id, name, email, picture } = data;
+    
+    // Check if user exists
+    let user = await User.findOne({
+      where: {
+        [Op.or]: [
+          { socialId: id, socialProvider: 'facebook' },
+          email ? { email } : {}
+        ]
+      }
+    });
+    
+    if (!user) {
+      // Create new user
+      const username = `fb_${id}`;
+      
+      user = await User.create({
+        username,
+        email: email || `${id}@facebook.com`,
+        fullName: name,
+        profileImage: picture?.data?.url || null,
+        socialProvider: 'facebook',
+        socialId: id,
+        isEmailVerified: true,  // Email already verified through Facebook
+        password: null          // No password for social login
+      });
+    } else if (user.socialProvider !== 'facebook') {
+      // If user exists but used different login method before
+      user.socialProvider = 'facebook';
+      user.socialId = id;
+      user.isEmailVerified = true;
+      await user.save();
+    }
+    
+    // Generate tokens
+    const token = generateToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+    
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
+    
+    res.status(200).json({
+      status: 'success',
+      token,
+      refreshToken,
+      data: {
+        user: user.toJSON()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Refresh token
  * @route POST /api/auth/refresh-token
  * @access Public

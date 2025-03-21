@@ -14,6 +14,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const restaurantRoutes = require('./routes/restaurant.routes');
+const restaurantSettingsRoutes = require('./routes/restaurantSettings.routes');
 const categoryRoutes = require('./routes/category.routes');
 const productRoutes = require('./routes/product.routes');
 const cartRoutes = require('./routes/cart.routes');
@@ -23,6 +24,8 @@ const promotionRoutes = require('./routes/promotion.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const staticPageRoutes = require('./routes/staticPage.routes');
 const siteConfigRoutes = require('./routes/siteConfig.routes');
+const trackingRoutes = require('./routes/tracking.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -70,6 +73,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', process.env.UPLOAD
 app.use('/api/auth', authRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/restaurants', restaurantRoutes);
+app.use('/api/restaurant-settings', restaurantSettingsRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
@@ -79,6 +83,8 @@ app.use('/api/promotions', promotionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/pages', staticPageRoutes);
 app.use('/api/config', siteConfigRoutes);
+app.use('/api/tracking', authMiddleware, trackingRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

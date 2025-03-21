@@ -55,13 +55,13 @@ const Restaurant = sequelize.define('Restaurant', {
     type: DataTypes.JSONB,
     allowNull: true,
     defaultValue: {
-      Monday: { enabled: true, open: '09:00', close: '22:00' },
-      Tuesday: { enabled: true, open: '09:00', close: '22:00' },
-      Wednesday: { enabled: true, open: '09:00', close: '22:00' },
-      Thursday: { enabled: true, open: '09:00', close: '22:00' },
-      Friday: { enabled: true, open: '09:00', close: '22:00' },
-      Saturday: { enabled: true, open: '10:00', close: '23:00' },
-      Sunday: { enabled: true, open: '10:00', close: '22:00' }
+      Monday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Tuesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Wednesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Thursday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Friday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Saturday: { enabled: true, open: '10:00', close: '23:00', breakStart: null, breakEnd: null },
+      Sunday: { enabled: true, open: '10:00', close: '22:00', breakStart: null, breakEnd: null }
     }
   },
   specialHolidays: {
@@ -114,7 +114,16 @@ const Restaurant = sequelize.define('Restaurant', {
       baseFee: 2,
       perKmFee: 0.5,
       autoAccept: false,
-      pickupEnabled: true
+      pickupEnabled: true,
+      maxOrders: 50,
+      maxConcurrentOrders: 10,
+      preparationTimePerItem: 5,
+      rushHourMultiplier: 1.5,
+      rushHours: {
+        lunch: { start: '11:30', end: '13:30' },
+        dinner: { start: '18:00', end: '20:00' }
+      },
+      zonePricing: []
     }
   },
   notificationPreferences: {
@@ -127,6 +136,26 @@ const Restaurant = sequelize.define('Restaurant', {
       newOrders: true,
       orderUpdates: true,
       reviews: true
+    }
+  },
+  menuAvailability: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: {
+      scheduleEnabled: false,
+      defaultAvailability: true,
+      schedules: []
+    }
+  },
+  tempClosureSettings: {
+    type: DataTypes.JSONB,
+    allowNull: true,
+    defaultValue: {
+      isTemporarilyClosed: false,
+      reopenDate: null,
+      closureReason: null,
+      showReason: true,
+      acceptPreOrders: false
     }
   }
 }, {

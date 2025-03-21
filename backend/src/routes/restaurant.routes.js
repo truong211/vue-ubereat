@@ -58,7 +58,9 @@ const {
   validateOpeningHours,
   validateDeliverySettings,
   validateNotificationPreferences,
-  validateSpecialHolidays
+  validateSpecialHolidays,
+  validateMenuAvailability,
+  validateTempClosure
 } = require('../middleware/restaurantSettings.validator');
 
 // Restaurant settings routes
@@ -99,6 +101,23 @@ router.patch(
   verifyRestaurantOwner,
   validateSpecialHolidays,
   restaurantController.updateSpecialHolidays
+);
+
+// New routes for menu availability and temporary closure
+router.patch(
+  '/:id/menu-availability',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateMenuAvailability,
+  restaurantController.updateMenuAvailability
+);
+
+router.patch(
+  '/:id/temp-closure',
+  authMiddleware,
+  verifyRestaurantOwner,
+  validateTempClosure,
+  restaurantController.updateTempClosure
 );
 
 router.get(

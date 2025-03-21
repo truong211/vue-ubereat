@@ -11,11 +11,20 @@ router.get('/stats', adminController.getDashboardStats);
 router.get('/analytics', adminController.getAnalytics);
 router.get('/recent-activities', adminController.getRecentActivities);
 
+// System Monitoring
+router.get('/system/metrics', adminController.getSystemMetrics);
+router.get('/system/performance', adminController.getApiPerformance);
+router.get('/user-activity', adminController.getUserActivityLogs);
+
 // Restaurant Management
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
 
 // User Management
 router.patch('/users/:id/status', adminController.updateUserStatus);
+
+// Marketing Content Management
+router.get('/marketing', adminController.getMarketingContent);
+router.post('/marketing', adminController.createMarketingContent);
 
 // Category Management
 router.get('/categories', adminController.getCategories);

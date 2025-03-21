@@ -1,285 +1,221 @@
 <template>
-  <v-container>
-    <h1 class="text-h4 mb-6">Your Notifications</h1>
-    
-    <v-card>
-      <v-card-title class="d-flex align-center">
-        <span>All Notifications</span>
-        <v-spacer></v-spacer>
-        <v-chip
-          v-if="unreadCount > 0"
-          color="primary"
-          size="small"
-          class="mr-2"
-        >
-          {{ unreadCount }} unread
-        </v-chip>
-        <v-btn
-          variant="text"
-          color="primary"
-          size="small"
-          prepend-icon="mdi-check-all"
-          @click="markAllAsRead"
-          :disabled="unreadCount === 0"
-        >
-          Mark all as read
-        </v-btn>
-      </v-card-title>
-      
-      <v-divider></v-divider>
-      
-      <v-card-text class="py-3">
-        <!-- Filter Controls -->
-        <div class="d-flex flex-wrap align-center mb-4">
-          <v-select
-            v-model="filterType"
-            label="Type"
-            :items="typeOptions"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="mr-3 mb-2"
-            style="max-width: 200px;"
-          ></v-select>
-          
-          <v-select
-            v-model="filterTimeRange"
-            label="Time Range"
-            :items="timeRangeOptions"
-            variant="outlined"
-            density="compact"
-            hide-details
-            class="mr-3 mb-2"
-            style="max-width: 150px;"
-          ></v-select>
-          
-          <v-checkbox
-            v-model="showReadNotifications"
-            label="Show read notifications"
-            hide-details
-            density="compact"
-            class="mr-3 mb-2"
-          ></v-checkbox>
-          
-          <v-btn
-            variant="text"
-            color="primary"
-            size="small"
-            @click="resetFilters"
-            class="mb-2"
-          >
-            Reset Filters
-          </v-btn>
-        </div>
-        
-        <!-- Notifications List -->
-        <div v-if="loading" class="text-center py-6">
-          <v-progress-circular indeterminate color="primary"></v-progress-circular>
-          <div class="mt-2">Loading notifications...</div>
-        </div>
-        
-        <template v-else>
-          <div v-if="filteredNotifications.length === 0" class="text-center py-6">
-            <v-icon size="64" color="grey-lighten-2">mdi-bell-outline</v-icon>
-            <h3 class="text-h6 mt-4 text-grey-darken-1">No notifications found</h3>
-            <p class="text-body-1 mt-2 text-grey-darken-1">
-              {{ getEmptyStateMessage() }}
-            </p>
-          </div>
-          
-          <div v-else>
-            <div 
-              v-for="group in groupedNotifications" 
-              :key="group.date"
-              class="mb-4"
-            >
-              <div class="text-subtitle-1 font-weight-bold mb-2">{{ group.label }}</div>
+  <v-container class="notifications-page">
+    <v-row>
+      <v-col cols="12">
+        <v-card class="elevation-1">
+          <v-card-title class="d-flex align-center">
+            <v-icon icon="mdi-bell-outline" class="mr-2"></v-icon>
+            My Notifications
+            <v-spacer></v-spacer>
+            
+            <!-- Filter Button -->
+            <v-menu location="bottom end" offset="4">
+              <template v-slot:activator="{ props }">
+                <v-btn
+                  color="primary"
+                  variant="text"
+                  v-bind="props"
+                  prepend-icon="mdi-filter-outline"
+                  class="mr-2"
+                >
+                  Filter
+                </v-btn>
+              </template>
               
-              <v-card
-                v-for="notification in group.notifications"
-                :key="notification.id"
-                variant="outlined"
-                :class="[
-                  'mb-3 notification-card', 
-                  { 'unread': !notification.read }
-                ]"
-                @click="openNotification(notification)"
-              >
-                <v-card-item>
-                  <template v-slot:prepend>
-                    <v-avatar
-                      :color="getNotificationColor(notification.type)"
-                      size="40"
-                    >
-                      <v-icon color="white">{{ getNotificationIcon(notification.type) }}</v-icon>
-                    </v-avatar>
-                  </template>
+              <v-card min-width="250" class="elevation-5">
+                <v-card-text>
+                  <div class="text-subtitle-2 mb-2">Notification Type</div>
+                  <v-radio-group v-model="filters.type" density="compact">
+                    <v-radio value="all" label="All Types"></v-radio>
+                    <v-radio value="order_status" label="Order Updates"></v-radio>
+                    <v-radio value="driver_location" label="Driver Updates"></v-radio>
+                    <v-radio value="promotion" label="Promotions"></v-radio>
+                    <v-radio value="marketing" label="Marketing"></v-radio>
+                    <v-radio value="system" label="System"></v-radio>
+                  </v-radio-group>
                   
-                  <v-card-title>
-                    {{ notification.title }}
-                    <v-icon 
-                      v-if="!notification.read" 
-                      color="primary" 
-                      size="small" 
-                      class="ml-2"
-                    >
-                      mdi-circle-small
-                    </v-icon>
-                  </v-card-title>
+                  <v-divider class="my-2"></v-divider>
                   
-                  <v-card-subtitle>
-                    {{ formatTime(notification.timestamp) }}
-                  </v-card-subtitle>
-                </v-card-item>
-                
-                <v-card-text class="pt-0">
-                  <p>{{ notification.message }}</p>
+                  <div class="text-subtitle-2 mb-2">Time Range</div>
+                  <v-radio-group v-model="filters.timeRange" density="compact">
+                    <v-radio value="all" label="All Time"></v-radio>
+                    <v-radio value="today" label="Today"></v-radio>
+                    <v-radio value="week" label="This Week"></v-radio>
+                    <v-radio value="month" label="This Month"></v-radio>
+                  </v-radio-group>
+                  
+                  <v-divider class="my-2"></v-divider>
+                  
+                  <div class="text-subtitle-2 mb-2">Read Status</div>
+                  <v-radio-group v-model="filters.read" density="compact">
+                    <v-radio :value="null" label="All"></v-radio>
+                    <v-radio :value="false" label="Unread Only"></v-radio>
+                    <v-radio :value="true" label="Read Only"></v-radio>
+                  </v-radio-group>
                 </v-card-text>
                 
                 <v-card-actions>
                   <v-spacer></v-spacer>
-                  
                   <v-btn
-                    v-if="notification.action"
-                    size="small"
-                    variant="text"
-                    :color="getNotificationColor(notification.type)"
-                    @click.stop="handleAction(notification)"
-                  >
-                    {{ notification.action.text }}
-                  </v-btn>
-                  
-                  <v-btn
-                    v-if="!notification.read"
-                    size="small"
-                    variant="text"
                     color="primary"
-                    @click.stop="markAsRead(notification.id)"
-                  >
-                    Mark as read
-                  </v-btn>
-                  
-                  <v-btn
-                    size="small"
                     variant="text"
-                    color="grey"
-                    icon
-                    @click.stop="deleteNotification(notification.id)"
+                    @click="applyFilters"
                   >
-                    <v-icon>mdi-delete-outline</v-icon>
+                    Apply
                   </v-btn>
                 </v-card-actions>
               </v-card>
-            </div>
+            </v-menu>
             
-            <div class="text-center mt-4" v-if="hasMoreNotifications">
-              <v-btn
-                variant="outlined"
-                color="primary"
-                @click="loadMoreNotifications"
-                :loading="loadingMore"
-              >
-                Load More
-              </v-btn>
-            </div>
+            <!-- Mark All as Read -->
+            <v-btn
+              color="primary"
+              variant="text"
+              prepend-icon="mdi-email-open-multiple-outline"
+              @click="markAllAsRead"
+              :disabled="!hasUnread"
+              class="mr-2"
+            >
+              Mark All as Read
+            </v-btn>
+            
+            <!-- Settings Button -->
+            <v-btn
+              color="primary"
+              variant="text"
+              prepend-icon="mdi-cog-outline"
+              @click="openSettings"
+            >
+              Settings
+            </v-btn>
+          </v-card-title>
+          
+          <v-divider></v-divider>
+
+          <!-- Loading State -->
+          <div v-if="loading" class="pa-5 text-center">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            <div class="mt-2">Loading your notifications...</div>
           </div>
-        </template>
-      </v-card-text>
-    </v-card>
-    
-    <!-- Notification Settings Dialog -->
-    <v-dialog v-model="showSettingsDialog" max-width="500">
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          color="primary"
-          variant="outlined"
-          class="mt-6"
-          prepend-icon="mdi-cog"
-        >
-          Notification Settings
-        </v-btn>
-      </template>
+
+          <!-- Empty State -->
+          <div v-else-if="!hasNotifications" class="pa-10 text-center">
+            <v-icon icon="mdi-bell-sleep-outline" size="64" color="grey-lighten-1" class="mb-4"></v-icon>
+            <h3 class="text-h5 mb-2">No notifications found</h3>
+            <p class="text-body-1 text-medium-emphasis mb-4">
+              {{ getEmptyStateMessage() }}
+            </p>
+            <v-btn
+              color="primary"
+              variant="outlined"
+              @click="resetFilters"
+              v-if="hasActiveFilters"
+            >
+              Clear Filters
+            </v-btn>
+          </div>
+
+          <!-- Notification List -->
+          <v-list v-else three-line class="notification-list pa-0">
+            <template v-for="group in notificationGroups" :key="group.date">
+              <!-- Date Divider -->
+              <v-list-subheader class="d-flex px-4 py-2 bg-grey-lighten-4">
+                <span class="text-subtitle-2 font-weight-medium">{{ group.label }}</span>
+                <v-spacer></v-spacer>
+                <span class="text-caption text-medium-emphasis">{{ group.notifications.length }} notifications</span>
+              </v-list-subheader>
+              
+              <!-- Group Notifications -->
+              <v-list-item
+                v-for="notification in group.notifications"
+                :key="notification.id"
+                :class="{ 'unread': !notification.read, 'read': notification.read }"
+                @click="openNotification(notification)"
+                class="notification-item pa-4"
+              >
+                <template v-slot:prepend>
+                  <v-avatar :color="getNotificationColor(notification.type)" size="42" class="mr-4">
+                    <v-icon :icon="getNotificationIcon(notification.type)" color="white"></v-icon>
+                  </v-avatar>
+                </template>
+
+                <v-list-item-title class="text-body-1 font-weight-medium mb-1">
+                  {{ notification.title }}
+                </v-list-item-title>
+                
+                <v-list-item-subtitle class="text-body-2 mb-1">
+                  {{ notification.message }}
+                </v-list-item-subtitle>
+                
+                <v-list-item-subtitle class="d-flex align-center text-caption text-grey">
+                  <span>{{ formatTime(notification.createdAt) }}</span>
+                  <v-chip
+                    size="x-small"
+                    :color="getNotificationColor(notification.type)"
+                    text-color="white"
+                    class="ml-2"
+                    variant="flat"
+                  >
+                    {{ formatNotificationType(notification.type) }}
+                  </v-chip>
+                </v-list-item-subtitle>
+
+                <template v-slot:append>
+                  <div class="d-flex align-center">
+                    <v-btn
+                      v-if="!notification.read"
+                      icon="mdi-email-open-outline"
+                      variant="text"
+                      size="small"
+                      color="primary"
+                      @click.stop="markAsRead(notification.id)"
+                      title="Mark as read"
+                      class="mr-1"
+                    ></v-btn>
+                    <v-btn
+                      icon="mdi-delete-outline"
+                      variant="text"
+                      size="small"
+                      color="error"
+                      @click.stop="confirmDelete(notification)"
+                      title="Delete notification"
+                    ></v-btn>
+                  </div>
+                </template>
+              </v-list-item>
+              
+              <v-divider v-if="group !== notificationGroups[notificationGroups.length - 1]"></v-divider>
+            </template>
+
+            <!-- Pagination -->
+            <div class="d-flex justify-center pa-4">
+              <v-pagination
+                v-if="totalPages > 1"
+                v-model="currentPage"
+                :length="totalPages"
+                :total-visible="7"
+                @update:model-value="changePage"
+              ></v-pagination>
+            </div>
+          </v-list>
+        </v-card>
+      </v-col>
       
+      <!-- Notification Preferences (on larger screens) -->
+      <v-col cols="12" md="4" class="d-none d-md-block">
+        <notification-preferences></notification-preferences>
+      </v-col>
+    </v-row>
+    
+    <!-- Settings Dialog (on mobile) -->
+    <v-dialog v-model="showSettings" fullscreen>
       <v-card>
-        <v-card-title>Notification Settings</v-card-title>
+        <v-toolbar color="primary" title="Notification Settings">
+          <v-btn icon="mdi-close" variant="text" @click="showSettings = false"></v-btn>
+        </v-toolbar>
         <v-card-text>
-          <h3 class="text-subtitle-1 mb-3">Delivery Updates</h3>
-          
-          <v-checkbox
-            v-model="settings.orderStatus"
-            label="Order status changes"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-checkbox
-            v-model="settings.driverLocation"
-            label="Driver location updates"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-divider class="my-4"></v-divider>
-          
-          <h3 class="text-subtitle-1 mb-3">Marketing</h3>
-          
-          <v-checkbox
-            v-model="settings.promotions"
-            label="Promotions and offers"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-checkbox
-            v-model="settings.newRestaurants"
-            label="New restaurants in your area"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-divider class="my-4"></v-divider>
-          
-          <h3 class="text-subtitle-1 mb-3">Notification Methods</h3>
-          
-          <v-checkbox
-            v-model="settings.email"
-            label="Email notifications"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-checkbox
-            v-model="settings.push"
-            label="Browser notifications"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
-          
-          <v-checkbox
-            v-model="settings.sms"
-            label="SMS notifications"
-            hide-details
-            class="mb-2"
-          ></v-checkbox>
+          <notification-preferences></notification-preferences>
         </v-card-text>
-        
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="grey-darken-1"
-            variant="text"
-            @click="showSettingsDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            @click="saveSettings"
-          >
-            Save Settings
-          </v-btn>
-        </v-card-actions>
       </v-card>
     </v-dialog>
     
@@ -292,600 +228,364 @@
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
-          <v-btn
-            color="grey-darken-1"
-            variant="text"
-            @click="showDeleteDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="error"
-            @click="confirmDelete"
+          <v-btn variant="text" @click="showDeleteDialog = false">Cancel</v-btn>
+          <v-btn 
+            color="error" 
+            variant="flat" 
+            @click="deleteSelectedNotification"
+            :loading="deletingNotification"
           >
             Delete
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
+    
+    <!-- Status Snackbar -->
+    <v-snackbar v-model="showSnackbar" :color="snackbarColor" :timeout="3000">
+      {{ snackbarText }}
+      <template v-slot:actions>
+        <v-btn variant="text" icon="mdi-close" @click="showSnackbar = false"></v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
-import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
+import { mapState, mapGetters, mapActions } from 'vuex';
+import NotificationPreferences from '@/components/notifications/NotificationPreferences.vue';
 
 export default {
   name: 'UserNotifications',
   
-  setup() {
-    const store = useStore();
-    const router = useRouter();
-    
-    // State
-    const loading = ref(true);
-    const loadingMore = ref(false);
-    const notifications = ref([]);
-    const showSettingsDialog = ref(false);
-    const showDeleteDialog = ref(false);
-    const notificationToDelete = ref(null);
-    const page = ref(1);
-    const hasMoreNotifications = ref(false);
-    
-    // Filters
-    const filterType = ref('all');
-    const filterTimeRange = ref('all');
-    const showReadNotifications = ref(true);
-    
-    const typeOptions = [
-      { title: 'All Types', value: 'all' },
-      { title: 'Order Updates', value: 'order_status' },
-      { title: 'Promotions', value: 'promo' },
-      { title: 'Account', value: 'account' }
-    ];
-    
-    const timeRangeOptions = [
-      { title: 'All Time', value: 'all' },
-      { title: 'Today', value: 'today' },
-      { title: 'This Week', value: 'week' },
-      { title: 'This Month', value: 'month' }
-    ];
-    
-    // Settings
-    const settings = ref({
-      orderStatus: true,
-      driverLocation: true,
-      promotions: true,
-      newRestaurants: true,
-      email: true,
-      push: true,
-      sms: false
-    });
-    
-    // Get notifications from store
-    const fetchNotifications = async () => {
-      loading.value = true;
+  components: {
+    NotificationPreferences
+  },
+  
+  data() {
+    return {
+      // Filters
+      filters: {
+        type: 'all',
+        timeRange: 'all',
+        read: null
+      },
       
-      try {
-        // In a real app, this would be an API call
-        // const response = await axios.get('/api/notifications');
-        // notifications.value = response.data.notifications;
-        
-        // For demo purposes, use mock data
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        notifications.value = generateMockNotifications();
-        
-        // Store notification settings
-        await loadSettings();
-        
-        // Check if we have more notifications (for pagination)
-        hasMoreNotifications.value = notifications.value.length > 10;
-        
-        // Initial page shows 10 notifications
-        if (hasMoreNotifications.value) {
-          notifications.value = notifications.value.slice(0, 10);
-        }
-      } catch (error) {
-        console.error('Error fetching notifications:', error);
-      } finally {
-        loading.value = false;
-      }
+      // Pagination
+      currentPage: 1,
+      totalPages: 1,
+      
+      // UI states
+      showSettings: false,
+      showDeleteDialog: false,
+      showSnackbar: false,
+      snackbarText: '',
+      snackbarColor: 'success',
+      
+      // Currently selected notification for delete
+      selectedNotification: null,
+      deletingNotification: false
     };
+  },
+  
+  computed: {
+    ...mapState('notifications', [
+      'notifications',
+      'loading'
+    ]),
     
-    // Load more notifications (pagination)
-    const loadMoreNotifications = async () => {
-      loadingMore.value = true;
-      
-      try {
-        page.value++;
-        
-        // In a real app, this would be an API call with pagination
-        // const response = await axios.get(`/api/notifications?page=${page.value}`);
-        
-        // For demo purposes, use mock data
-        await new Promise(resolve => setTimeout(resolve, 800));
-        const moreNotifications = generateMockNotifications(5); // Generate 5 more
-        
-        // Add to existing notifications
-        notifications.value = [...notifications.value, ...moreNotifications];
-        
-        // Check if we have more to load
-        hasMoreNotifications.value = page.value < 3; // Simulate 3 pages
-      } catch (error) {
-        console.error('Error loading more notifications:', error);
-      } finally {
-        loadingMore.value = false;
-      }
-    };
+    ...mapGetters('notifications', [
+      'unreadCount',
+      'notificationsByDate'
+    ]),
     
-    // Apply filters to notifications
-    const filteredNotifications = computed(() => {
-      return notifications.value.filter(notification => {
-        // Filter by read status
-        if (!showReadNotifications.value && notification.read) {
-          return false;
-        }
-        
-        // Filter by type
-        if (filterType.value !== 'all' && notification.type !== filterType.value) {
-          return false;
-        }
-        
-        // Filter by time range
-        if (filterTimeRange.value !== 'all') {
-          const now = new Date();
-          const notificationDate = new Date(notification.timestamp);
-          
-          if (filterTimeRange.value === 'today') {
-            // Check if same day
-            return (
-              notificationDate.getDate() === now.getDate() &&
-              notificationDate.getMonth() === now.getMonth() &&
-              notificationDate.getFullYear() === now.getFullYear()
-            );
-          } else if (filterTimeRange.value === 'week') {
-            // Check if within last 7 days
-            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            return notificationDate >= weekAgo;
-          } else if (filterTimeRange.value === 'month') {
-            // Check if same month
-            return (
-              notificationDate.getMonth() === now.getMonth() &&
-              notificationDate.getFullYear() === now.getFullYear()
-            );
-          }
-        }
-        
-        return true;
-      });
-    });
+    hasNotifications() {
+      return this.notifications && this.notifications.length > 0;
+    },
     
-    // Group notifications by date
-    const groupedNotifications = computed(() => {
-      const groups = {};
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      // Sort notifications by timestamp (newest first)
-      const sorted = [...filteredNotifications.value].sort(
-        (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    hasUnread() {
+      return this.unreadCount > 0;
+    },
+    
+    notificationGroups() {
+      return this.notificationsByDate;
+    },
+    
+    hasActiveFilters() {
+      return (
+        this.filters.type !== 'all' ||
+        this.filters.timeRange !== 'all' ||
+        this.filters.read !== null
       );
-      
-      sorted.forEach(notification => {
-        const date = new Date(notification.timestamp);
-        const dateWithoutTime = new Date(
-          date.getFullYear(),
-          date.getMonth(),
-          date.getDate()
-        );
+    }
+  },
+  
+  methods: {
+    ...mapActions('notifications', [
+      'fetchNotifications',
+      'markAsRead',
+      'markAllAsRead',
+      'deleteNotification'
+    ]),
+    
+    async loadNotifications() {
+      try {
+        const response = await this.fetchNotifications({
+          page: this.currentPage,
+          reset: true,
+          filters: {
+            type: this.filters.type === 'all' ? null : this.filters.type,
+            timeRange: this.filters.timeRange === 'all' ? null : this.filters.timeRange,
+            read: this.filters.read
+          }
+        });
         
-        let groupKey;
-        let groupLabel;
-        
-        if (dateWithoutTime.getTime() === today.getTime()) {
-          groupKey = 'today';
-          groupLabel = 'Today';
-        } else if (dateWithoutTime.getTime() === yesterday.getTime()) {
-          groupKey = 'yesterday';
-          groupLabel = 'Yesterday';
-        } else {
-          const options = { month: 'long', day: 'numeric', year: 'numeric' };
-          groupKey = date.toISOString().split('T')[0];
-          groupLabel = date.toLocaleDateString(undefined, options);
+        if (response) {
+          this.totalPages = response.totalPages || 1;
         }
-        
-        if (!groups[groupKey]) {
-          groups[groupKey] = {
-            date: groupKey,
-            label: groupLabel,
-            notifications: []
-          };
+      } catch (error) {
+        console.error('Error loading notifications:', error);
+        this.showSnackbarMessage('Failed to load notifications', 'error');
+      }
+    },
+    
+    async changePage(page) {
+      this.currentPage = page;
+      await this.loadNotifications();
+      
+      // Scroll to top of list
+      const list = document.querySelector('.notification-list');
+      if (list) {
+        list.scrollTop = 0;
+      }
+    },
+    
+    applyFilters() {
+      this.currentPage = 1;
+      this.loadNotifications();
+    },
+    
+    resetFilters() {
+      this.filters = {
+        type: 'all',
+        timeRange: 'all',
+        read: null
+      };
+      
+      this.currentPage = 1;
+      this.loadNotifications();
+    },
+    
+    openSettings() {
+      // Only show the dialog on mobile
+      if (window.innerWidth < 960) {
+        this.showSettings = true;
+      } else {
+        // On desktop, scroll to the preferences panel
+        const preferencesEl = document.querySelector('.notification-preferences-card');
+        if (preferencesEl) {
+          preferencesEl.scrollIntoView({ behavior: 'smooth' });
         }
-        
-        groups[groupKey].notifications.push(notification);
-      });
-      
-      // Convert to array and sort by date
-      return Object.values(groups).sort((a, b) => {
-        if (a.date === 'today') return -1;
-        if (b.date === 'today') return 1;
-        if (a.date === 'yesterday') return -1;
-        if (b.date === 'yesterday') return 1;
-        return new Date(b.date) - new Date(a.date);
-      });
-    });
+      }
+    },
     
-    // Count unread notifications
-    const unreadCount = computed(() => {
-      return notifications.value.filter(notification => !notification.read).length;
-    });
-    
-    // Format timestamp to relative time
-    const formatTime = (timestamp) => {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMins / 60);
-      const diffDays = Math.floor(diffHours / 24);
+    openNotification(notification) {
+      // Mark as read
+      if (!notification.read) {
+        this.markAsRead(notification.id);
+      }
       
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins} min ago`;
-      if (diffHours < 24) return `${diffHours} hr ago`;
-      if (diffDays < 7) return `${diffDays} days ago`;
-      
-      return date.toLocaleDateString();
-    };
+      // Handle navigation based on notification type
+      switch (notification.type) {
+        case 'order_status':
+          if (notification.data?.orderId) {
+            this.$router.push(`/orders/${notification.data.orderId}`);
+          }
+          break;
+          
+        case 'driver_location':
+          if (notification.data?.orderId) {
+            this.$router.push(`/orders/${notification.data.orderId}/tracking`);
+          }
+          break;
+          
+        case 'promotion':
+          if (notification.data?.promotionId) {
+            this.$router.push(`/promotions/${notification.data.promotionId}`);
+          }
+          break;
+          
+        case 'marketing':
+          if (notification.data?.url) {
+            if (notification.data.url.startsWith('http')) {
+              window.open(notification.data.url, '_blank');
+            } else {
+              this.$router.push(notification.data.url);
+            }
+          }
+          break;
+      }
+    },
     
-    // Get notification icon based on type
-    const getNotificationIcon = (type) => {
+    confirmDelete(notification) {
+      this.selectedNotification = notification;
+      this.showDeleteDialog = true;
+    },
+    
+    async deleteSelectedNotification() {
+      if (!this.selectedNotification) {
+        this.showDeleteDialog = false;
+        return;
+      }
+      
+      this.deletingNotification = true;
+      
+      try {
+        await this.deleteNotification(this.selectedNotification.id);
+        this.showSnackbarMessage('Notification deleted successfully');
+      } catch (error) {
+        console.error('Error deleting notification:', error);
+        this.showSnackbarMessage('Failed to delete notification', 'error');
+      } finally {
+        this.deletingNotification = false;
+        this.showDeleteDialog = false;
+        this.selectedNotification = null;
+      }
+    },
+    
+    getNotificationIcon(type) {
       switch (type) {
         case 'order_status':
           return 'mdi-food';
-        case 'promo':
+        case 'driver_location':
+          return 'mdi-map-marker';
+        case 'promotion':
           return 'mdi-tag-outline';
-        case 'account':
-          return 'mdi-account';
+        case 'marketing':
+          return 'mdi-bullhorn';
+        case 'system':
+          return 'mdi-information-outline';
         default:
-          return 'mdi-bell';
+          return 'mdi-bell-outline';
       }
-    };
+    },
     
-    // Get notification color based on type
-    const getNotificationColor = (type) => {
+    getNotificationColor(type) {
       switch (type) {
         case 'order_status':
-          return 'primary';
-        case 'promo':
+          return 'success';
+        case 'driver_location':
+          return 'info';
+        case 'promotion':
+          return 'warning';
+        case 'marketing':
           return 'purple';
-        case 'account':
-          return 'indigo';
-        default:
+        case 'system':
           return 'grey';
-      }
-    };
-    
-    // Get empty state message based on filters
-    const getEmptyStateMessage = () => {
-      if (filterType.value !== 'all' || filterTimeRange.value !== 'all' || !showReadNotifications.value) {
-        return 'Try adjusting your filters to see more notifications';
-      }
-      return 'You have no notifications yet';
-    };
-    
-    // Mark a notification as read
-    const markAsRead = async (id) => {
-      try {
-        // In a real app, this would be an API call
-        // await axios.patch(`/api/notifications/${id}/read`);
-        
-        // Update local state
-        const notification = notifications.value.find(n => n.id === id);
-        if (notification) {
-          notification.read = true;
-        }
-        
-        // For demo purposes, simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        // Update Vuex store
-        store.dispatch('orderTracking/markNotificationRead', id);
-      } catch (error) {
-        console.error('Error marking notification as read:', error);
-      }
-    };
-    
-    // Mark all notifications as read
-    const markAllAsRead = async () => {
-      try {
-        // In a real app, this would be an API call
-        // await axios.patch('/api/notifications/read-all');
-        
-        // Update local state
-        notifications.value.forEach(notification => {
-          notification.read = true;
-        });
-        
-        // For demo purposes, simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Update Vuex store
-        store.dispatch('orderTracking/markAllNotificationsRead');
-      } catch (error) {
-        console.error('Error marking all notifications as read:', error);
-      }
-    };
-    
-    // Delete a notification
-    const deleteNotification = (id) => {
-      notificationToDelete.value = id;
-      showDeleteDialog.value = true;
-    };
-    
-    // Confirm notification deletion
-    const confirmDelete = async () => {
-      try {
-        if (!notificationToDelete.value) return;
-        
-        // In a real app, this would be an API call
-        // await axios.delete(`/api/notifications/${notificationToDelete.value}`);
-        
-        // Update local state
-        notifications.value = notifications.value.filter(
-          n => n.id !== notificationToDelete.value
-        );
-        
-        // For demo purposes, simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        showDeleteDialog.value = false;
-        notificationToDelete.value = null;
-      } catch (error) {
-        console.error('Error deleting notification:', error);
-      }
-    };
-    
-    // Open a notification
-    const openNotification = async (notification) => {
-      // Mark as read
-      if (!notification.read) {
-        await markAsRead(notification.id);
-      }
-      
-      // Navigate based on type
-      if (notification.type === 'order_status' && notification.orderId) {
-        router.push(`/orders/${notification.orderId}/tracking`);
-      } else if (notification.type === 'promo' && notification.promoId) {
-        router.push(`/promotions/${notification.promoId}`);
-      } else if (notification.link) {
-        router.push(notification.link);
-      }
-    };
-    
-    // Handle notification action button
-    const handleAction = (notification) => {
-      if (notification.action && notification.action.link) {
-        router.push(notification.action.link);
-      }
-    };
-    
-    // Reset all filters
-    const resetFilters = () => {
-      filterType.value = 'all';
-      filterTimeRange.value = 'all';
-      showReadNotifications.value = true;
-    };
-    
-    // Load notification settings
-    const loadSettings = async () => {
-      try {
-        // In a real app, this would be an API call
-        // const response = await axios.get('/api/notifications/settings');
-        // settings.value = response.data;
-        
-        // For demo purposes, use mock data
-        await new Promise(resolve => setTimeout(resolve, 300));
-        settings.value = {
-          orderStatus: true,
-          driverLocation: true,
-          promotions: true,
-          newRestaurants: true,
-          email: true,
-          push: true,
-          sms: false
-        };
-      } catch (error) {
-        console.error('Error loading notification settings:', error);
-      }
-    };
-    
-    // Save notification settings
-    const saveSettings = async () => {
-      try {
-        // In a real app, this would be an API call
-        // await axios.put('/api/notifications/settings', settings.value);
-        
-        // For demo purposes, simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        showSettingsDialog.value = false;
-        
-        // Show success message
-        store.dispatch('ui/showSnackbar', {
-          text: 'Notification settings saved',
-          color: 'success'
-        });
-      } catch (error) {
-        console.error('Error saving notification settings:', error);
-      }
-    };
-    
-    // Generate mock notifications for demo
-    const generateMockNotifications = (count = 20) => {
-      const types = ['order_status', 'promo', 'account'];
-      const now = new Date();
-      const notifications = [];
-      
-      for (let i = 0; i < count; i++) {
-        const type = types[Math.floor(Math.random() * types.length)];
-        const timestamp = new Date(now);
-        timestamp.setHours(timestamp.getHours() - Math.floor(Math.random() * 48));
-        
-        let notification = {
-          id: Date.now() - i,
-          type,
-          timestamp: timestamp.toISOString(),
-          read: Math.random() > 0.3 // 70% chance of being read
-        };
-        
-        if (type === 'order_status') {
-          const statuses = ['confirmed', 'preparing', 'on_the_way', 'delivered'];
-          const status = statuses[Math.floor(Math.random() * statuses.length)];
-          const orderId = 1000 + Math.floor(Math.random() * 1000);
-          
-          notification = {
-            ...notification,
-            title: `Order #${orderId} Update`,
-            message: getOrderStatusMessage(status),
-            orderId,
-            action: {
-              text: 'Track Order',
-              link: `/orders/${orderId}/tracking`
-            }
-          };
-        } else if (type === 'promo') {
-          const promos = [
-            {
-              title: 'Special Offer',
-              message: 'Get 20% off on your next order! Use code FOOD20 at checkout.',
-              promoId: 'FOOD20'
-            },
-            {
-              title: 'New Restaurant',
-              message: 'Check out the new Thai restaurant in your area! Free delivery on your first order.',
-              promoId: null
-            },
-            {
-              title: 'Weekend Discount',
-              message: 'Enjoy free delivery all weekend! Order now.',
-              promoId: 'WEEKEND'
-            }
-          ];
-          
-          const promo = promos[Math.floor(Math.random() * promos.length)];
-          
-          notification = {
-            ...notification,
-            title: promo.title,
-            message: promo.message,
-            promoId: promo.promoId,
-            action: {
-              text: 'Order Now',
-              link: '/restaurants'
-            }
-          };
-        } else if (type === 'account') {
-          const messages = [
-            {
-              title: 'Profile Updated',
-              message: 'Your profile information has been updated successfully.'
-            },
-            {
-              title: 'New Address Added',
-              message: 'A new delivery address has been added to your account.'
-            },
-            {
-              title: 'Password Changed',
-              message: 'Your password has been changed successfully.'
-            }
-          ];
-          
-          const message = messages[Math.floor(Math.random() * messages.length)];
-          
-          notification = {
-            ...notification,
-            title: message.title,
-            message: message.message,
-            link: '/profile'
-          };
-        }
-        
-        notifications.push(notification);
-      }
-      
-      return notifications;
-    };
-    
-    // Get order status message
-    const getOrderStatusMessage = (status) => {
-      switch (status) {
-        case 'confirmed':
-          return 'Your order has been confirmed by the restaurant.';
-        case 'preparing':
-          return 'The restaurant is now preparing your food.';
-        case 'on_the_way':
-          return 'Your order is on the way! Track your delivery.';
-        case 'delivered':
-          return 'Your order has been delivered. Enjoy your meal!';
         default:
-          return 'Your order status has been updated.';
+          return 'primary';
       }
-    };
+    },
     
-    // Fetch notifications when component is mounted
-    onMounted(() => {
-      fetchNotifications();
-    });
+    formatNotificationType(type) {
+      switch (type) {
+        case 'order_status':
+          return 'Order Update';
+        case 'driver_location':
+          return 'Driver Update';
+        case 'promotion':
+          return 'Promotion';
+        case 'marketing':
+          return 'Marketing';
+        case 'system':
+          return 'System';
+        default:
+          return type.replace('_', ' ');
+      }
+    },
     
-    return {
-      loading,
-      loadingMore,
-      notifications,
-      filteredNotifications,
-      groupedNotifications,
-      unreadCount,
-      filterType,
-      filterTimeRange,
-      showReadNotifications,
-      hasMoreNotifications,
-      typeOptions,
-      timeRangeOptions,
-      settings,
-      showSettingsDialog,
-      showDeleteDialog,
-      formatTime,
-      getNotificationIcon,
-      getNotificationColor,
-      getEmptyStateMessage,
-      markAsRead,
-      markAllAsRead,
-      openNotification,
-      handleAction,
-      resetFilters,
-      loadMoreNotifications,
-      saveSettings,
-      deleteNotification,
-      confirmDelete
-    };
+    formatTime(timestamp) {
+      if (!timestamp) return '';
+      
+      const date = new Date(timestamp);
+      
+      // Format date: Jan 5, 2023
+      const dateStr = date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+      
+      // Format time: 3:45 PM
+      const timeStr = date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      });
+      
+      return `${dateStr} at ${timeStr}`;
+    },
+    
+    getEmptyStateMessage() {
+      if (this.hasActiveFilters) {
+        return 'No notifications match your current filters. Try changing your filters to see more results.';
+      } else {
+        return 'You don\'t have any notifications yet. Check back later for updates on your orders, promotions, and more.';
+      }
+    },
+    
+    showSnackbarMessage(text, color = 'success') {
+      this.snackbarText = text;
+      this.snackbarColor = color;
+      this.showSnackbar = true;
+    }
+  },
+  
+  async mounted() {
+    // Load notifications with default filters
+    await this.loadNotifications();
+    
+    // Set page title
+    document.title = 'My Notifications | UberEat';
+  },
+  
+  beforeUnmount() {
+    // Reset page title
+    document.title = 'UberEat';
   }
 };
 </script>
 
 <style scoped>
-.notification-card {
-  transition: all 0.2s ease;
+.notifications-page {
+  padding-top: 24px;
+  padding-bottom: 32px;
 }
 
-.notification-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+.notification-list {
+  max-height: none;
 }
 
-.notification-card.unread {
-  border-left: 3px solid var(--v-primary-base);
-  background-color: rgba(var(--v-primary-base), 0.05);
+.notification-item {
+  transition: background-color 0.2s ease;
 }
-</style> 
+
+.notification-item:hover {
+  background-color: rgba(var(--v-theme-primary), 0.05);
+}
+
+.notification-item.unread {
+  background-color: rgba(var(--v-theme-primary), 0.07);
+}
+
+.notification-item.read {
+  opacity: 0.8;
+}
+
+@media (max-width: 600px) {
+  .notifications-page {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+}
+</style>

@@ -4,164 +4,122 @@
       v-model="showMenu"
       :close-on-content-click="false"
       location="bottom end"
-      min-width="350"
       max-width="400"
-      offset="5"
+      offset="4"
     >
       <template v-slot:activator="{ props }">
         <v-btn
-          icon
           v-bind="props"
+          icon
           variant="text"
-          class="notification-btn"
           :color="unreadCount > 0 ? 'primary' : undefined"
-          @click="loadNotifications"
         >
           <v-badge
             :content="unreadCount"
             :model-value="unreadCount > 0"
             color="error"
-            dot
           >
-            <v-icon>mdi-bell</v-icon>
+            <v-icon>mdi-bell-outline</v-icon>
           </v-badge>
         </v-btn>
       </template>
 
-      <v-card class="notification-panel">
-        <v-card-title class="d-flex align-center">
-          <span>Notifications</span>
+      <v-card elevation="4" class="notification-dropdown">
+        <v-card-title class="py-3 px-4 d-flex align-center bg-grey-lighten-4">
+          <span class="text-subtitle-1">Notifications</span>
           <v-spacer></v-spacer>
           <v-btn
-            v-if="unreadCount > 0"
-            size="small"
             variant="text"
-            color="primary"
-            :disabled="isLoading"
+            size="small"
+            :disabled="!hasUnread"
             @click="markAllAsRead"
+            class="text-caption"
           >
-            Mark all read
+            Mark all as read
           </v-btn>
         </v-card-title>
 
-        <v-divider></v-divider>
-
         <v-card-text class="pa-0">
-          <div v-if="isLoading" class="d-flex justify-center py-4">
-            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+          <!-- Loading State -->
+          <div v-if="loading" class="pa-4 text-center">
+            <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
+            <div class="text-body-2">Loading notifications...</div>
           </div>
-
-          <div v-else-if="!notifications || notifications.length === 0" class="empty-state pa-4 text-center">
-            <v-icon size="50" color="grey-lighten-1" icon="mdi-bell-off" class="mb-2"></v-icon>
-            <div class="text-body-1">No notifications yet</div>
-            <div class="text-caption text-medium-emphasis">
-              We'll notify you of important updates
+          
+          <!-- Empty State -->
+          <div v-else-if="!hasNotifications" class="pa-6 text-center">
+            <v-icon icon="mdi-bell-sleep-outline" size="36" color="grey-lighten-1" class="mb-2"></v-icon>
+            <div class="text-subtitle-1 font-weight-medium mb-1">No notifications</div>
+            <div class="text-body-2 text-medium-emphasis">
+              You don't have any notifications yet.
             </div>
           </div>
-
-          <v-list v-else>
-            <v-list-item
-              v-for="notification in notifications"
-              :key="notification.id"
-              :class="{ 'unread': !notification.read }"
-              @click="handleNotificationClick(notification)"
-            >
-              <!-- Notification Icon -->
-              <template v-slot:prepend>
-                <v-icon
-                  :icon="getNotificationIcon(notification)"
-                  :color="getNotificationColor(notification)"
-                  size="24"
-                  class="notification-icon"
-                ></v-icon>
-              </template>
-
-              <!-- Notification Content -->
-              <v-list-item-title>{{ notification.title }}</v-list-item-title>
-              <v-list-item-subtitle class="text-wrap">
-                {{ notification.message || notification.body }}
-              </v-list-item-subtitle>
+          
+          <!-- Notification List -->
+          <v-list v-else density="compact" class="notification-list">
+            <template v-for="(notification, index) in recentNotifications" :key="notification.id">
+              <v-list-item
+                :class="{ 'unread': !notification.read }"
+                @click="openNotification(notification)"
+                :ripple="true"
+                class="notification-item py-2"
+              >
+                <template v-slot:prepend>
+                  <v-avatar :color="getNotificationColor(notification.type)" size="36" class="mr-3">
+                    <v-icon :icon="getNotificationIcon(notification.type)" color="white" size="small"></v-icon>
+                  </v-avatar>
+                </template>
+                
+                <v-list-item-title class="text-body-2 font-weight-medium mb-1">
+                  {{ notification.title }}
+                </v-list-item-title>
+                
+                <v-list-item-subtitle class="text-caption mb-1">
+                  {{ notification.message }}
+                </v-list-item-subtitle>
+                
+                <v-list-item-subtitle class="text-caption text-grey">
+                  {{ formatNotificationTime(notification.createdAt) }}
+                </v-list-item-subtitle>
+                
+                <template v-slot:append>
+                  <v-btn
+                    v-if="!notification.read"
+                    icon="mdi-email-open-outline"
+                    variant="text"
+                    size="x-small"
+                    color="primary"
+                    @click.stop="markAsRead(notification.id)"
+                    title="Mark as read"
+                  ></v-btn>
+                </template>
+              </v-list-item>
               
-              <!-- Notification Time -->
-              <template v-slot:append>
-                <div class="d-flex flex-column align-end">
-                  <div class="text-caption text-grey">{{ formatTime(notification.createdAt) }}</div>
-                  <div class="mt-2 d-flex">
-                    <v-btn
-                      v-if="!notification.read"
-                      icon
-                      size="small"
-                      variant="text"
-                      color="primary"
-                      @click.stop="markAsRead(notification.id)"
-                    >
-                      <v-icon>mdi-check</v-icon>
-                    </v-btn>
-                    <v-btn
-                      icon
-                      size="small"
-                      variant="text"
-                      color="grey"
-                      class="ml-1"
-                      @click.stop="removeNotification(notification.id)"
-                    >
-                      <v-icon>mdi-close</v-icon>
-                    </v-btn>
-                  </div>
-                </div>
-              </template>
-            </v-list-item>
+              <v-divider v-if="index < recentNotifications.length - 1"></v-divider>
+            </template>
           </v-list>
         </v-card-text>
-
-        <v-divider></v-divider>
-
-        <v-card-actions class="d-flex justify-space-between">
+        
+        <v-divider v-if="hasNotifications"></v-divider>
+        
+        <v-card-actions v-if="hasNotifications" class="justify-center py-2 bg-grey-lighten-4">
           <v-btn
-            size="small"
-            color="grey"
             variant="text"
-            @click="clearAllNotifications"
-          >
-            Clear All
-          </v-btn>
-          <v-btn
-            size="small"
             color="primary"
-            variant="text"
-            to="/notifications/settings"
+            to="/profile/notifications"
             @click="showMenu = false"
+            size="small"
           >
-            Settings
+            View All Notifications
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-menu>
-
-    <!-- Toast notification for important notifications -->
-    <v-snackbar
-      v-model="showToast"
-      :timeout="5000"
-      :color="toastColor"
-      class="notification-toast"
-      location="top"
-    >
-      {{ toastMessage }}
-      <template v-slot:actions>
-        <v-btn
-          size="small"
-          icon="mdi-close"
-          variant="text"
-          @click="showToast = false"
-        ></v-btn>
-      </template>
-    </v-snackbar>
   </div>
 </template>
 
 <script>
 import { mapState, mapGetters, mapActions } from 'vuex';
-import { formatDistanceToNow } from 'date-fns';
 
 export default {
   name: 'NotificationCenter',
@@ -169,251 +127,184 @@ export default {
   data() {
     return {
       showMenu: false,
-      showToast: false,
-      toastMessage: '',
-      toastColor: 'primary',
-      refreshInterval: null
+      maxNotificationsToShow: 5
     };
   },
   
   computed: {
     ...mapState('notifications', ['notifications', 'loading']),
-    ...mapGetters('notifications', ['unreadNotifications', 'unreadCount']),
+    ...mapGetters('notifications', ['unreadCount']),
     
-    isLoading() {
-      return this.loading;
+    hasNotifications() {
+      return this.notifications && this.notifications.length > 0;
+    },
+    
+    hasUnread() {
+      return this.unreadCount > 0;
+    },
+    
+    recentNotifications() {
+      if (!this.notifications) return [];
+      return this.notifications.slice(0, this.maxNotificationsToShow);
     }
   },
   
   methods: {
     ...mapActions('notifications', [
-      'fetchNotifications',
-      'markAsRead',
-      'markAllAsRead',
-      'deleteNotification',
-      'handlePushNotification'
+      'fetchNotifications', 
+      'markAsRead', 
+      'markAllAsRead'
     ]),
     
-    loadNotifications() {
-      this.fetchNotifications();
-    },
-    
-    handleNotificationClick(notification) {
+    openNotification(notification) {
       // Mark as read
       if (!notification.read) {
         this.markAsRead(notification.id);
       }
       
-      // Navigate to appropriate page based on notification type
-      let targetRoute = null;
+      // Close the menu
+      this.showMenu = false;
       
-      switch(notification.type) {
+      // Navigate based on notification type
+      if (!notification.data) return;
+      
+      switch (notification.type) {
         case 'order_status':
-          targetRoute = { name: 'OrderDetails', params: { id: notification.data.orderId } };
+          if (notification.data.orderId) {
+            this.$router.push(`/orders/${notification.data.orderId}`);
+          }
           break;
           
-        case 'delivery_update':
-          targetRoute = { name: 'OrderTracking', params: { id: notification.data.orderId } };
+        case 'driver_location':
+          if (notification.data.orderId) {
+            this.$router.push(`/orders/${notification.data.orderId}/tracking`);
+          }
           break;
           
         case 'promotion':
-          targetRoute = { name: 'Promotion', params: { id: notification.data.promotionId } };
+          if (notification.data.promotionId) {
+            this.$router.push(`/promotions/${notification.data.promotionId}`);
+          }
           break;
           
-        case 'restaurant_update':
-          targetRoute = { name: 'RestaurantDetail', params: { id: notification.data.restaurantId } };
-          break;
-          
-        case 'chat_message':
-          targetRoute = { name: 'Chat', params: { id: notification.data.chatId } };
-          break;
-          
-        default:
-          // If notification has a custom URL
-          if (notification.data && notification.data.url) {
+        case 'marketing':
+          if (notification.data.url) {
             if (notification.data.url.startsWith('http')) {
-              // External link
               window.open(notification.data.url, '_blank');
             } else {
-              // Internal route
               this.$router.push(notification.data.url);
             }
           }
-      }
-      
-      if (targetRoute) {
-        this.$router.push(targetRoute);
-      }
-      
-      this.showMenu = false;
-    },
-    
-    removeNotification(id) {
-      this.deleteNotification(id);
-    },
-    
-    clearAllNotifications() {
-      // Show confirmation dialog
-      if (this.notifications && this.notifications.length > 0) {
-        if (confirm('Are you sure you want to clear all notifications?')) {
-          this.notifications.forEach(notification => {
-            this.deleteNotification(notification.id);
-          });
-        }
+          break;
       }
     },
     
-    formatTime(timestamp) {
-      if (!timestamp) return '';
-      try {
-        return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-      } catch (e) {
-        console.error('Error formatting notification time:', e);
-        return 'recently';
-      }
-    },
-    
-    getNotificationIcon(notification) {
-      switch (notification.type) {
+    getNotificationIcon(type) {
+      switch (type) {
         case 'order_status':
           return 'mdi-food';
-        case 'delivery_update':
-          return 'mdi-truck-delivery';
+        case 'driver_location':
+          return 'mdi-map-marker';
         case 'promotion':
-          return 'mdi-sale';
-        case 'payment':
-          return 'mdi-credit-card';
-        case 'chat_message':
-          return 'mdi-chat';
-        case 'restaurant_update':
-          return 'mdi-store';
+          return 'mdi-tag-outline';
+        case 'marketing':
+          return 'mdi-bullhorn';
+        case 'system':
+          return 'mdi-information-outline';
         default:
-          return 'mdi-bell';
+          return 'mdi-bell-outline';
       }
     },
     
-    getNotificationColor(notification) {
-      if (!notification.read) {
-        switch (notification.type) {
-          case 'order_status':
-            return 'success';
-          case 'delivery_update':
-            return 'info';
-          case 'promotion':
-            return 'purple';
-          case 'payment':
-            return 'blue';
-          case 'chat_message':
-            return 'pink';
-          default:
-            return 'primary';
-        }
+    getNotificationColor(type) {
+      switch (type) {
+        case 'order_status':
+          return 'success';
+        case 'driver_location':
+          return 'info';
+        case 'promotion':
+          return 'warning';
+        case 'marketing':
+          return 'purple';
+        case 'system':
+          return 'grey';
+        default:
+          return 'primary';
       }
-      return 'grey';
     },
     
-    // Show toast notification for important notifications
-    showToastNotification(notification) {
-      this.toastMessage = `${notification.title}: ${notification.message || notification.body}`;
-      this.toastColor = this.getNotificationColor(notification);
-      this.showToast = true;
-    },
-    
-    // Setup WebSocket and other event listeners for real-time notifications
-    setupRealTimeListeners() {
-      // Listen for notification events from WebSocket
-      this.$root.$on('ws:notification', this.handleRealtimeNotification);
+    formatNotificationTime(timestamp) {
+      if (!timestamp) return '';
       
-      // Listen for push messages
-      navigator.serviceWorker?.addEventListener('message', (event) => {
-        if (event.data && event.data.type === 'notification') {
-          this.handleRealtimeNotification(event.data.notification);
-        }
+      const now = new Date();
+      const notificationDate = new Date(timestamp);
+      const diffInMs = now - notificationDate;
+      const diffInMinutes = Math.floor(diffInMs / 60000);
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      const diffInDays = Math.floor(diffInHours / 24);
+      
+      if (diffInMinutes < 1) {
+        return 'Just now';
+      } else if (diffInMinutes < 60) {
+        return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
+      } else if (diffInHours < 24) {
+        return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
+      } else if (diffInDays < 7) {
+        return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+      } else {
+        return notificationDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: notificationDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+        });
+      }
+    }
+  },
+  
+  async mounted() {
+    // Load notifications when component mounts
+    if (!this.notifications || this.notifications.length === 0) {
+      await this.fetchNotifications({
+        page: 1,
+        limit: this.maxNotificationsToShow
       });
-    },
-    
-    handleRealtimeNotification(notification) {
-      // Process notification in store
-      this.handlePushNotification(notification);
-      
-      // Show toast for important notifications
-      const importantTypes = ['order_status', 'delivery_update', 'payment'];
-      if (importantTypes.includes(notification.type)) {
-        this.showToastNotification(notification);
-      }
     }
   },
   
-  mounted() {
-    // Initial fetch of notifications
-    this.loadNotifications();
-    
-    // Set up real-time notification listeners
-    this.setupRealTimeListeners();
-    
-    // Refresh notifications every 5 minutes when app is active
-    this.refreshInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        this.loadNotifications();
+  watch: {
+    // Fetch notifications when dropdown is opened
+    showMenu(isOpen) {
+      if (isOpen) {
+        this.fetchNotifications({
+          page: 1,
+          limit: this.maxNotificationsToShow
+        });
       }
-    }, 5 * 60 * 1000);
-  },
-  
-  beforeUnmount() {
-    // Clear refresh interval
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval);
     }
-    
-    // Remove event listeners
-    this.$root.$off('ws:notification', this.handleRealtimeNotification);
   }
 };
 </script>
 
 <style scoped>
-.notification-panel {
+.notification-dropdown {
   max-height: 80vh;
   overflow-y: auto;
 }
 
-.notification-icon {
-  border-radius: 50%;
-  padding: 8px;
-  background-color: var(--v-surface-variant);
+.notification-list {
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.unread {
-  background-color: var(--v-primary-lighten-5);
+.notification-item {
+  transition: background-color 0.2s ease;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+.notification-item:hover {
+  background-color: rgba(var(--v-theme-primary), 0.05);
 }
 
-.text-wrap {
-  white-space: normal;
-  word-break: break-word;
-}
-
-/* Animation for new notifications */
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.notification-btn.new-notification {
-  animation: pulse 1s ease-in-out;
+.notification-item.unread {
+  background-color: rgba(var(--v-theme-primary), 0.08);
 }
 </style>

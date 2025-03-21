@@ -1085,8 +1085,119 @@ const getRestaurantSettings = async (req, res, next) => {
   }
 };
 
+/**
+ * Update menu availability settings
+ * @route PATCH /api/restaurants/:id/menu-availability
+ * @access Private (Restaurant Owner)
+ */
+exports.updateMenuAvailability = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { menuAvailability } = req.body;
+
+    const restaurant = await Restaurant.findOne({
+      where: { id, userId: req.user.id }
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    await restaurant.update({ menuAvailability });
+
+    // Emit socket event to notify clients of menu changes
+    const io = req.app.get('socketio');
+    io.to(`restaurant:${id}`).emit('menu_availability_updated', {
+      restaurantId: id,
+      menuAvailability
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: { menuAvailability }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update temporary closure settings
+ * @route PATCH /api/restaurants/:id/temp-closure
+ * @access Private (Restaurant Owner)
+ */
+exports.updateTempClosure = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { tempClosureSettings } = req.body;
+
+    const restaurant = await Restaurant.findOne({
+      where: { id, userId: req.user.id }
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    await restaurant.update({ tempClosureSettings });
+
+    // Emit socket event to notify clients of closure status
+    const io = req.app.get('socketio');
+    io.to(`restaurant:${id}`).emit('restaurant_closure_updated', {
+      restaurantId: id,
+      tempClosureSettings
+    });
+
+    // If restaurant is temporarily closed, handle existing orders
+    if (tempClosureSettings.isTemporarilyClosed) {
+      await handleExistingOrdersOnClosure(id, tempClosureSettings);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: { tempClosureSettings }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Handle existing orders when restaurant goes into temporary closure
+ * @private
+ */
+const handleExistingOrdersOnClosure = async (restaurantId, closureSettings) => {
+  const { Order } = require('../models');
+  const pendingOrders = await Order.findAll({
+    where: {
+      restaurantId,
+      status: {
+        [Op.in]: ['pending', 'confirmed']
+      }
+    }
+  });
+
+  for (const order of pendingOrders) {
+    if (!closureSettings.acceptPreOrders) {
+      await order.update({
+        status: 'cancelled',
+        cancellationReason: 'Restaurant temporarily closed'
+      });
+
+      // Notify customer about cancellation
+      const io = global.io;
+      io.to(`user:${order.userId}`).emit('order_cancelled', {
+        orderId: order.id,
+        reason: 'Restaurant temporarily closed'
+      });
+    }
+  }
+};
+
 module.exports = {
   // ...existing exports...
   updateRestaurantAvailability,
-  getRestaurantSettings
+  getRestaurantSettings,
+  updateMenuAvailability,
+  updateTempClosure
 };

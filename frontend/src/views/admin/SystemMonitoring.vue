@@ -1,300 +1,282 @@
 <template>
-  <div class="system-monitoring">
-    <v-container fluid>
-      <v-row>
-        <v-col cols="12">
-          <h1 class="text-h4 mb-4">System Monitoring</h1>
-        </v-col>
-      </v-row>
+  <div class="system-monitoring pa-6">
+    <h1 class="text-h4 mb-6">System Monitoring</h1>
 
-      <v-row>
-        <!-- System Metrics -->
-        <v-col cols="12" lg="8">
-          <system-metrics-dashboard />
-        </v-col>
+    <!-- System Health Overview -->
+    <v-row>
+      <v-col cols="12" md="3" v-for="service in serviceHealth" :key="service.name">
+        <v-card>
+          <v-card-text class="text-center">
+            <v-icon :color="service.status === 'healthy' ? 'success' : 'error'" size="48">
+              {{ service.status === 'healthy' ? 'mdi-check-circle' : 'mdi-alert-circle' }}
+            </v-icon>
+            <div class="text-h6 mt-2">{{ service.name }}</div>
+            <div class="text-caption">Response Time: {{ service.responseTime }}ms</div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
 
-        <!-- Quick Actions -->
-        <v-col cols="12" lg="4">
-          <v-card>
-            <v-card-title>Quick Actions</v-card-title>
-            <v-card-text>
-              <v-btn
-                block
-                color="primary"
-                class="mb-2"
-                @click="refreshMetrics"
-                :loading="refreshing"
-              >
-                <v-icon left>mdi-refresh</v-icon>
-                Refresh Metrics
-              </v-btn>
+    <!-- System Metrics -->
+    <v-row class="mt-6">
+      <v-col cols="12" md="6">
+        <v-card>
+          <v-card-title>CPU & Memory Usage</v-card-title>
+          <v-card-text>
+            <v-row>
+              <v-col cols="6">
+                <v-progress-circular
+                  :model-value="cpuUsage"
+                  :color="getCpuColor"
+                  size="100"
+                  width="10"
+                >
+                  {{ cpuUsage }}%
+                </v-progress-circular>
+                <div class="text-center mt-2">CPU Usage</div>
+              </v-col>
+              <v-col cols="6">
+                <v-progress-circular
+                  :model-value="memoryUsage"
+                  :color="getMemoryColor"
+                  size="100"
+                  width="10"
+                >
+                  {{ memoryUsage }}%
+                </v-progress-circular>
+                <div class="text-center mt-2">Memory Usage</div>
+              </v-col>
+            </v-row>
+            <v-list density="compact" class="mt-4">
+              <v-list-item>
+                <template v-slot:prepend>
+                  <v-icon>mdi-chip</v-icon>
+                </template>
+                <v-list-item-title>CPU Cores: {{ systemMetrics.cpu.cores }}</v-list-item-title>
+                <v-list-item-subtitle>{{ systemMetrics.cpu.model }}</v-list-item-subtitle>
+              </v-list-item>
+              <v-list-item>
+                <template v-slot:prepend>
+                  <v-icon>mdi-memory</v-icon>
+                </template>
+                <v-list-item-title>Total Memory: {{ formatBytes(systemMetrics.memory.total) }}</v-list-item-title>
+                <v-list-item-subtitle>Free: {{ formatBytes(systemMetrics.memory.free) }}</v-list-item-subtitle>
+              </v-list-item>
+            </v-list>
+          </v-card-text>
+        </v-card>
+      </v-col>
 
-              <v-btn
-                block
-                color="warning"
-                class="mb-2"
-                @click="broadcastMaintenanceDialog = true"
-              >
-                <v-icon left>mdi-wrench</v-icon>
-                Broadcast Maintenance
-              </v-btn>
+      <v-col cols="12" md="6">
+        <v-card>
+          <v-card-title>API Performance</v-card-title>
+          <v-card-text>
+            <v-row>
+              <v-col cols="6" v-for="metric in apiMetrics" :key="metric.name">
+                <div class="text-h5">{{ metric.value }}</div>
+                <div class="text-caption">{{ metric.name }}</div>
+              </v-col>
+            </v-row>
+            <v-chart class="mt-4" :option="apiChartOption" autoresize />
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
 
-              <v-btn
-                block
-                color="error"
-                @click="systemAlertDialog = true"
-              >
-                <v-icon left>mdi-alert</v-icon>
-                Send System Alert
-              </v-btn>
-            </v-card-text>
-          </v-card>
+    <!-- Database Metrics -->
+    <v-row class="mt-6">
+      <v-col cols="12">
+        <v-card>
+          <v-card-title>Database Performance</v-card-title>
+          <v-card-text>
+            <v-row>
+              <v-col cols="12" md="3" v-for="metric in dbMetrics" :key="metric.name">
+                <div class="text-h5">{{ metric.value }}</div>
+                <div class="text-caption">{{ metric.name }}</div>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
 
-          <!-- Preferences Card -->
-          <admin-preferences class="mt-4" />
-        </v-col>
-      </v-row>
-    </v-container>
-
-    <!-- Maintenance Dialog -->
-    <v-dialog
-      v-model="broadcastMaintenanceDialog"
-      max-width="500"
-    >
-      <v-card>
-        <v-card-title>Broadcast Maintenance Notice</v-card-title>
-        <v-card-text>
-          <v-form ref="maintenanceForm" v-model="maintenanceFormValid">
-            <v-text-field
-              v-model="maintenanceMessage"
-              label="Maintenance Message"
-              required
-              :rules="[v => !!v || 'Message is required']"
-            ></v-text-field>
-            
-            <v-menu
-              ref="startMenu"
-              v-model="startMenu"
-              :close-on-content-click="false"
-              :return-value.sync="maintenanceStart"
-              transition="scale-transition"
-              offset-y
-              min-width="290px"
-            >
-              <template v-slot:activator="{ on, attrs }">
-                <v-text-field
-                  v-model="maintenanceStart"
-                  label="Start Time"
-                  prepend-icon="mdi-clock-outline"
-                  readonly
-                  v-bind="attrs"
-                  v-on="on"
-                ></v-text-field>
-              </template>
-              <v-date-picker
-                v-model="maintenanceStart"
-                type="datetime"
-                :min="new Date().toISOString()"
-                @input="$refs.startMenu.save(maintenanceStart)"
-              ></v-date-picker>
-            </v-menu>
-
-            <v-text-field
-              v-model="maintenanceDuration"
-              label="Duration (minutes)"
-              type="number"
-              min="1"
-              :rules="[v => !!v || 'Duration is required']"
-            ></v-text-field>
-          </v-form>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            text
-            @click="broadcastMaintenanceDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            :disabled="!maintenanceFormValid"
-            @click="broadcastMaintenance"
-          >
-            Broadcast
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- System Alert Dialog -->
-    <v-dialog
-      v-model="systemAlertDialog"
-      max-width="500"
-    >
-      <v-card>
-        <v-card-title>Send System Alert</v-card-title>
-        <v-card-text>
-          <v-form ref="alertForm" v-model="alertFormValid">
-            <v-select
-              v-model="alertType"
-              :items="alertTypes"
-              label="Alert Type"
-              required
-              :rules="[v => !!v || 'Alert type is required']"
-            ></v-select>
-
-            <v-text-field
-              v-model="alertMessage"
-              label="Alert Message"
-              required
-              :rules="[v => !!v || 'Message is required']"
-            ></v-text-field>
-
-            <v-checkbox
-              v-model="alertPersistent"
-              label="Persistent Alert"
-            ></v-checkbox>
-          </v-form>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            text
-            @click="systemAlertDialog = false"
-          >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="error"
-            :disabled="!alertFormValid"
-            @click="sendSystemAlert"
-          >
-            Send Alert
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <!-- Active Users -->
+    <v-row class="mt-6">
+      <v-col cols="12">
+        <v-card>
+          <v-card-title class="d-flex align-center">
+            Active Users
+            <v-spacer></v-spacer>
+            <div class="text-h5">{{ activeSessions }}</div>
+          </v-card-title>
+          <v-card-text>
+            <v-chart :option="userChartOption" autoresize />
+          </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
   </div>
 </template>
 
 <script>
-import SystemMetricsDashboard from '@/components/admin/SystemMetricsDashboard.vue';
-import AdminPreferences from '@/components/admin/AdminPreferences.vue';
-import { mapActions } from 'vuex';
+import { ref, onMounted, computed, onUnmounted } from 'vue'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, TitleComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
+import axios from 'axios'
+
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, TitleComponent])
 
 export default {
   name: 'SystemMonitoring',
+  components: { VChart },
 
-  components: {
-    SystemMetricsDashboard,
-    AdminPreferences
-  },
+  setup() {
+    const systemMetrics = ref({
+      cpu: { cores: 0, model: '', usage: 0 },
+      memory: { total: 0, free: 0, usage: 0 }
+    })
+    const dbMetrics = ref([])
+    const apiMetrics = ref([])
+    const serviceHealth = ref([])
+    const activeSessions = ref(0)
+    const updateInterval = ref(null)
 
-  data() {
-    return {
-      refreshing: false,
-      broadcastMaintenanceDialog: false,
-      systemAlertDialog: false,
-      maintenanceFormValid: false,
-      alertFormValid: false,
-      
-      // Maintenance form
-      maintenanceMessage: '',
-      maintenanceStart: new Date().toISOString(),
-      maintenanceDuration: 30,
-      startMenu: false,
+    const cpuUsage = computed(() => Math.round(systemMetrics.value.cpu.usage))
+    const memoryUsage = computed(() => Math.round(systemMetrics.value.memory.usage))
 
-      // Alert form
-      alertType: 'info',
-      alertMessage: '',
-      alertPersistent: false,
-      alertTypes: [
-        { text: 'Information', value: 'info' },
-        { text: 'Warning', value: 'warning' },
-        { text: 'Error', value: 'error' },
-        { text: 'Critical', value: 'critical' }
-      ]
-    };
-  },
+    const getCpuColor = computed(() => {
+      if (cpuUsage.value < 60) return 'success'
+      if (cpuUsage.value < 80) return 'warning'
+      return 'error'
+    })
 
-  methods: {
-    ...mapActions('admin', ['emitSystemAlert']),
+    const getMemoryColor = computed(() => {
+      if (memoryUsage.value < 70) return 'success'
+      if (memoryUsage.value < 90) return 'warning'
+      return 'error'
+    })
 
-    async refreshMetrics() {
-      this.refreshing = true;
+    const apiChartOption = computed(() => ({
+      title: {
+        text: 'API Response Times'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'time'
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Response Time (ms)'
+      },
+      series: [{
+        name: 'Response Time',
+        type: 'line',
+        data: apiMetrics.value.timeData || [],
+        smooth: true,
+        areaStyle: {}
+      }]
+    }))
+
+    const userChartOption = computed(() => ({
+      title: {
+        text: 'Active Users Over Time'
+      },
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'time'
+      },
+      yAxis: {
+        type: 'value',
+        name: 'Users'
+      },
+      series: [{
+        name: 'Active Users',
+        type: 'line',
+        data: apiMetrics.value.userData || [],
+        smooth: true,
+        areaStyle: {}
+      }]
+    }))
+
+    const formatBytes = (bytes) => {
+      if (bytes === 0) return '0 Bytes'
+      const k = 1024
+      const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+    }
+
+    const fetchMetrics = async () => {
       try {
-        await this.$root.$emit('refresh_metrics');
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Metrics refreshed',
-          color: 'success'
-        });
+        const { data } = await axios.get('/api/admin/system/metrics')
+        systemMetrics.value = data.data.systemMetrics
+        dbMetrics.value = [
+          { name: 'Active Connections', value: data.data.dbMetrics.activeConnections },
+          { name: 'Total Tables', value: data.data.dbMetrics.totalTables },
+          { name: 'Database Size', value: data.data.dbMetrics.dbSizeMB + ' MB' },
+          { name: 'Total Processes', value: data.data.dbMetrics.totalProcesses }
+        ]
+        apiMetrics.value = [
+          { name: 'Total Calls', value: data.data.apiMetrics.totalApiCalls },
+          { name: 'Avg Response', value: Math.round(data.data.apiMetrics.avgResponseTime) + 'ms' },
+          { name: 'Error Rate', value: ((data.data.apiMetrics.errorCount / data.data.apiMetrics.totalApiCalls) * 100).toFixed(2) + '%' },
+          { name: 'Success Rate', value: (100 - (data.data.apiMetrics.errorCount / data.data.apiMetrics.totalApiCalls) * 100).toFixed(2) + '%' }
+        ]
+        serviceHealth.value = Object.entries(data.data.serviceHealth).map(([name, health]) => ({
+          name: name.charAt(0).toUpperCase() + name.slice(1),
+          status: health.status,
+          responseTime: health.responseTime
+        }))
+        activeSessions.value = data.data.activeSessions
       } catch (error) {
-        console.error('Error refreshing metrics:', error);
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Error refreshing metrics',
-          color: 'error'
-        });
-      } finally {
-        this.refreshing = false;
-      }
-    },
-
-    async broadcastMaintenance() {
-      if (!this.$refs.maintenanceForm.validate()) return;
-
-      try {
-        await this.emitSystemAlert({
-          type: 'maintenance',
-          message: this.maintenanceMessage,
-          data: {
-            startTime: this.maintenanceStart,
-            duration: parseInt(this.maintenanceDuration)
-          }
-        });
-
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Maintenance notice broadcasted',
-          color: 'success'
-        });
-        this.broadcastMaintenanceDialog = false;
-      } catch (error) {
-        console.error('Error broadcasting maintenance:', error);
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Error broadcasting maintenance notice',
-          color: 'error'
-        });
-      }
-    },
-
-    async sendSystemAlert() {
-      if (!this.$refs.alertForm.validate()) return;
-
-      try {
-        await this.emitSystemAlert({
-          type: this.alertType,
-          message: this.alertMessage,
-          persistent: this.alertPersistent
-        });
-
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'System alert sent',
-          color: 'success'
-        });
-        this.systemAlertDialog = false;
-      } catch (error) {
-        console.error('Error sending system alert:', error);
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Error sending system alert',
-          color: 'error'
-        });
+        console.error('Error fetching system metrics:', error)
       }
     }
+
+    onMounted(() => {
+      fetchMetrics()
+      updateInterval.value = setInterval(fetchMetrics, 30000) // Update every 30 seconds
+    })
+
+    onUnmounted(() => {
+      if (updateInterval.value) {
+        clearInterval(updateInterval.value)
+      }
+    })
+
+    return {
+      systemMetrics,
+      dbMetrics,
+      apiMetrics,
+      serviceHealth,
+      activeSessions,
+      cpuUsage,
+      memoryUsage,
+      getCpuColor,
+      getMemoryColor,
+      apiChartOption,
+      userChartOption,
+      formatBytes
+    }
   }
-};
+}
 </script>
 
 <style scoped>
 .system-monitoring {
-  height: 100%;
-}</style>
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.v-progress-circular {
+  margin: 0 auto;
+  display: block;
+}
+</style>

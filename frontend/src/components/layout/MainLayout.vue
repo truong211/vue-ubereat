@@ -35,6 +35,9 @@
 
           <v-divider vertical class="mx-4"></v-divider>
 
+          <!-- Notifications Center (Desktop) -->
+          <notification-center v-if="isLoggedIn" class="mr-2"></notification-center>
+
           <!-- Cart Button -->
           <v-btn
             to="/cart"
@@ -205,6 +208,23 @@
         </template>
 
         <v-divider class="my-2"></v-divider>
+
+        <!-- Notifications (Mobile) -->
+        <v-list-item
+          v-if="isLoggedIn"
+          to="/profile/notifications"
+          title="Notifications"
+          prepend-icon="mdi-bell-outline"
+          @click="drawer = false"
+        >
+          <template v-slot:append>
+            <v-badge
+              :content="unreadNotificationCount"
+              :model-value="unreadNotificationCount > 0"
+              color="error"
+            ></v-badge>
+          </template>
+        </v-list-item>
 
         <v-list-item
           to="/cart"
@@ -385,11 +405,16 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { mapState, mapGetters, mapActions } from 'vuex';
 import axios from 'axios';
+import NotificationCenter from '@/components/notifications/NotificationCenter.vue';
 
 export default {
   name: 'MainLayout',
+  
+  components: {
+    NotificationCenter
+  },
   
   data() {
     return {
@@ -407,6 +432,7 @@ export default {
       userMenuItems: [
         { title: 'My Profile', to: '/profile', icon: 'mdi-account' },
         { title: 'My Orders', to: '/orders', icon: 'mdi-receipt' },
+        { title: 'Notifications', to: '/profile/notifications', icon: 'mdi-bell-outline' },
         { title: 'Favorites', to: '/favorites', icon: 'mdi-heart' },
         { title: 'Addresses', to: '/addresses', icon: 'mdi-map-marker' },
         { title: 'Payment Methods', to: '/payment-methods', icon: 'mdi-credit-card' }
@@ -454,6 +480,11 @@ export default {
     } catch (error) {
       console.error('Error fetching static pages:', error);
     }
+
+    // Initialize push notifications if user is logged in
+    if (this.isLoggedIn) {
+      this.initPushNotifications();
+    }
   },
   
   computed: {
@@ -461,6 +492,10 @@ export default {
       user: state => state.auth.user,
       cart: state => state.cart.items
     }),
+    
+    ...mapGetters('notifications', [
+      'unreadCount'
+    ]),
     
     isLoggedIn() {
       return !!this.user;
@@ -482,6 +517,10 @@ export default {
     cartItemCount() {
       if (!this.cart) return 0;
       return this.cart.reduce((total, item) => total + item.quantity, 0);
+    },
+
+    unreadNotificationCount() {
+      return this.unreadCount;
     }
   },
   
@@ -489,6 +528,10 @@ export default {
     ...mapActions({
       logoutAction: 'auth/logout'
     }),
+    
+    ...mapActions('notifications', [
+      'initPushNotifications'
+    ]),
     
     async logout() {
       try {
@@ -500,6 +543,15 @@ export default {
       } catch (error) {
         this.$toast.error('Failed to logout');
         console.error('Logout error:', error);
+      }
+    }
+  },
+
+  watch: {
+    // Initialize push notifications when user logs in
+    user(newUser) {
+      if (newUser) {
+        this.initPushNotifications();
       }
     }
   }

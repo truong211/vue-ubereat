@@ -15,8 +15,16 @@ const ProductPromotion = require('./productPromotion.model');
 const Banner = require('./banner.model');
 const StaticPage = require('./staticPage.model');
 const SiteConfig = require('./siteConfig.model');
+const UserActivityLog = require('./userActivityLog.model');
+const ApiPerformanceLog = require('./apiPerformanceLog.model');
+const MarketingContent = require('./marketingContent.model');
 
-// Additional associations can be defined here if needed
+// Define additional relationships
+User.hasMany(UserActivityLog, { foreignKey: 'userId' });
+UserActivityLog.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(MarketingContent, { foreignKey: 'createdBy', as: 'createdContent' });
+MarketingContent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 module.exports = {
   User,
@@ -35,5 +43,8 @@ module.exports = {
   ProductPromotion,
   Banner,
   StaticPage,
-  SiteConfig
+  SiteConfig,
+  UserActivityLog,
+  ApiPerformanceLog,
+  MarketingContent
 };

@@ -1,277 +1,243 @@
-// Cache name for PWA
-const CACHE_NAME = 'food-delivery-v1';
+// Service Worker for Push Notifications and Offline Support
+const CACHE_NAME = 'food-delivery-cache-v1';
+const OFFLINE_URL = '/offline.html';
 
-// Assets to cache for offline access
-const STATIC_ASSETS = [
+// Files to cache for offline support
+const urlsToCache = [
   '/',
   '/index.html',
-  '/manifest.json',
   '/offline.html',
+  '/manifest.json',
+  '/img/icons/android-chrome-192x192.png',
+  '/img/icons/badge-128x128.png',
   '/favicon.ico',
-  '/img/icons/icon-192x192.png',
-  '/img/icons/icon-512x512.png'
+  // Add CSS, JS, and other essential static assets
+  '/style.css'
 ];
 
-// Install event - cache assets
+// Install event - cache essential files
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) => {
+        console.log('Opened cache');
+        return cache.addAll(urlsToCache);
+      })
       .then(() => self.skipWaiting())
   );
 });
 
-// Activate event - clean old caches
+// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      })
-      .then(() => self.clients.claim())
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
 // Fetch event - serve cached content when offline
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  
-  // Skip chrome-extension URLs and non-GET requests
-  if (request.url.startsWith('chrome-extension://') || request.method !== 'GET') {
+  // Skip cross-origin requests
+  if (!event.request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // Static assets and other requests
+  // Handle API requests differently - don't cache them
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(
+      fetch(event.request).catch((error) => {
+        console.log('Fetch failed for API request; returning offline response', error);
+        
+        // If it's a GET request, we can return a generic offline response
+        if (event.request.method === 'GET') {
+          return new Response(
+            JSON.stringify({ error: 'You are offline' }),
+            {
+              status: 503,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
+        
+        // For non-GET requests, throw the error
+        throw error;
+      })
+    );
+    return;
+  }
+
+  // For non-API requests, try network first, then cache, then offline page
   event.respondWith(
-    caches.match(request)
+    fetch(event.request)
       .then((response) => {
-        if (response) {
-          return response;
+        // If we got a valid response, clone it and update the cache
+        if (response && response.status === 200) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME)
+            .then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+        }
+        return response;
+      })
+      .catch(async () => {
+        // Try to get the resource from the cache
+        const cachedResponse = await caches.match(event.request);
+        if (cachedResponse) {
+          return cachedResponse;
         }
 
-        return fetch(request.clone())
-          .then((response) => {
-            // Don't cache non-successful responses or non-GET requests
-            if (!response || response.status !== 200 || request.method !== 'GET') {
-              return response;
-            }
-            
-            // Only cache same-origin requests
-            const url = new URL(request.url);
-            if (url.origin === location.origin) {
-              const responseToCache = response.clone();
-              caches.open(CACHE_NAME)
-                .then((cache) => {
-                  cache.put(request, responseToCache);
-                });
-            }
-            
-            return response;
-          })
-          .catch(() => {
-            // Return offline page for navigation requests
-            if (request.mode === 'navigate') {
-              return caches.match('/offline.html');
-            }
-            return null;
-          });
+        // If request is for a page navigation, return the offline page
+        if (event.request.mode === 'navigate') {
+          return caches.match(OFFLINE_URL);
+        }
+
+        // If we can't serve from cache or it's not a navigation, fail
+        return new Response('Network error', { status: 503 });
       })
   );
 });
 
 // Push event - handle incoming push notifications
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
+  console.log('Push received:', event);
+
+  let notificationData = {};
   
-  try {
-    const data = event.data.json();
-
-    const options = {
-      body: data.message,
-      icon: '/img/icons/icon-192x192.png',
-      badge: '/img/icons/icon-192x192.png',
-      vibrate: [100, 50, 100],
-      data: {
-        url: data.url
-      }
+  // Try to extract notification data from the push event
+  if (event.data) {
+    try {
+      notificationData = event.data.json();
+    } catch (e) {
+      // If parsing as JSON fails, use the text as the message
+      notificationData = {
+        title: 'New Notification',
+        body: event.data.text()
+      };
+    }
+  } else {
+    // Default notification if no data was received
+    notificationData = {
+      title: 'New Notification',
+      body: 'Something happened in the app'
     };
-
-    event.waitUntil(
-      self.registration.showNotification(data.title, options)
-    );
-  } catch (e) {
-    console.error('Error showing notification:', e);
   }
-});
 
-// Notification click event
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  // Extract notification details
+  const title = notificationData.title || 'New Notification';
+  const options = {
+    body: notificationData.body || '',
+    icon: notificationData.icon || '/img/icons/android-chrome-192x192.png',
+    badge: notificationData.badge || '/img/icons/badge-128x128.png',
+    tag: notificationData.tag || 'default',
+    data: notificationData.data || {}, // Additional data for click handler
+    actions: notificationData.actions || [],
+    vibrate: notificationData.vibrate || [100, 50, 100],
+    timestamp: notificationData.timestamp || Date.now()
+  };
 
-  if (event.notification.data && event.notification.data.url) {
-    event.waitUntil(
-      clients.openWindow(event.notification.data.url)
-    );
-  }
-});
-
-// Notification close event
-self.addEventListener('notificationclose', (event) => {
-  const data = event.notification.data;
-  if (!data) return;
-
-  // Notify clients about notification close
-  event.waitUntil(
-    self.clients.matchAll()
-      .then((clients) => {
-        clients.forEach((client) => {
+  // Send message to all clients about the notification
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clientList) => {
+      if (clientList.length > 0) {
+        clientList.forEach((client) => {
           client.postMessage({
-            type: 'NOTIFICATION_CLOSED',
-            data
+            type: 'PUSH_RECEIVED',
+            notification: { ...notificationData }
           });
         });
-      })
+      }
+    });
+
+  // Show the notification
+  event.waitUntil(
+    self.registration.showNotification(title, options)
   );
 });
 
-/**
- * Create notification options based on notification type
- * @param {Object} data Notification data
- * @returns {Object} Notification options
- */
-function createNotificationOptions(data) {
-  const baseOptions = {
-    body: data.message,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
-    data: {
-      id: data.id,
-      type: data.type,
-      ...data.data
-    },
-    requireInteraction: false,
-    silent: false
-  };
+// Notification click event - handle user clicking on the notification
+self.addEventListener('notificationclick', (event) => {
+  console.log('Notification click:', event);
+  
+  // Close the notification
+  event.notification.close();
 
-  switch (data.type) {
-    case 'order_status':
-      return {
-        ...baseOptions,
-        tag: `order_${data.data.orderId}`,
-        actions: [
-          {
-            action: 'view_order',
-            title: 'View Order'
-          }
-        ],
-        requireInteraction: true
-      };
-
-    case 'chat_message':
-      return {
-        ...baseOptions,
-        tag: `chat_${data.data.chatId}`,
-        actions: [
-          {
-            action: 'reply',
-            title: 'Reply'
-          },
-          {
-            action: 'view_chat',
-            title: 'View Chat'
-          }
-        ],
-        renotify: true
-      };
-
-    case 'promotion':
-      return {
-        ...baseOptions,
-        tag: `promo_${data.data.promotionId}`,
-        image: data.data.image,
-        actions: [
-          {
-            action: 'view_promotion',
-            title: 'View Offer'
-          }
-        ]
-      };
-
-    default:
-      return baseOptions;
+  // Handle actions if they exist
+  if (event.action) {
+    // Handle specific actions
+    switch (event.action) {
+      case 'view':
+        // Handle view action
+        break;
+      case 'dismiss':
+        // Just close the notification (already done)
+        return;
+      default:
+        // Unknown action
+        console.log(`Unknown action: ${event.action}`);
+    }
   }
-}
 
-/**
- * Handle notification click based on type
- * @param {Object} data Notification data
- * @returns {Promise}
- */
-function handleNotificationClick(data) {
-  return self.clients.matchAll({ type: 'window' })
-    .then((clients) => {
-      // Try to find existing window
-      const existingClient = clients.find((client) => {
-        return client.visibilityState === 'visible';
-      });
+  // Get the notification data
+  const notificationData = event.notification.data || {};
+  const urlToOpen = notificationData.url || '/notifications';
 
-      let url = '/';
+  // Inform clients about the notification click
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clientList) => {
+      if (clientList.length > 0) {
+        // If a window is already open, focus it and send a message
+        clientList.forEach((client) => {
+          client.postMessage({
+            type: 'NOTIFICATION_CLICKED',
+            notification: {
+              id: notificationData.id,
+              url: urlToOpen,
+              ...notificationData
+            }
+          });
+        });
+
+        // Focus an existing window if we have one
+        for (const client of clientList) {
+          if ('focus' in client) {
+            return client.focus();
+          }
+        }
+      }
       
-      // Determine URL based on notification type
-      switch (data.type) {
-        case 'order_status':
-          url = `/orders/${data.orderId}`;
-          break;
-          
-        case 'chat_message':
-          url = `/support/chat/${data.chatId}`;
-          break;
-          
-        case 'promotion':
-          url = `/promotions/${data.promotionId}`;
-          break;
+      // If no window is open, open a new one
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
       }
-
-      if (existingClient) {
-        // Focus existing window and navigate
-        return existingClient.focus()
-          .then(() => existingClient.navigate(url));
-      }
-
-      // Open new window
-      return self.clients.openWindow(url);
     });
-}
-
-// Periodic sync for background updates
-self.addEventListener('periodicsync', (event) => {
-  if (event.tag === 'update-orders') {
-    event.waitUntil(updateOrders());
-  }
 });
 
-/**
- * Update orders in background
- * @returns {Promise}
- */
-async function updateOrders() {
-  try {
-    // Fetch active orders
-    const response = await fetch('/api/orders/active');
-    const orders = await response.json();
-    
-    // Check for status changes
-    orders.forEach((order) => {
-      // Compare with cached status and notify if changed
-      // Implementation depends on how you store cached order states
+// Notification close event - handle user dismissing the notification
+self.addEventListener('notificationclose', (event) => {
+  console.log('Notification closed', event);
+  
+  // You can track dismissed notifications here if needed
+  const notificationData = event.notification.data || {};
+  
+  // Optionally inform clients about the notification dismissal
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clientList) => {
+      clientList.forEach((client) => {
+        client.postMessage({
+          type: 'NOTIFICATION_CLOSED',
+          notification: {
+            id: notificationData.id,
+            ...notificationData
+          }
+        });
+      });
     });
-  } catch (error) {
-    console.error('Failed to update orders:', error);
-  }
-}
+});

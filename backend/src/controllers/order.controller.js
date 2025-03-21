@@ -461,6 +461,8 @@ exports.getRestaurantOrders = async (req, res, next) => {
  * @access Private (Restaurant Owner)
  */
 exports.updateOrderStatus = async (req, res, next) => {
+  const transaction = await sequelize.transaction();
+  
   try {
     const { id } = req.params;
     const { status, estimatedTime, restaurantNote } = req.body;
@@ -475,7 +477,18 @@ exports.updateOrderStatus = async (req, res, next) => {
     });
 
     if (!order) {
+      await transaction.rollback();
       return next(new AppError('Order not found', 404));
+    }
+
+    // Check permissions - ensure user is restaurant owner, driver, or admin
+    const isRestaurantOwner = order.restaurant.userId === req.user.id;
+    const isAssignedDriver = order.driverId === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    
+    if (!isRestaurantOwner && !isAssignedDriver && !isAdmin) {
+      await transaction.rollback();
+      return next(new AppError('You are not authorized to update this order', 403));
     }
 
     // Validate status transition
@@ -490,8 +503,12 @@ exports.updateOrderStatus = async (req, res, next) => {
     };
 
     if (!validTransitions[order.status].includes(status)) {
+      await transaction.rollback();
       return next(new AppError(`Cannot transition from ${order.status} to ${status}`, 400));
     }
+
+    // Save the previous status for logging
+    const previousStatus = order.status;
 
     // Update order status and details
     order.status = status;
@@ -512,7 +529,42 @@ exports.updateOrderStatus = async (req, res, next) => {
       order.actualDeliveryTime = new Date();
     }
 
-    await order.save();
+    await order.save({ transaction });
+    
+    // Log the status change
+    const { OrderStatusLog } = require('../models');
+    
+    // Get geolocation data if available (primarily for drivers)
+    let locationData = null;
+    if (req.user.role === 'driver' && status === 'out_for_delivery' || status === 'delivered') {
+      const { DriverLocation } = require('../models');
+      const driverLocation = await DriverLocation.findOne({
+        where: { driverId: req.user.id }
+      });
+      
+      if (driverLocation) {
+        locationData = sequelize.fn(
+          'ST_GeomFromText', 
+          `POINT(${driverLocation.longitude} ${driverLocation.latitude})`
+        );
+      }
+    }
+    
+    // Create status log entry
+    await OrderStatusLog.create({
+      orderId: order.id,
+      status,
+      notes: restaurantNote || `Status changed from ${previousStatus} to ${status}`,
+      changedById: req.user.id,
+      location: locationData,
+      metadata: {
+        previousStatus,
+        estimatedDeliveryTime: order.estimatedDeliveryTime,
+        changedBy: req.user.role
+      }
+    }, { transaction });
+
+    await transaction.commit();
 
     // Emit real-time updates
     emitToOrder(order.id, 'order_status_updated', {
@@ -548,6 +600,13 @@ exports.updateOrderStatus = async (req, res, next) => {
           orderId: order.id
         });
         break;
+      case 'out_for_delivery':
+        emitToUser(order.userId, 'order_out_for_delivery', {
+          orderId: order.id,
+          driverId: order.driverId,
+          estimatedDeliveryTime: order.estimatedDeliveryTime
+        });
+        break;
       case 'delivered':
         emitToUser(order.userId, 'order_delivered', {
           orderId: order.id
@@ -558,6 +617,12 @@ exports.updateOrderStatus = async (req, res, next) => {
           orderId: order.id,
           reason: restaurantNote
         });
+        if (order.driverId) {
+          emitToUser(order.driverId, 'order_cancelled', {
+            orderId: order.id,
+            reason: restaurantNote
+          });
+        }
         break;
     }
 
@@ -568,6 +633,7 @@ exports.updateOrderStatus = async (req, res, next) => {
       }
     });
   } catch (error) {
+    await transaction.rollback();
     next(error);
   }
 };

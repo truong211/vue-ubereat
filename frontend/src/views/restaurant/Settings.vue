@@ -8,6 +8,8 @@
       <v-tab value="delivery">Delivery Settings</v-tab>
       <v-tab value="notifications">Notifications</v-tab>
       <v-tab value="account">Account</v-tab>
+      <v-tab value="menu">Menu Availability</v-tab>
+      <v-tab value="closure">Temporary Closure</v-tab>
     </v-tabs>
 
     <v-window v-model="activeTab">
@@ -482,6 +484,16 @@
           </v-card-actions>
         </v-card>
       </v-window-item>
+
+      <!-- Menu Availability -->
+      <v-window-item value="menu">
+        <menu-availability-manager />
+      </v-window-item>
+
+      <!-- Temporary Closure -->
+      <v-window-item value="closure">
+        <temp-closure-manager />
+      </v-window-item>
     </v-window>
 
     <!-- Delete Confirmation Dialog -->
@@ -522,9 +534,16 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
+import MenuAvailabilityManager from '@/components/restaurant/MenuAvailabilityManager.vue'
+import TempClosureManager from '@/components/restaurant/TempClosureManager.vue'
 
 export default {
   name: 'RestaurantSettings',
+
+  components: {
+    MenuAvailabilityManager,
+    TempClosureManager
+  },
 
   setup() {
     const store = useStore()

@@ -14,6 +14,7 @@ import socialAuth from './services/social-auth'
 import jwtAuth from './services/jwt-auth.js'
 import i18n from './i18n'
 import './assets/styles/global.css'
+import { pushNotificationService } from '@/services/push-notification.service'
 
 // Create Vuetify instance
 const vuetify = createVuetify({
@@ -72,6 +73,33 @@ const initSocialAuth = async () => {
   }
 };
 
+// Initialize push notifications
+const initNotificationSystem = async () => {
+  try {
+    // Initialize notification system in the store
+    await store.dispatch('notifications/initNotifications');
+    
+    // Initialize push notification service if user is logged in
+    if (store.state.auth.user) {
+      await store.dispatch('notifications/initPushNotifications');
+    }
+    
+    // Listen for auth state changes to init/cleanup notifications
+    store.watch(
+      (state) => state.auth.user,
+      (newUser) => {
+        if (newUser) {
+          store.dispatch('notifications/initPushNotifications');
+        }
+      }
+    );
+    
+    console.log('Notification system initialized successfully');
+  } catch (error) {
+    console.warn('Failed to initialize notification system:', error);
+  }
+};
+
 // Create and mount app
 const app = createApp(App)
 
@@ -95,6 +123,12 @@ app.use(router)
 app.use(vuetify)
 app.use(i18n)
 
-// Initialize social auth after app is mounted
+// Initialize WebSocket service
+store.dispatch('initWebSocket');
+
+// Mount the app
 app.mount('#app')
+
+// Initialize services after app is mounted
 initSocialAuth()
+initNotificationSystem()

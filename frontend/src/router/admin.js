@@ -10,6 +10,7 @@ import AdminReports from '@/views/admin/Reports.vue'
 import AdminSettings from '@/views/admin/Settings.vue'
 import ContentManagement from '@/views/admin/ContentManagement.vue'
 import RestaurantVerification from '@/views/admin/RestaurantVerification.vue'
+import SystemMonitoring from '@/views/admin/SystemMonitoring.vue'
 
 // Admin route guard
 const adminGuard = (to, from, next) => {
@@ -126,6 +127,14 @@ export const adminRoutes = {
       component: AdminSettings,
       meta: {
         title: 'System Settings'
+      }
+    },
+    {
+      path: 'system',
+      name: 'AdminSystem',
+      component: SystemMonitoring,
+      meta: {
+        title: 'System Monitoring'
       }
     }
   ]

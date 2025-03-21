@@ -43,6 +43,20 @@ router.get(
   authController.facebookCallback
 );
 
+/**
+ * @route POST /api/auth/google-login
+ * @desc Login with Google ID token
+ * @access Public
+ */
+router.post('/google-login', authController.googleLogin);
+
+/**
+ * @route POST /api/auth/facebook-login
+ * @desc Login with Facebook access token
+ * @access Public
+ */
+router.post('/facebook-login', authController.facebookLogin);
+
 // Regular auth routes
 /**
  * @route POST /api/auth/register

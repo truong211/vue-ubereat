@@ -5,6 +5,7 @@ const sequelize = require('../config/database');
 const { StaticPage, SiteConfig } = require('../models')
 const multer = require('multer')
 const path = require('path')
+const os = require('os');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -205,6 +206,448 @@ exports.updateUserStatus = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       data: { user }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// System Monitoring
+exports.getSystemMetrics = async (req, res, next) => {
+  try {
+    // Get system metrics
+    const systemMetrics = {
+      cpu: {
+        usage: process.cpuUsage(),
+        cores: os.cpus().length,
+        model: os.cpus()[0].model,
+        loadAvg: os.loadavg(),
+        speed: os.cpus()[0].speed
+      },
+      memory: {
+        total: os.totalmem(),
+        free: os.freemem(),
+        usage: (1 - os.freemem() / os.totalmem()) * 100,
+        heapUsed: process.memoryUsage().heapUsed,
+        heapTotal: process.memoryUsage().heapTotal,
+        external: process.memoryUsage().external
+      },
+      uptime: os.uptime(),
+      platform: os.platform(),
+      arch: os.arch(),
+      hostname: os.hostname(),
+      network: os.networkInterfaces(),
+      processInfo: {
+        pid: process.pid,
+        nodeVersion: process.version,
+        uptime: process.uptime()
+      }
+    };
+
+    // Get database metrics
+    const [dbMetrics] = await sequelize.query(`
+      SELECT 
+        COUNT(1) as activeConnections,
+        (SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE()) as totalTables,
+        (SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2)
+         FROM information_schema.tables 
+         WHERE table_schema = DATABASE()) as dbSizeMB,
+        (SELECT COUNT(1) FROM information_schema.processlist) as totalProcesses
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    // Get API metrics with detailed performance data
+    const [apiMetrics] = await sequelize.query(`
+      SELECT 
+        COUNT(1) as totalApiCalls,
+        AVG(responseTime) as avgResponseTime,
+        MAX(responseTime) as maxResponseTime,
+        MIN(responseTime) as minResponseTime,
+        COUNT(CASE WHEN statusCode >= 400 THEN 1 END) as errorCount,
+        COUNT(CASE WHEN statusCode >= 500 THEN 1 END) as serverErrorCount,
+        MAX(timestamp) as lastApiCall
+      FROM ApiPerformanceLogs
+      WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    // Get service health with response times
+    const serviceHealth = {
+      database: await testDatabaseHealth(),
+      api: await testApiHealth(),
+      cache: await testCacheHealth(),
+      queue: await testQueueHealth()
+    };
+
+    // Get active sessions count
+    const activeSessions = await sequelize.query(`
+      SELECT COUNT(DISTINCT userId) as activeUsers
+      FROM UserActivityLogs
+      WHERE createdAt >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        systemMetrics,
+        dbMetrics,
+        apiMetrics,
+        serviceHealth,
+        activeSessions: activeSessions[0].activeUsers
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Helper functions for health checks
+async function testDatabaseHealth() {
+  const startTime = Date.now();
+  try {
+    await sequelize.authenticate();
+    return {
+      status: 'healthy',
+      responseTime: Date.now() - startTime
+    };
+  } catch (err) {
+    return {
+      status: 'unhealthy',
+      error: err.message,
+      responseTime: Date.now() - startTime
+    };
+  }
+}
+
+async function testApiHealth() {
+  const startTime = Date.now();
+  try {
+    await sequelize.query('SELECT 1');
+    return {
+      status: 'healthy',
+      responseTime: Date.now() - startTime
+    };
+  } catch (err) {
+    return {
+      status: 'unhealthy',
+      error: err.message,
+      responseTime: Date.now() - startTime
+    };
+  }
+}
+
+async function testCacheHealth() {
+  // Implement cache health check based on your caching solution
+  return { status: 'healthy', responseTime: 0 };
+}
+
+async function testQueueHealth() {
+  // Implement queue health check based on your queue solution
+  return { status: 'healthy', responseTime: 0 };
+}
+
+// User Activity Logs
+exports.getUserActivityLogs = async (req, res, next) => {
+  try {
+    const { userId, page = 1, limit = 20, startDate, endDate, activityType } = req.query;
+    
+    // Build filter object
+    const filter = {};
+    
+    if (userId) {
+      filter.userId = userId;
+    }
+    
+    if (startDate && endDate) {
+      filter.createdAt = {
+        [Op.between]: [new Date(startDate), new Date(endDate)]
+      };
+    } else if (startDate) {
+      filter.createdAt = {
+        [Op.gte]: new Date(startDate)
+      };
+    } else if (endDate) {
+      filter.createdAt = {
+        [Op.lte]: new Date(endDate)
+      };
+    }
+    
+    if (activityType) {
+      filter.activityType = activityType;
+    }
+    
+    // Calculate pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get logs from UserActivityLog table (assuming it exists)
+    const logs = await sequelize.query(`
+      SELECT 
+        id, 
+        userId, 
+        activityType, 
+        details, 
+        ipAddress, 
+        createdAt
+      FROM UserActivityLogs
+      WHERE ${Object.keys(filter).map(key => `${key} = :${key}`).join(' AND ') || '1=1'}
+      ORDER BY createdAt DESC
+      LIMIT :limit OFFSET :offset
+    `, {
+      replacements: { ...filter, limit: parseInt(limit), offset },
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => []);
+    
+    // Get total count
+    const [{ total }] = await sequelize.query(`
+      SELECT COUNT(1) as total
+      FROM UserActivityLogs
+      WHERE ${Object.keys(filter).map(key => `${key} = :${key}`).join(' AND ') || '1=1'}
+    `, {
+      replacements: filter,
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => [{ total: 0 }]);
+    
+    res.status(200).json({
+      status: 'success',
+      results: logs.length,
+      totalPages: Math.ceil(total / parseInt(limit)),
+      currentPage: parseInt(page),
+      data: { logs }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// API Performance Monitoring
+exports.getApiPerformance = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, route, minResponseTime, maxResponseTime, startDate, endDate } = req.query;
+    
+    // Build filter clauses
+    const whereClauses = [];
+    const replacements = {};
+    
+    if (route) {
+      whereClauses.push('route LIKE :route');
+      replacements.route = `%${route}%`;
+    }
+    
+    if (minResponseTime) {
+      whereClauses.push('responseTime >= :minResponseTime');
+      replacements.minResponseTime = parseInt(minResponseTime);
+    }
+    
+    if (maxResponseTime) {
+      whereClauses.push('responseTime <= :maxResponseTime');
+      replacements.maxResponseTime = parseInt(maxResponseTime);
+    }
+    
+    if (startDate && endDate) {
+      whereClauses.push('timestamp BETWEEN :startDate AND :endDate');
+      replacements.startDate = new Date(startDate);
+      replacements.endDate = new Date(endDate);
+    } else if (startDate) {
+      whereClauses.push('timestamp >= :startDate');
+      replacements.startDate = new Date(startDate);
+    } else if (endDate) {
+      whereClauses.push('timestamp <= :endDate');
+      replacements.endDate = new Date(endDate);
+    }
+    
+    const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    
+    // Calculate pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    replacements.limit = parseInt(limit);
+    replacements.offset = offset;
+    
+    // Get API performance metrics
+    const metrics = await sequelize.query(`
+      SELECT 
+        route,
+        method,
+        AVG(responseTime) as avgResponseTime,
+        MAX(responseTime) as maxResponseTime,
+        MIN(responseTime) as minResponseTime,
+        COUNT(1) as requestCount,
+        COUNT(CASE WHEN statusCode >= 400 THEN 1 END) as errorCount
+      FROM ApiPerformanceLogs
+      ${whereClause}
+      GROUP BY route, method
+      ORDER BY avgResponseTime DESC
+      LIMIT :limit OFFSET :offset
+    `, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => []);
+    
+    // Get total count of distinct routes
+    const [{ total }] = await sequelize.query(`
+      SELECT COUNT(DISTINCT CONCAT(route, method)) as total
+      FROM ApiPerformanceLogs
+      ${whereClause}
+    `, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => [{ total: 0 }]);
+    
+    res.status(200).json({
+      status: 'success',
+      results: metrics.length,
+      totalPages: Math.ceil(total / parseInt(limit)),
+      currentPage: parseInt(page),
+      data: { metrics }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Marketing Content Management
+exports.getMarketingContent = async (req, res, next) => {
+  try {
+    const { type, status, page = 1, limit = 20 } = req.query;
+    
+    // Build filter object
+    const filter = {};
+    
+    if (type) {
+      filter.contentType = type;
+    }
+    
+    if (status) {
+      filter.status = status;
+    }
+    
+    // Calculate pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get marketing content
+    const contents = await sequelize.query(`
+      SELECT 
+        id, 
+        title, 
+        contentType, 
+        status, 
+        startDate, 
+        endDate, 
+        targetAudience,
+        createdAt,
+        updatedAt
+      FROM MarketingContent
+      WHERE ${Object.keys(filter).map(key => `${key} = :${key}`).join(' AND ') || '1=1'}
+      ORDER BY createdAt DESC
+      LIMIT :limit OFFSET :offset
+    `, {
+      replacements: { ...filter, limit: parseInt(limit), offset },
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => []);
+    
+    // Get total count
+    const [{ total }] = await sequelize.query(`
+      SELECT COUNT(1) as total
+      FROM MarketingContent
+      WHERE ${Object.keys(filter).map(key => `${key} = :${key}`).join(' AND ') || '1=1'}
+    `, {
+      replacements: filter,
+      type: sequelize.QueryTypes.SELECT
+    }).catch(() => [{ total: 0 }]);
+    
+    res.status(200).json({
+      status: 'success',
+      results: contents.length,
+      totalPages: Math.ceil(total / parseInt(limit)),
+      currentPage: parseInt(page),
+      data: { contents }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create Marketing Content
+exports.createMarketingContent = async (req, res, next) => {
+  try {
+    const {
+      title,
+      description,
+      contentType,
+      content,
+      status,
+      startDate,
+      endDate,
+      targetAudience,
+      channels
+    } = req.body;
+    
+    // Create marketing content
+    const marketingContent = await sequelize.query(`
+      INSERT INTO MarketingContent (
+        title, 
+        description,
+        contentType, 
+        content,
+        status,
+        startDate,
+        endDate,
+        targetAudience,
+        channels,
+        createdAt,
+        updatedAt
+      ) VALUES (
+        :title,
+        :description,
+        :contentType,
+        :content,
+        :status,
+        :startDate,
+        :endDate,
+        :targetAudience,
+        :channels,
+        NOW(),
+        NOW()
+      )
+    `, {
+      replacements: {
+        title,
+        description,
+        contentType,
+        content,
+        status: status || 'draft',
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        targetAudience: JSON.stringify(targetAudience || {}),
+        channels: JSON.stringify(channels || [])
+      },
+      type: sequelize.QueryTypes.INSERT
+    });
+    
+    const contentId = marketingContent[0];
+    
+    // Get created content
+    const [newContent] = await sequelize.query(`
+      SELECT 
+        id, 
+        title, 
+        description,
+        contentType, 
+        content,
+        status,
+        startDate,
+        endDate,
+        targetAudience,
+        channels,
+        createdAt,
+        updatedAt
+      FROM MarketingContent
+      WHERE id = :id
+    `, {
+      replacements: { id: contentId },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    res.status(201).json({
+      status: 'success',
+      data: { content: newContent }
     });
   } catch (error) {
     next(error);
