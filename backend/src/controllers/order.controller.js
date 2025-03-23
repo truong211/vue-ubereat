@@ -120,124 +120,147 @@ exports.getOrderDetails = async (req, res, next) => {
 };
 
 /**
- * Create order
+ * Create order from cart
  * @route POST /api/orders
  * @access Private
  */
 exports.createOrder = async (req, res, next) => {
-  const transaction = await sequelize.transaction();
-
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const {
-      restaurantId,
-      deliveryAddress,
-      deliveryInstructions,
       paymentMethod,
-      customerNote,
-      items
+      deliveryInstructions
     } = req.body;
 
-    // Check if restaurant exists
-    const restaurant = await Restaurant.findByPk(restaurantId);
-    if (!restaurant) {
-      await transaction.rollback();
-      return next(new AppError('Restaurant not found', 404));
-    }
-
-    // Check if restaurant is active
-    if (!restaurant.isActive) {
-      await transaction.rollback();
-      return next(new AppError('Restaurant is not active', 400));
-    }
-
-    // If items are not provided, get from cart
-    let orderItems = items;
-    if (!orderItems || orderItems.length === 0) {
-      const cartItems = await Cart.findAll({
-        where: { userId: req.user.id },
-        include: [
-          {
-            model: Product,
-            as: 'product',
-            where: { restaurantId }
-          }
-        ]
-      });
-
-      if (cartItems.length === 0) {
-        await transaction.rollback();
-        return next(new AppError('Cart is empty', 400));
-      }
-
-      orderItems = cartItems.map(item => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        notes: item.notes,
-        options: item.options
-      }));
-    }
-
-    // Validate items
-    if (!orderItems || orderItems.length === 0) {
-      await transaction.rollback();
-      return next(new AppError('No items in order', 400));
-    }
-
-    // Get products
-    const productIds = orderItems.map(item => item.productId);
-    const products = await Product.findAll({
-      where: {
-        id: { [Op.in]: productIds },
-        restaurantId,
-        status: 'available'
-      }
+    // Get user cart
+    const cart = await Cart.findAll({
+      where: { userId: req.user.id },
+      include: [
+        {
+          model: Product,
+          as: 'product',
+          include: [
+            {
+              model: Restaurant,
+              as: 'restaurant',
+              attributes: ['id', 'name', 'deliveryFee', 'minOrderAmount']
+            }
+          ]
+        }
+      ]
     });
 
-    if (products.length !== productIds.length) {
-      await transaction.rollback();
-      return next(new AppError('Some products are not available', 400));
+    if (cart.length === 0) {
+      return next(new AppError('Your cart is empty', 400));
     }
 
-    // Calculate order total
+    // Get restaurant details
+    const restaurantId = cart[0].product.restaurantId;
+    const restaurant = cart[0].product.restaurant;
+
+    // Calculate subtotal
     let subtotal = 0;
-    const orderDetails = [];
+    let itemsWithOptions = [];
 
-    for (const item of orderItems) {
-      const product = products.find(p => p.id === parseInt(item.productId));
-      const price = product.discountPrice || product.price;
-      const itemTotal = price * item.quantity;
+    cart.forEach(item => {
+      // Calculate options cost
+      let optionsTotal = 0;
+      if (item.options) {
+        Object.values(item.options).forEach(option => {
+          if (Array.isArray(option)) {
+            option.forEach(choice => {
+              if (choice.price) optionsTotal += parseFloat(choice.price);
+            });
+          } else if (option.price) {
+            optionsTotal += parseFloat(option.price);
+          }
+        });
+      }
+      
+      const basePrice = item.product.discountPrice || item.product.price;
+      const itemTotal = item.quantity * (parseFloat(basePrice) + optionsTotal);
+      
       subtotal += itemTotal;
+      
+      // Save item with options details for order items
+      itemsWithOptions.push({
+        item,
+        optionsTotal,
+        itemTotal
+      });
+    });
 
-      orderDetails.push({
-        productId: product.id,
-        quantity: item.quantity,
-        price,
-        subtotal: itemTotal,
-        notes: item.notes,
-        options: item.options
+    // Check minimum order amount
+    if (subtotal < restaurant.minOrderAmount) {
+      return next(new AppError(`Minimum order amount of $${restaurant.minOrderAmount} required`, 400));
+    }
+
+    // Get delivery address
+    let deliveryAddress;
+    if (req.session && req.session.deliveryAddressId) {
+      deliveryAddress = await Address.findOne({
+        where: { id: req.session.deliveryAddressId, userId: req.user.id }
       });
     }
 
-    // Check if order meets minimum order amount
-    if (subtotal < restaurant.minOrderAmount) {
-      await transaction.rollback();
-      return next(new AppError(`Order does not meet minimum order amount of ${restaurant.minOrderAmount}`, 400));
+    if (!deliveryAddress) {
+      return next(new AppError('Delivery address is required', 400));
     }
 
-    // Calculate taxes and delivery fee
-    const taxRate = 0.1; // 10% tax
+    // Format address for order
+    const formattedAddress = `${deliveryAddress.addressLine1}, ${deliveryAddress.city}, ${deliveryAddress.state} ${deliveryAddress.postalCode}`;
+
+    // Calculate tax and delivery fee
+    const taxRate = 0.08; // 8% tax rate - should be configurable
     const taxAmount = subtotal * taxRate;
-    const deliveryFee = restaurant.deliveryFee || 0;
-    const totalAmount = subtotal + taxAmount + deliveryFee;
+    const deliveryFee = parseFloat(restaurant.deliveryFee);
+
+    // Apply promotion if available
+    let discountAmount = 0;
+    let appliedPromotionId = null;
+
+    if (req.session && req.session.cartPromotion) {
+      const promotion = await Promotion.findByPk(req.session.cartPromotion.promotionId);
+      
+      if (promotion && promotion.isActive) {
+        // Calculate discount based on promotion type
+        if (promotion.type === 'percentage') {
+          discountAmount = (subtotal * promotion.value / 100);
+          // Apply max discount limit if set
+          if (promotion.maxDiscountAmount && discountAmount > promotion.maxDiscountAmount) {
+            discountAmount = parseFloat(promotion.maxDiscountAmount);
+          }
+        } else if (promotion.type === 'fixed_amount') {
+          discountAmount = parseFloat(promotion.value);
+        } else if (promotion.type === 'free_delivery') {
+          discountAmount = deliveryFee;
+        }
+        
+        appliedPromotionId = promotion.id;
+      }
+    }
+
+    // Calculate total
+    const totalAmount = subtotal + taxAmount + deliveryFee - discountAmount;
 
     // Generate order number
-    const orderNumber = `ORD-${Date.now().toString().slice(-6)}-${uuidv4().slice(0, 4)}`;
+    const orderNumber = generateOrderNumber();
+
+    // Determine estimated delivery time
+    let estimatedDeliveryTime;
+    if (req.session && req.session.scheduledDelivery) {
+      // Use scheduled time
+      estimatedDeliveryTime = new Date(req.session.scheduledDelivery.time);
+    } else {
+      // Calculate based on restaurant's estimatedDeliveryTime (in minutes)
+      estimatedDeliveryTime = new Date();
+      estimatedDeliveryTime.setMinutes(
+        estimatedDeliveryTime.getMinutes() + 
+        (restaurant.estimatedDeliveryTime || 45) // Default to 45 minutes if not set
+      );
+    }
+
+    // Get special instructions
+    const customerNote = req.session?.specialInstructions || '';
 
     // Create order
     const order = await Order.create({
@@ -249,75 +272,136 @@ exports.createOrder = async (req, res, next) => {
       subtotal,
       taxAmount,
       deliveryFee,
+      discountAmount,
       paymentMethod,
-      paymentStatus: paymentMethod === 'cash' ? 'pending' : 'paid',
-      deliveryAddress,
-      deliveryInstructions,
+      paymentStatus: 'pending',
+      deliveryAddress: formattedAddress,
+      deliveryInstructions: deliveryInstructions || '',
+      estimatedDeliveryTime,
       customerNote,
-      estimatedDeliveryTime: new Date(Date.now() + 45 * 60000) // 45 minutes from now
-    }, { transaction });
+      isScheduled: req.session?.scheduledDelivery?.isScheduled || false
+    });
 
-    // Create order details
-    for (const detail of orderDetails) {
-      await OrderDetail.create({
+    // Create order items
+    const orderItems = await Promise.all(itemsWithOptions.map(async ({ item, optionsTotal, itemTotal }) => {
+      return OrderItem.create({
         orderId: order.id,
-        ...detail
-      }, { transaction });
+        productId: item.productId,
+        name: item.product.name,
+        quantity: item.quantity,
+        unitPrice: parseFloat(item.product.discountPrice || item.product.price) + optionsTotal,
+        totalPrice: itemTotal,
+        options: item.options,
+        notes: item.notes
+      });
+    }));
+
+    // Record the promotion usage if applied
+    if (appliedPromotionId) {
+      await UserPromotion.create({
+        userId: req.user.id,
+        promotionId: appliedPromotionId,
+        orderId: order.id,
+        discountAmount,
+        orderTotal: subtotal // Pre-discount total
+      });
+
+      // Increment promotion usage count
+      await Promotion.increment('usageCount', {
+        where: { id: appliedPromotionId }
+      });
     }
 
-    // Clear cart
+    // Clear cart after successful order
     await Cart.destroy({
-      where: { userId: req.user.id },
-      transaction
+      where: { userId: req.user.id }
     });
 
-    // Commit transaction
-    await transaction.commit();
+    // Clear session data related to cart
+    if (req.session) {
+      delete req.session.cartPromotion;
+      delete req.session.deliveryAddressId;
+      delete req.session.scheduledDelivery;
+      delete req.session.specialInstructions;
+    }
 
-    // Get complete order with details
-    const completeOrder = await Order.findByPk(order.id, {
-      include: [
-        {
-          model: Restaurant,
-          as: 'restaurant',
-          attributes: ['id', 'name', 'logo', 'address', 'phone']
-        },
-        {
-          model: OrderDetail,
-          as: 'orderDetails',
-          include: [
-            {
-              model: Product,
-              as: 'product',
-              attributes: ['id', 'name', 'image']
-            }
-          ]
-        }
-      ]
-    });
+    // Notify restaurant about new order (e.g., via socket.io)
+    if (req.app.get('io')) {
+      req.app.get('io').to(`restaurant:${restaurantId}`).emit('new_order', {
+        id: order.id,
+        orderNumber: order.orderNumber
+      });
+    }
 
-    // Emit order creation event
-    emitToOrder(order.id, 'order_status_updated', {
-      orderId: order.id,
-      status: 'pending',
-      updatedAt: new Date().toISOString()
-    });
+    // Process payment if not cash
+    if (paymentMethod !== 'cash') {
+      // Payment processing would go here
+      // In a real app, you would call your payment service
+      console.log(`Processing payment for order ${order.id}`);
+    }
 
-    // Notify restaurant
-    emitToUser(restaurant.userId, 'new_order', {
-      order: completeOrder
-    });
+    // Send confirmation email
+    const user = await User.findByPk(req.user.id);
+    const restaurantDetails = await Restaurant.findByPk(restaurantId);
+    
+    await sendOrderConfirmationEmail(
+      user.email,
+      {
+        orderNumber: order.orderNumber,
+        customerName: user.fullName,
+        restaurantName: restaurantDetails.name,
+        orderItems: orderItems.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.totalPrice
+        })),
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
+        tax: order.taxAmount,
+        discount: order.discountAmount,
+        total: order.totalAmount,
+        estimatedDeliveryTime: order.estimatedDeliveryTime
+      }
+    );
 
     res.status(201).json({
       status: 'success',
       data: {
-        order: completeOrder
+        order: {
+          ...order.toJSON(),
+          items: orderItems
+        }
       }
     });
   } catch (error) {
-    // Rollback transaction on error
-    await transaction.rollback();
     next(error);
+  }
+};
+
+/**
+ * Generate a unique order number
+ * @private
+ */
+const generateOrderNumber = () => {
+  const prefix = 'ORD';
+  const timestamp = new Date().getTime().toString().slice(-8);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${timestamp}${random}`;
+};
+
+/**
+ * Send order confirmation email
+ * @private
+ */
+const sendOrderConfirmationEmail = async (email, orderDetails) => {
+  try {
+    // In a real app, this would send an actual email
+    // This is just a placeholder
+    console.log(`Sending order confirmation email to ${email}`);
+    console.log('Order details:', orderDetails);
+  } catch (error) {
+    console.error('Error sending confirmation email:', error);
+    // Don't throw an error, as this shouldn't disrupt the order process
   }
 };
 

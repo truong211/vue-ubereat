@@ -1,378 +1,633 @@
 <template>
-  <v-container class="fill-height">
-    <v-row justify="center">
-      <v-col cols="12" sm="10" md="8" lg="6">
-        <v-stepper v-model="currentStep" class="elevation-2">
-          <!-- Stepper Header -->
-          <v-stepper-header>
-            <v-stepper-item value="1" title="Account Details"></v-stepper-item>
+  <div class="register-container">
+    <div class="register-form">
+      <v-card class="pa-6 rounded-lg elevation-3">
+        <!-- Stepper for registration flow -->
+        <v-stepper v-model="currentStep" class="elevation-0">
+          <v-stepper-header class="mb-4">
+            <v-stepper-item value="1" title="Đăng ký"></v-stepper-item>
             <v-divider></v-divider>
-            <v-stepper-item value="2" title="Verification"></v-stepper-item>
+            <v-stepper-item value="2" title="Xác thực"></v-stepper-item>
             <v-divider></v-divider>
-            <v-stepper-item value="3" title="Complete"></v-stepper-item>
+            <v-stepper-item value="3" title="Hoàn tất"></v-stepper-item>
           </v-stepper-header>
 
-          <!-- Stepper Windows -->
           <v-stepper-window>
             <!-- Step 1: Registration Form -->
             <v-stepper-window-item value="1">
-              <v-card flat>
-                <v-card-title class="text-center text-h5 pt-4 pb-0">Create Account</v-card-title>
+              <h2 class="text-h5 font-weight-bold text-center mb-4">Tạo tài khoản</h2>
+              
+              <v-alert
+                v-if="message"
+                :type="messageType"
+                variant="tonal"
+                class="mb-4"
+                closable
+                @click:close="message = ''"
+              >
+                {{ message }}
+              </v-alert>
+              
+              <v-form ref="form" @submit.prevent="register" v-model="isFormValid">
+                <!-- Name Field -->
+                <v-text-field
+                  v-model="formData.name"
+                  label="Họ và tên"
+                  variant="outlined"
+                  :rules="[
+                    v => !!v || 'Vui lòng nhập họ tên',
+                    v => v.length >= 2 || 'Tên phải có ít nhất 2 ký tự'
+                  ]"
+                  prepend-inner-icon="mdi-account"
+                  required
+                  class="mb-3"
+                ></v-text-field>
                 
-                <v-card-text>
-                  <v-alert
-                    v-if="error"
-                    type="error"
-                    variant="tonal"
-                    class="mb-4"
-                    closable
-                    @click:close="error = null"
+                <!-- Email Field -->
+                <v-text-field
+                  v-model="formData.email"
+                  label="Email"
+                  type="email"
+                  variant="outlined"
+                  :rules="[
+                    v => !!v || 'Vui lòng nhập email',
+                    v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || 'Email không hợp lệ'
+                  ]"
+                  prepend-inner-icon="mdi-email"
+                  required
+                  class="mb-3"
+                ></v-text-field>
+                
+                <!-- Phone Field -->
+                <v-text-field
+                  v-model="formData.phone"
+                  label="Số điện thoại"
+                  variant="outlined"
+                  :rules="[
+                    v => !!v || 'Vui lòng nhập số điện thoại',
+                    v => /^\+?[0-9]{10,12}$/.test(v) || 'Số điện thoại không hợp lệ'
+                  ]"
+                  prepend-inner-icon="mdi-phone"
+                  required
+                  class="mb-3"
+                ></v-text-field>
+                
+                <!-- Password Field -->
+                <v-text-field
+                  v-model="formData.password"
+                  label="Mật khẩu"
+                  :type="showPassword ? 'text' : 'password'"
+                  :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
+                  @click:append-inner="showPassword = !showPassword"
+                  variant="outlined"
+                  :rules="[
+                    v => !!v || 'Vui lòng nhập mật khẩu',
+                    v => v.length >= 8 || 'Mật khẩu phải có ít nhất 8 ký tự',
+                    v => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(v) || 
+                        'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt'
+                  ]"
+                  prepend-inner-icon="mdi-lock"
+                  required
+                  class="mb-3"
+                ></v-text-field>
+                
+                <!-- Confirm Password Field -->
+                <v-text-field
+                  v-model="formData.confirmPassword"
+                  label="Xác nhận mật khẩu"
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  :append-inner-icon="showConfirmPassword ? 'mdi-eye-off' : 'mdi-eye'"
+                  @click:append-inner="showConfirmPassword = !showConfirmPassword"
+                  variant="outlined"
+                  :rules="[
+                    v => !!v || 'Vui lòng xác nhận mật khẩu',
+                    v => v === formData.password || 'Mật khẩu không khớp'
+                  ]"
+                  prepend-inner-icon="mdi-lock-check"
+                  required
+                  class="mb-4"
+                ></v-text-field>
+                
+                <!-- Terms and Conditions -->
+                <v-checkbox
+                  v-model="formData.agreeTerms"
+                  label="Tôi đồng ý với các điều khoản và điều kiện"
+                  :rules="[v => !!v || 'Bạn phải đồng ý với điều khoản để tiếp tục']"
+                  required
+                  class="mb-4"
+                ></v-checkbox>
+                
+                <!-- Register Button -->
+                <v-btn
+                  type="submit"
+                  color="primary"
+                  block
+                  size="large"
+                  :loading="isLoading"
+                  :disabled="!isFormValid || isLoading"
+                  class="mb-6"
+                >
+                  Đăng ký
+                </v-btn>
+                
+                <!-- Social Login Divider -->
+                <div class="text-center my-4 position-relative">
+                  <span class="divider-text">hoặc đăng ký với</span>
+                </div>
+                
+                <!-- Social Registration Buttons -->
+                <div class="d-flex gap-2 mb-4">
+                  <v-btn
+                    variant="outlined"
+                    color="error"
+                    prepend-icon="mdi-google"
+                    block
+                    @click="googleLogin"
+                    :loading="socialLoading.google"
+                    :disabled="isLoading"
                   >
-                    {{ error }}
-                  </v-alert>
-
-                  <v-form ref="form" v-model="isFormValid" @submit.prevent="handleSubmit">
-                    <!-- Name Field -->
-                    <v-text-field
-                      v-model="formData.name"
-                      label="Full Name"
-                      prepend-inner-icon="mdi-account"
-                      variant="outlined"
-                      :rules="nameRules"
-                      required
-                      class="mb-2"
-                    ></v-text-field>
-
-                    <!-- Email Field -->
-                    <v-text-field
-                      v-model="formData.email"
-                      label="Email"
-                      prepend-inner-icon="mdi-email"
-                      variant="outlined"
-                      :rules="emailRules"
-                      required
-                      class="mb-2"
-                    ></v-text-field>
-
-                    <!-- Phone Field -->
-                    <v-text-field
-                      v-model="formData.phone"
-                      label="Phone Number"
-                      prepend-inner-icon="mdi-phone"
-                      variant="outlined"
-                      :rules="phoneRules"
-                      class="mb-2"
-                    ></v-text-field>
-
-                    <!-- Password Field -->
-                    <v-text-field
-                      v-model="formData.password"
-                      label="Password"
-                      prepend-inner-icon="mdi-lock"
-                      variant="outlined"
-                      :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
-                      :type="showPassword ? 'text' : 'password'"
-                      @click:append-inner="showPassword = !showPassword"
-                      :rules="passwordRules"
-                      required
-                      class="mb-2"
-                    ></v-text-field>
-
-                    <!-- Confirm Password Field -->
-                    <v-text-field
-                      v-model="formData.confirmPassword"
-                      label="Confirm Password"
-                      prepend-inner-icon="mdi-lock-check"
-                      variant="outlined"
-                      :append-inner-icon="showConfirmPassword ? 'mdi-eye-off' : 'mdi-eye'"
-                      :type="showConfirmPassword ? 'text' : 'password'"
-                      @click:append-inner="showConfirmPassword = !showConfirmPassword"
-                      :rules="confirmPasswordRules"
-                      required
-                      class="mb-4"
-                    ></v-text-field>
-
-                    <!-- Terms Checkbox -->
-                    <v-checkbox
-                      v-model="formData.agreeTerms"
-                      :rules="termsRules"
-                      required
-                      class="mb-4"
-                    >
-                      <template v-slot:label>
-                        <div>
-                          I agree to the 
-                          <a href="#" @click.prevent="showTerms = true">Terms and Conditions</a>
-                          and 
-                          <a href="#" @click.prevent="showPrivacy = true">Privacy Policy</a>
-                        </div>
-                      </template>
-                    </v-checkbox>
-
-                    <!-- Submit Button -->
-                    <v-btn
-                      type="submit"
-                      color="primary"
-                      size="large"
-                      block
-                      :loading="isLoading"
-                      :disabled="!isFormValid || isLoading"
-                    >
-                      Register
-                    </v-btn>
-
-                    <!-- Social Login Divider -->
-                    <div class="my-4 text-center">
-                      <span class="text-medium-emphasis">or continue with</span>
-                    </div>
-
-                    <!-- Social Login Buttons -->
-                    <div class="d-flex gap-2 mb-4">
-                      <v-btn
-                        variant="outlined"
-                        color="error"
-                        prepend-icon="mdi-google"
-                        block
-                        @click="loginWithSocial('google')"
-                        :loading="socialLoading.google"
-                        :disabled="isLoading"
-                      >
-                        Google
-                      </v-btn>
-                      <v-btn
-                        variant="outlined"
-                        color="primary"
-                        prepend-icon="mdi-facebook"
-                        block
-                        @click="loginWithSocial('facebook')"
-                        :loading="socialLoading.facebook"
-                        :disabled="isLoading"
-                      >
-                        Facebook
-                      </v-btn>
-                    </div>
-
-                    <!-- Login Link -->
-                    <div class="text-center">
-                      <span class="text-medium-emphasis">Already have an account?</span>
-                      <v-btn variant="text" @click="goToLogin">Login</v-btn>
-                    </div>
-                  </v-form>
-                </v-card-text>
-              </v-card>
+                    Google
+                  </v-btn>
+                  
+                  <v-btn
+                    variant="outlined"
+                    color="primary"
+                    prepend-icon="mdi-facebook"
+                    block
+                    @click="facebookLogin"
+                    :loading="socialLoading.facebook"
+                    :disabled="isLoading"
+                  >
+                    Facebook
+                  </v-btn>
+                </div>
+                
+                <!-- Login Link -->
+                <div class="text-center mt-4">
+                  <span class="text-medium-emphasis">Đã có tài khoản?</span>
+                  <router-link to="/auth/login" class="ml-1 text-primary text-decoration-none">Đăng nhập</router-link>
+                </div>
+              </v-form>
             </v-stepper-window-item>
 
-            <!-- Step 2: Verification -->
+            <!-- Step 2: OTP Verification -->
             <v-stepper-window-item value="2">
-              <otp-verification />
+              <h2 class="text-h5 font-weight-bold text-center mb-4">Xác thực tài khoản</h2>
+              
+              <v-alert
+                v-if="message"
+                :type="messageType"
+                variant="tonal"
+                class="mb-4"
+                closable
+                @click:close="message = ''"
+              >
+                {{ message }}
+              </v-alert>
+              
+              <div class="text-center mb-4">
+                <p class="mb-1">Chúng tôi đã gửi mã xác thực đến</p>
+                <p class="font-weight-bold" v-if="otpData.email">Email: {{ maskEmail(otpData.email) }}</p>
+                <p class="font-weight-bold" v-if="otpData.phone">Điện thoại: {{ maskPhone(otpData.phone) }}</p>
+                <p class="mt-2">Vui lòng nhập mã để hoàn tất đăng ký</p>
+              </div>
+              
+              <!-- OTP Input -->
+              <div class="d-flex justify-center gap-2 mb-6">
+                <v-text-field
+                  v-for="(digit, index) in otpDigits"
+                  :key="index"
+                  v-model="otpDigits[index]"
+                  variant="outlined"
+                  hide-details
+                  class="otp-input"
+                  maxlength="1"
+                  type="text"
+                  @input="onOtpDigitInput(index)"
+                  @keydown="onOtpKeyDown($event, index)"
+                  @paste="onOtpPaste"
+                  :ref="el => { if (el) otpRefs[index] = el }"
+                ></v-text-field>
+              </div>
+              
+              <!-- Action Buttons -->
+              <div class="d-flex flex-column gap-4">
+                <v-btn
+                  color="primary"
+                  block
+                  size="large"
+                  :loading="isLoading"
+                  :disabled="!isOtpComplete || isLoading"
+                  @click="verifyOTP"
+                >
+                  Xác thực
+                </v-btn>
+                
+                <v-btn
+                  variant="text"
+                  block
+                  :disabled="resendCountdown > 0 || isLoading"
+                  @click="resendOTP"
+                >
+                  {{ resendCountdown > 0 ? `Gửi lại sau ${resendCountdown}s` : 'Gửi lại mã' }}
+                </v-btn>
+              </div>
             </v-stepper-window-item>
 
-            <!-- Step 3: Complete -->
+            <!-- Step 3: Registration Success -->
             <v-stepper-window-item value="3">
-              <v-card flat class="text-center pa-8">
+              <div class="text-center py-6">
                 <v-icon
                   icon="mdi-check-circle"
                   color="success"
-                  size="x-large"
+                  size="64"
                   class="mb-4"
                 ></v-icon>
-                <h2 class="text-h4 mb-4">Registration Complete!</h2>
+                
+                <h2 class="text-h4 font-weight-bold mb-2">Đăng ký thành công!</h2>
                 <p class="text-body-1 mb-6">
-                  Thank you for registering. Your account has been created successfully.
+                  Cảm ơn bạn đã đăng ký. Tài khoản của bạn đã được tạo thành công.
                 </p>
+                
                 <v-btn
                   color="primary"
                   size="large"
                   @click="goToHome"
                 >
-                  Continue to Home
+                  Tiếp tục
                 </v-btn>
-              </v-card>
+              </div>
             </v-stepper-window-item>
           </v-stepper-window>
         </v-stepper>
-
-        <!-- Terms Dialog -->
-        <v-dialog v-model="showTerms" max-width="600px">
-          <v-card>
-            <v-card-title>Terms and Conditions</v-card-title>
-            <v-card-text>
-              <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit...</p>
-              <!-- Terms content goes here -->
-            </v-card-text>
-            <v-card-actions>
-              <v-spacer></v-spacer>
-              <v-btn color="primary" variant="text" @click="showTerms = false">Close</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-
-        <!-- Privacy Dialog -->
-        <v-dialog v-model="showPrivacy" max-width="600px">
-          <v-card>
-            <v-card-title>Privacy Policy</v-card-title>
-            <v-card-text>
-              <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit...</p>
-              <!-- Privacy content goes here -->
-            </v-card-text>
-            <v-card-actions>
-              <v-spacer></v-spacer>
-              <v-btn color="primary" variant="text" @click="showPrivacy = false">Close</v-btn>
-            </v-card-actions>
-          </v-card>
-        </v-dialog>
-      </v-col>
-    </v-row>
-  </v-container>
+      </v-card>
+    </div>
+  </div>
 </template>
 
-<script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
-import { useStore } from 'vuex'
-import { useRouter } from 'vue-router'
-import OtpVerification from '@/components/auth/OtpVerification.vue'
+<script>
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
 
-const router = useRouter()
-const store = useStore()
-
-// Form data
-const formData = ref({
-  name: '',
-  email: '',
-  phone: '',
-  password: '',
-  confirmPassword: '',
-  agreeTerms: false
-})
-
-// Form state
-const form = ref(null)
-const isFormValid = ref(false)
-const showPassword = ref(false)
-const showConfirmPassword = ref(false)
-const error = ref(null)
-
-// Social login loading state
-const socialLoading = ref({
-  google: false,
-  facebook: false
-})
-
-// UI state
-const showTerms = ref(false)
-const showPrivacy = ref(false)
-
-// Computed properties
-const isLoading = computed(() => store.getters['auth/isLoading'])
-const currentStep = computed({
-  get: () => String(store.getters['auth/verificationStep']),
-  set: (val) => {
-    // Only allow step changes when appropriate
-    if (Number(val) < store.getters['auth/verificationStep']) {
-      store.commit('auth/SET_VERIFICATION_STEP', Number(val))
-    }
+export default {
+  name: 'Register',
+  
+  setup() {
+    const store = useStore();
+    const router = useRouter();
+    
+    // Form refs
+    const form = ref(null);
+    const isFormValid = ref(false);
+    const showPassword = ref(false);
+    const showConfirmPassword = ref(false);
+    
+    // OTP refs
+    const otpRefs = ref([]);
+    
+    // Form data
+    const formData = ref({
+      name: '',
+      email: '',
+      phone: '',
+      password: '',
+      confirmPassword: '',
+      agreeTerms: false
+    });
+    
+    // OTP data
+    const otpDigits = ref(['', '', '', '', '', '']);
+    
+    // UI state
+    const message = ref('');
+    const messageType = ref('info');
+    const socialLoading = ref({
+      google: false,
+      facebook: false
+    });
+    const resendCountdown = ref(0);
+    let countdownTimer = null;
+    
+    // Stepper
+    const currentStep = computed({
+      get: () => String(store.getters['auth/verificationStep']),
+      set: (val) => {
+        // Only allow step changes when appropriate
+        if (Number(val) < store.getters['auth/verificationStep']) {
+          store.commit('auth/SET_VERIFICATION_STEP', Number(val));
+        }
+      }
+    });
+    
+    // Computed
+    const isLoading = computed(() => store.getters['auth/loading']);
+    const otpData = computed(() => store.getters['auth/otpData']);
+    const isOtpComplete = computed(() => otpDigits.value.every(digit => digit !== ''));
+    
+    // Methods
+    const register = async () => {
+      if (!isFormValid.value) return;
+      
+      try {
+        message.value = '';
+        
+        // Validate passwords match
+        if (formData.value.password !== formData.value.confirmPassword) {
+          message.value = 'Mật khẩu không khớp';
+          messageType.value = 'error';
+          return;
+        }
+        
+        // Register user
+        await store.dispatch('auth/register', {
+          name: formData.value.name,
+          email: formData.value.email,
+          phone: formData.value.phone,
+          password: formData.value.password
+        });
+        
+        // Start resend countdown
+        startResendCountdown();
+        
+      } catch (error) {
+        message.value = error || 'Đăng ký thất bại. Vui lòng thử lại.';
+        messageType.value = 'error';
+      }
+    };
+    
+    const verifyOTP = async () => {
+      if (!isOtpComplete.value) return;
+      
+      try {
+        message.value = '';
+        
+        // Combine OTP digits
+        const otp = otpDigits.value.join('');
+        
+        // Verify OTP
+        if (otpData.value.email) {
+          await store.dispatch('auth/verifyEmailOTP', otp);
+        } else if (otpData.value.phone) {
+          await store.dispatch('auth/verifyPhoneOTP', otp);
+        }
+        
+      } catch (error) {
+        message.value = error || 'Xác thực thất bại. Vui lòng thử lại.';
+        messageType.value = 'error';
+      }
+    };
+    
+    const resendOTP = async () => {
+      if (resendCountdown.value > 0) return;
+      
+      try {
+        message.value = '';
+        
+        // Resend OTP
+        if (otpData.value.email) {
+          await store.dispatch('auth/resendEmailOTP');
+        } else if (otpData.value.phone) {
+          await store.dispatch('auth/resendPhoneOTP');
+        }
+        
+        // Start resend countdown
+        startResendCountdown();
+        
+        message.value = 'Mã xác thực đã được gửi lại';
+        messageType.value = 'success';
+        
+      } catch (error) {
+        message.value = error || 'Không thể gửi lại mã. Vui lòng thử lại.';
+        messageType.value = 'error';
+      }
+    };
+    
+    const startResendCountdown = () => {
+      resendCountdown.value = 30;
+      
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+      }
+      
+      countdownTimer = setInterval(() => {
+        if (resendCountdown.value > 0) {
+          resendCountdown.value -= 1;
+        } else {
+          clearInterval(countdownTimer);
+        }
+      }, 1000);
+    };
+    
+    const googleLogin = async () => {
+      try {
+        socialLoading.value.google = true;
+        message.value = '';
+        
+        // Your implementation will depend on how you set up Google Auth
+        // This is a placeholder - you'll need to implement the actual OAuth flow
+        const result = await window.gapi.auth2.getAuthInstance().signIn();
+        const accessToken = result.getAuthResponse().id_token;
+        
+        await store.dispatch('auth/loginWithSocial', { 
+          provider: 'google', 
+          accessToken 
+        });
+        
+        // Redirect after successful login
+        router.push('/');
+      } catch (error) {
+        message.value = 'Đăng nhập bằng Google thất bại. Vui lòng thử lại.';
+        messageType.value = 'error';
+        console.error('Google login error:', error);
+      } finally {
+        socialLoading.value.google = false;
+      }
+    };
+    
+    const facebookLogin = async () => {
+      try {
+        socialLoading.value.facebook = true;
+        message.value = '';
+        
+        // Your implementation will depend on how you set up Facebook Auth
+        // This is a placeholder - you'll need to implement the actual OAuth flow
+        const response = await new Promise((resolve) => {
+          window.FB.login((response) => {
+            resolve(response);
+          }, { scope: 'email,public_profile' });
+        });
+        
+        if (response.status === 'connected') {
+          const accessToken = response.authResponse.accessToken;
+          
+          await store.dispatch('auth/loginWithSocial', { 
+            provider: 'facebook', 
+            accessToken 
+          });
+          
+          // Redirect after successful login
+          router.push('/');
+        } else {
+          throw new Error('Facebook login failed');
+        }
+      } catch (error) {
+        message.value = 'Đăng nhập bằng Facebook thất bại. Vui lòng thử lại.';
+        messageType.value = 'error';
+        console.error('Facebook login error:', error);
+      } finally {
+        socialLoading.value.facebook = false;
+      }
+    };
+    
+    const goToHome = () => {
+      router.push('/');
+    };
+    
+    // Helper methods
+    const maskEmail = (email) => {
+      if (!email) return '';
+      const [username, domain] = email.split('@');
+      const maskedUsername = username.charAt(0) + '*'.repeat(username.length - 2) + username.charAt(username.length - 1);
+      return `${maskedUsername}@${domain}`;
+    };
+    
+    const maskPhone = (phone) => {
+      if (!phone) return '';
+      return phone.slice(0, 3) + '*'.repeat(phone.length - 7) + phone.slice(-4);
+    };
+    
+    const onOtpDigitInput = (index) => {
+      // Auto focus next input on digit entry
+      if (otpDigits.value[index] && index < 5) {
+        otpRefs.value[index + 1]?.focus();
+      }
+    };
+    
+    const onOtpKeyDown = (event, index) => {
+      // Handle backspace navigation
+      if (event.key === 'Backspace') {
+        if (!otpDigits.value[index] && index > 0) {
+          otpDigits.value[index - 1] = '';
+          otpRefs.value[index - 1]?.focus();
+        }
+      }
+    };
+    
+    const onOtpPaste = (event) => {
+      event.preventDefault();
+      
+      // Get clipboard data
+      const pasteData = event.clipboardData.getData('text/plain').trim();
+      
+      // Try to extract digits
+      const digits = pasteData.replace(/\D/g, '').split('').slice(0, 6);
+      
+      // Fill in digits
+      digits.forEach((digit, index) => {
+        if (index < 6) {
+          otpDigits.value[index] = digit;
+        }
+      });
+      
+      // Focus on the appropriate input
+      if (digits.length < 6) {
+        otpRefs.value[digits.length]?.focus();
+      }
+    };
+    
+    // Lifecycle hooks
+    onMounted(() => {
+      // Reset verification step
+      store.commit('auth/SET_VERIFICATION_STEP', 1);
+    });
+    
+    onUnmounted(() => {
+      // Clear timers
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+      }
+    });
+    
+    return {
+      form,
+      isFormValid,
+      formData,
+      showPassword,
+      showConfirmPassword,
+      message,
+      messageType,
+      currentStep,
+      isLoading,
+      socialLoading,
+      otpDigits,
+      otpRefs,
+      otpData,
+      isOtpComplete,
+      resendCountdown,
+      register,
+      verifyOTP,
+      resendOTP,
+      googleLogin,
+      facebookLogin,
+      goToHome,
+      maskEmail,
+      maskPhone,
+      onOtpDigitInput,
+      onOtpKeyDown,
+      onOtpPaste
+    };
   }
-})
-
-// Form validation rules
-const nameRules = [
-  v => !!v || 'Name is required',
-  v => v.length >= 3 || 'Name must be at least 3 characters'
-]
-
-const emailRules = [
-  v => !!v || 'Email is required',
-  v => /.+@.+\..+/.test(v) || 'Email must be valid'
-]
-
-const phoneRules = [
-  v => !v || /^\+?[1-9]\d{9,14}$/.test(v) || 'Phone number must be valid'
-]
-
-const passwordRules = [
-  v => !!v || 'Password is required',
-  v => v.length >= 8 || 'Password must be at least 8 characters',
-  v => /[A-Z]/.test(v) || 'Password must contain at least one uppercase letter',
-  v => /[0-9]/.test(v) || 'Password must contain at least one number'
-]
-
-const confirmPasswordRules = [
-  v => !!v || 'Please confirm your password',
-  v => v === formData.value.password || 'Passwords do not match'
-]
-
-const termsRules = [
-  v => !!v || 'You must agree to the terms and conditions'
-]
-
-// Methods
-const handleSubmit = async () => {
-  if (!isFormValid.value) return
-  
-  error.value = null
-  
-  try {
-    // Start registration process
-    await store.dispatch('auth/startRegistration', {
-      name: formData.value.name,
-      email: formData.value.email,
-      phone: formData.value.phone,
-      password: formData.value.password
-    })
-  } catch (err) {
-    console.error('Registration error:', err)
-    error.value = err.message || 'Failed to register'
-  }
-}
-
-const loginWithSocial = async (provider) => {
-  error.value = null
-  socialLoading.value[provider] = true
-  
-  try {
-    await store.dispatch('auth/loginWithSocial', { provider })
-    router.push('/')
-  } catch (err) {
-    console.error(`${provider} login error:`, err)
-    error.value = err.message || `Failed to login with ${provider}`
-  } finally {
-    socialLoading.value[provider] = false
-  }
-}
-
-const goToLogin = () => {
-  router.push('/auth/login')
-}
-
-const goToHome = () => {
-  router.push('/')
-}
-
-// Initialize
-onMounted(() => {
-  // Initialize social login SDKs
-  store.dispatch('auth/initSocialAuth')
-  
-  // Reset verification step
-  store.commit('auth/SET_VERIFICATION_STEP', 1)
-  
-  // Clear any existing registration data
-  store.commit('auth/SET_REGISTRATION_DATA', null)
-})
-
-// Watch for verification step changes
-watch(
-  () => store.getters['auth/verificationStep'],
-  (step) => {
-    // Update stepper step when verification step changes
-    currentStep.value = String(step)
-  }
-)
+};
 </script>
 
 <style scoped>
-.v-stepper {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
-  border-radius: 8px !important;
+.register-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background-color: #f5f5f5;
+}
+
+.register-form {
+  width: 100%;
+  max-width: 550px;
+}
+
+.divider-text {
+  position: relative;
+  padding: 0 10px;
+  background: white;
+  z-index: 1;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.divider-text::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -40%;
+  right: -40%;
+  height: 1px;
+  background-color: rgba(0, 0, 0, 0.12);
+  z-index: -1;
+}
+
+.otp-input {
+  width: 50px !important;
+  text-align: center;
+}
+
+/* Hide spin buttons for number inputs */
+.otp-input :deep(input[type=number]) {
+  -moz-appearance: textfield;
+}
+
+.otp-input :deep(input[type=number]::-webkit-outer-spin-button),
+.otp-input :deep(input[type=number]::-webkit-inner-spin-button) {
+  -webkit-appearance: none;
+  margin: 0;
 }
 </style>

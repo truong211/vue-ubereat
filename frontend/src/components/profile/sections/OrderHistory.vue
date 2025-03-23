@@ -1,382 +1,248 @@
 <template>
   <div class="order-history">
-    <h2 class="text-h6 mb-4">Order History</h2>
-    
-    <!-- Filters -->
-    <v-card class="mb-4">
-      <v-card-text>
-        <v-row align="center">
-          <v-col cols="12" sm="4">
-            <v-text-field
-              v-model="search"
-              density="compact"
-              label="Search orders"
-              prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              hide-details
-              @update:modelValue="filterOrders"
-            ></v-text-field>
-          </v-col>
-          
-          <v-col cols="12" sm="3">
-            <v-select
-              v-model="filterStatus"
-              :items="statusOptions"
-              label="Status"
-              density="compact"
-              variant="outlined"
-              hide-details
-              @update:modelValue="filterOrders"
-            ></v-select>
-          </v-col>
-          
-          <v-col cols="12" sm="3">
-            <v-select
-              v-model="filterTimeframe"
-              :items="timeframeOptions"
-              label="Timeframe"
-              density="compact"
-              variant="outlined"
-              hide-details
-              @update:modelValue="filterOrders"
-            ></v-select>
-          </v-col>
-          
-          <v-col cols="12" sm="2">
+    <v-card>
+      <v-card-title class="d-flex align-center justify-space-between">
+        <span>Lịch sử đơn hàng</span>
+        
+        <!-- Filters -->
+        <v-menu>
+          <template v-slot:activator="{ props }">
             <v-btn
-              color="primary"
-              variant="tonal"
-              block
-              @click="resetFilters"
+              variant="outlined"
+              v-bind="props"
+              prepend-icon="mdi-filter-variant"
+              size="small"
             >
-              Reset
+              Lọc
             </v-btn>
-          </v-col>
-        </v-row>
-      </v-card-text>
-    </v-card>
-    
-    <!-- Loading State -->
-    <div v-if="loading" class="d-flex justify-center my-8">
-      <v-progress-circular indeterminate color="primary"></v-progress-circular>
-    </div>
-    
-    <!-- Error State -->
-    <v-alert
-      v-else-if="error"
-      type="error"
-      variant="tonal"
-      class="mb-4"
-      closable
-      @click:close="error = null"
-    >
-      {{ error }}
-    </v-alert>
-    
-    <!-- Empty State -->
-    <v-card
-      v-else-if="filteredOrders.length === 0"
-      variant="outlined"
-      class="text-center py-8 px-4"
-    >
-      <v-icon size="64" color="grey-lighten-1" icon="mdi-receipt-text-outline"></v-icon>
-      <h3 class="text-h6 mt-4 mb-2">
-        {{ orders.length === 0 ? 'No Order History' : 'No Orders Match Your Filters' }}
-      </h3>
-      <p class="text-medium-emphasis mb-6">
-        {{ orders.length === 0 ? 'You haven\'t placed any orders yet' : 'Try adjusting your search or filter criteria' }}
-      </p>
-      <v-btn
-        v-if="orders.length === 0"
-        color="primary"
-        to="/restaurants"
-        prepend-icon="mdi-silverware-fork-knife"
-      >
-        Browse Restaurants
-      </v-btn>
-      <v-btn
-        v-else
-        color="primary"
-        variant="tonal"
-        @click="resetFilters"
-      >
-        Clear Filters
-      </v-btn>
-    </v-card>
-    
-    <!-- Order List -->
-    <div v-else>
-      <v-card
-        v-for="order in filteredOrders"
-        :key="order.id"
-        class="mb-4"
-        :class="{ 'border-primary': isActiveOrder(order.status) }"
-      >
-        <v-card-item>
-          <v-card-title class="d-flex justify-space-between align-center flex-wrap">
-            <div class="d-flex align-center">
-              <span>Order #{{ order.orderNumber }}</span>
-              <v-chip
-                size="small"
-                :color="getStatusColor(order.status)"
-                class="ml-2"
-              >
-                {{ getStatusText(order.status) }}
-              </v-chip>
-            </div>
-            
-            <span class="text-caption text-medium-emphasis">{{ formatDate(order.date) }}</span>
-          </v-card-title>
-        </v-card-item>
-        
-        <v-divider></v-divider>
-        
-        <v-card-text>
-          <div class="d-flex align-start mb-4">
-            <v-avatar size="48" class="mr-4">
-              <v-img 
-                :src="order.restaurant.image || '/img/restaurant-placeholder.jpg'" 
-                alt="Restaurant"
-              ></v-img>
-            </v-avatar>
-            <div>
-              <h3 class="text-subtitle-1 font-weight-bold mb-1">{{ order.restaurant.name }}</h3>
-              <p class="text-caption text-medium-emphasis mb-0">{{ order.restaurant.address }}</p>
-            </div>
-          </div>
-          
-          <v-list density="compact" class="bg-transparent pa-0">
-            <v-list-item
-              v-for="(item, index) in order.items"
-              :key="index"
-              class="px-0"
-            >
-              <template v-slot:prepend>
-                <span class="text-body-2 mr-2">{{ item.quantity }}×</span>
-              </template>
-              <v-list-item-title class="text-body-2">
-                {{ item.name }}
-              </v-list-item-title>
-              <template v-slot:append>
-                <span class="text-body-2">${{ (item.price * item.quantity).toFixed(2) }}</span>
-              </template>
-            </v-list-item>
-          </v-list>
-          
-          <v-divider class="my-3"></v-divider>
-          
-          <div class="d-flex justify-space-between text-body-2 mb-1">
-            <span>Subtotal</span>
-            <span>${{ order.subtotal.toFixed(2) }}</span>
-          </div>
-          <div class="d-flex justify-space-between text-body-2 mb-1">
-            <span>Delivery Fee</span>
-            <span>${{ order.deliveryFee.toFixed(2) }}</span>
-          </div>
-          <div class="d-flex justify-space-between text-body-2 mb-1">
-            <span>Tax</span>
-            <span>${{ order.tax.toFixed(2) }}</span>
-          </div>
-          <div class="d-flex justify-space-between text-subtitle-1 font-weight-bold mt-2">
-            <span>Total</span>
-            <span>${{ order.total.toFixed(2) }}</span>
-          </div>
-        </v-card-text>
-        
-        <v-divider></v-divider>
-        
-        <v-card-actions>
-          <v-btn
-            variant="text"
-            prepend-icon="mdi-receipt"
-            @click="viewOrderDetails(order)"
-          >
-            View Details
-          </v-btn>
-          <v-spacer></v-spacer>
-          <v-btn
-            v-if="canTrackOrder(order.status)"
-            variant="text"
-            color="primary"
-            prepend-icon="mdi-map-marker"
-            :to="`/orders/${order.id}/track`"
-          >
-            Track Order
-          </v-btn>
-          <v-btn
-            v-if="canReviewOrder(order.status) && !order.reviewed"
-            variant="text"
-            color="primary"
-            prepend-icon="mdi-star-outline"
-            @click="openReviewDialog(order)"
-          >
-            Leave Review
-          </v-btn>
-          <v-btn
-            v-if="canReorderItems(order.status)"
-            variant="text"
-            color="primary"
-            prepend-icon="mdi-repeat"
-            @click="reorderItems(order)"
-          >
-            Reorder
-          </v-btn>
-          <v-btn
-            v-if="canCancelOrder(order.status)"
-            variant="text"
-            color="error"
-            prepend-icon="mdi-close"
-            @click="confirmCancelOrder(order)"
-          >
-            Cancel Order
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-      
-      <!-- Load More Button -->
-      <div v-if="hasMoreOrders" class="text-center mt-4">
-        <v-btn
-          variant="outlined"
-          :loading="loadingMore"
-          @click="loadMoreOrders"
-        >
-          Load More Orders
-        </v-btn>
-      </div>
-    </div>
-    
-    <!-- Order Details Dialog -->
-    <v-dialog v-model="orderDetailsDialog.show" max-width="700">
-      <v-card v-if="orderDetailsDialog.order">
-        <v-card-title class="d-flex justify-space-between align-center">
-          <span>Order #{{ orderDetailsDialog.order.orderNumber }}</span>
-          <v-chip
-            size="small"
-            :color="getStatusColor(orderDetailsDialog.order.status)"
-          >
-            {{ getStatusText(orderDetailsDialog.order.status) }}
-          </v-chip>
-        </v-card-title>
-        
-        <v-card-text>
-          <v-row>
-            <v-col cols="12" sm="6">
-              <h3 class="text-subtitle-1 font-weight-medium mb-2">Order Details</h3>
-              <div class="text-body-2 mb-1">
-                <strong>Date:</strong> {{ formatDate(orderDetailsDialog.order.date) }}
-              </div>
-              <div class="text-body-2 mb-1">
-                <strong>Restaurant:</strong> {{ orderDetailsDialog.order.restaurant.name }}
-              </div>
-              <div class="text-body-2 mb-1">
-                <strong>Payment Method:</strong> {{ orderDetailsDialog.order.paymentMethod }}
-              </div>
-            </v-col>
-            
-            <v-col cols="12" sm="6">
-              <h3 class="text-subtitle-1 font-weight-medium mb-2">Delivery Details</h3>
-              <div class="text-body-2 mb-1">
-                <strong>Address:</strong> {{ orderDetailsDialog.order.deliveryAddress }}
-              </div>
-              <div v-if="orderDetailsDialog.order.deliveryInstructions" class="text-body-2 mb-1">
-                <strong>Instructions:</strong> {{ orderDetailsDialog.order.deliveryInstructions }}
-              </div>
-              <div v-if="orderDetailsDialog.order.deliveryTime" class="text-body-2 mb-1">
-                <strong>Delivered:</strong> {{ formatTime(orderDetailsDialog.order.deliveryTime) }}
-              </div>
-            </v-col>
-            
-            <v-col cols="12">
-              <h3 class="text-subtitle-1 font-weight-medium mb-2">Items</h3>
-              <v-list density="compact">
-                <v-list-item
-                  v-for="(item, index) in orderDetailsDialog.order.items"
-                  :key="index"
+          </template>
+
+          <v-card min-width="300">
+            <v-card-text>
+              <v-select
+                v-model="filters.status"
+                label="Trạng thái đơn hàng"
+                :items="orderStatuses"
+                item-title="text"
+                item-value="value"
+                clearable
+                variant="outlined"
+                density="comfortable"
+                @update:modelValue="filterOrders"
+              ></v-select>
+
+              <v-select
+                v-model="filters.timeRange"
+                label="Thời gian"
+                :items="timeRanges"
+                item-title="text"
+                item-value="value"
+                clearable
+                variant="outlined"
+                density="comfortable"
+                @update:modelValue="filterOrders"
+              ></v-select>
+
+              <div class="d-flex justify-end mt-2">
+                <v-btn
+                  variant="text"
+                  @click="resetFilters"
                 >
-                  <v-list-item-title>
-                    {{ item.quantity }}× {{ item.name }}
+                  Đặt lại
+                </v-btn>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-menu>
+      </v-card-title>
+
+      <v-card-text>
+        <!-- Loading State -->
+        <div v-if="loading" class="d-flex justify-center my-8">
+          <v-progress-circular indeterminate color="primary"></v-progress-circular>
+        </div>
+
+        <!-- Error Alert -->
+        <v-alert
+          v-if="error"
+          type="error"
+          variant="tonal"
+          class="mb-4"
+          closable
+          @click:close="error = ''"
+        >
+          {{ error }}
+        </v-alert>
+
+        <!-- No Orders -->
+        <v-card
+          v-else-if="filteredOrders.length === 0"
+          variant="outlined"
+          class="text-center py-8 px-4"
+        >
+          <v-icon size="64" color="grey-lighten-1" icon="mdi-receipt-text-remove"></v-icon>
+          <h3 class="text-h6 mt-4 mb-2">
+            {{ orders.length === 0 ? 'Chưa có đơn hàng nào' : 'Không tìm thấy đơn hàng phù hợp' }}
+          </h3>
+          <p class="text-medium-emphasis">
+            {{ orders.length === 0 ? 'Hãy đặt món ngay để thưởng thức những món ăn ngon!' : 'Thử thay đổi bộ lọc để tìm đơn hàng khác' }}
+          </p>
+        </v-card>
+
+        <!-- Order List -->
+        <div v-else>
+          <v-card
+            v-for="order in filteredOrders"
+            :key="order.id"
+            variant="outlined"
+            class="mb-4"
+          >
+            <v-card-text>
+              <!-- Order Header -->
+              <div class="d-flex justify-space-between align-center mb-4">
+                <div class="d-flex align-center">
+                  <v-avatar size="40" class="mr-3">
+                    <v-img
+                      :src="order.restaurant.image || '/img/restaurant-placeholder.jpg'"
+                      alt="Restaurant"
+                    ></v-img>
+                  </v-avatar>
+                  <div>
+                    <h3 class="text-subtitle-1 font-weight-bold mb-1">{{ order.restaurant.name }}</h3>
+                    <p class="text-caption text-medium-emphasis mb-0">{{ order.restaurant.address }}</p>
+                  </div>
+                </div>
+
+                <v-chip
+                  :color="getOrderStatusColor(order.status)"
+                  size="small"
+                >
+                  {{ formatOrderStatus(order.status) }}
+                </v-chip>
+              </div>
+
+              <!-- Order Items -->
+              <v-list density="compact" class="bg-transparent pa-0">
+                <v-list-item
+                  v-for="(item, index) in order.items"
+                  :key="index"
+                  class="px-0"
+                >
+                  <template v-slot:prepend>
+                    <span class="text-body-2 mr-2">{{ item.quantity }}×</span>
+                  </template>
+                  <v-list-item-title class="text-body-2">
+                    {{ item.name }}
                   </v-list-item-title>
-                  
                   <template v-slot:append>
-                    <span>${{ (item.price * item.quantity).toFixed(2) }}</span>
+                    <span class="text-body-2">{{ formatPrice(item.price * item.quantity) }}</span>
                   </template>
                 </v-list-item>
               </v-list>
-              
+
+              <!-- Order Summary -->
               <v-divider class="my-3"></v-divider>
-              
-              <div class="d-flex justify-space-between text-body-2 mb-1">
-                <span>Subtotal</span>
-                <span>${{ orderDetailsDialog.order.subtotal.toFixed(2) }}</span>
+              <div class="d-flex justify-space-between mb-2">
+                <span class="text-body-2">Tổng tiền món:</span>
+                <span class="text-body-2">{{ formatPrice(order.subtotal) }}</span>
               </div>
-              <div class="d-flex justify-space-between text-body-2 mb-1">
-                <span>Delivery Fee</span>
-                <span>${{ orderDetailsDialog.order.deliveryFee.toFixed(2) }}</span>
+              <div class="d-flex justify-space-between mb-2">
+                <span class="text-body-2">Phí giao hàng:</span>
+                <span class="text-body-2">{{ formatPrice(order.deliveryFee) }}</span>
               </div>
-              <div v-if="orderDetailsDialog.order.discount" class="d-flex justify-space-between text-body-2 mb-1">
-                <span>Discount</span>
-                <span>-${{ orderDetailsDialog.order.discount.toFixed(2) }}</span>
+              <div v-if="order.discount" class="d-flex justify-space-between mb-2">
+                <span class="text-body-2">Giảm giá:</span>
+                <span class="text-body-2 text-error">-{{ formatPrice(order.discount) }}</span>
               </div>
-              <div class="d-flex justify-space-between text-body-2 mb-1">
-                <span>Tax</span>
-                <span>${{ orderDetailsDialog.order.tax.toFixed(2) }}</span>
+              <div class="d-flex justify-space-between font-weight-bold">
+                <span>Tổng cộng:</span>
+                <span>{{ formatPrice(order.total) }}</span>
               </div>
-              <div class="d-flex justify-space-between text-subtitle-1 font-weight-bold mt-2">
-                <span>Total</span>
-                <span>${{ orderDetailsDialog.order.total.toFixed(2) }}</span>
+
+              <!-- Actions -->
+              <v-divider class="my-3"></v-divider>
+              <div class="d-flex justify-space-between align-center">
+                <div class="text-caption text-medium-emphasis">
+                  {{ formatDate(order.createdAt) }}
+                </div>
+                <div class="d-flex gap-2">
+                  <v-btn
+                    v-if="canTrackOrder(order.status)"
+                    variant="text"
+                    color="primary"
+                    size="small"
+                    prepend-icon="mdi-map-marker"
+                    :to="`/orders/${order.id}/track`"
+                  >
+                    Theo dõi
+                  </v-btn>
+                  <v-btn
+                    v-if="canReviewOrder(order.status) && !order.reviewed"
+                    variant="text"
+                    color="primary"
+                    size="small"
+                    prepend-icon="mdi-star-outline"
+                    @click="openReviewDialog(order)"
+                  >
+                    Đánh giá
+                  </v-btn>
+                  <v-btn
+                    v-if="canReorderItems(order.status)"
+                    variant="text"
+                    color="primary"
+                    size="small"
+                    prepend-icon="mdi-repeat"
+                    @click="reorderItems(order)"
+                  >
+                    Đặt lại
+                  </v-btn>
+                  <v-btn
+                    v-if="canCancelOrder(order.status)"
+                    variant="text"
+                    color="error"
+                    size="small"
+                    prepend-icon="mdi-close"
+                    @click="openCancelDialog(order)"
+                  >
+                    Hủy đơn
+                  </v-btn>
+                </div>
               </div>
-            </v-col>
-          </v-row>
-        </v-card-text>
-        
-        <v-card-actions>
-          <v-btn
-            variant="text"
-            @click="downloadReceipt(orderDetailsDialog.order)"
-          >
-            Download Receipt
-          </v-btn>
-          <v-spacer></v-spacer>
-          <v-btn
-            color="primary"
-            variant="text"
-            @click="orderDetailsDialog.show = false"
-          >
-            Close
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    
+            </v-card-text>
+          </v-card>
+
+          <!-- Load More -->
+          <div v-if="hasMoreOrders" class="text-center mt-4">
+            <v-btn
+              variant="outlined"
+              :loading="loadingMore"
+              @click="loadMoreOrders"
+            >
+              Xem thêm
+            </v-btn>
+          </div>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <!-- Review Dialog -->
     <v-dialog v-model="reviewDialog.show" max-width="500">
-      <v-card v-if="reviewDialog.order">
-        <v-card-title>
-          Rate your order from {{ reviewDialog.order.restaurant.name }}
-        </v-card-title>
+      <v-card>
+        <v-card-title>Đánh giá đơn hàng</v-card-title>
         
         <v-card-text>
-          <div class="text-center mb-4">
-            <v-rating
-              v-model="reviewDialog.rating"
-              color="amber"
-              hover
-              length="5"
-              size="large"
-            ></v-rating>
-          </div>
-          
           <v-textarea
             v-model="reviewDialog.comment"
-            label="Write your review (optional)"
+            label="Nhận xét của bạn"
+            variant="outlined"
             counter="500"
-            :rules="[v => !v || v.length <= 500 || 'Max 500 characters']"
+            :rules="[v => !v || v.length <= 500 || 'Tối đa 500 ký tự']"
             rows="4"
             auto-grow
           ></v-textarea>
           
           <!-- Food Rating Section -->
-          <h3 class="text-subtitle-1 font-weight-medium mb-2">Food Quality</h3>
+          <h3 class="text-subtitle-1 font-weight-medium mb-2">Chất lượng món ăn</h3>
           <v-rating
             v-model="reviewDialog.foodRating"
             color="amber"
@@ -386,7 +252,7 @@
           ></v-rating>
           
           <!-- Delivery Rating Section -->
-          <h3 class="text-subtitle-1 font-weight-medium mb-2">Delivery</h3>
+          <h3 class="text-subtitle-1 font-weight-medium mb-2">Dịch vụ giao hàng</h3>
           <v-rating
             v-model="reviewDialog.deliveryRating"
             color="amber"
@@ -402,50 +268,35 @@
             variant="text"
             @click="reviewDialog.show = false"
           >
-            Cancel
+            Hủy
           </v-btn>
           <v-btn
             color="primary"
-            :disabled="reviewDialog.rating === 0"
             :loading="reviewDialog.loading"
+            :disabled="!isReviewValid"
             @click="submitReview"
           >
-            Submit Review
+            Gửi đánh giá
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-    
+
     <!-- Cancel Order Dialog -->
-    <v-dialog v-model="cancelDialog.show" max-width="500">
-      <v-card v-if="cancelDialog.order">
-        <v-card-title>
-          Cancel Order #{{ cancelDialog.order.orderNumber }}?
-        </v-card-title>
+    <v-dialog v-model="cancelDialog.show" max-width="400">
+      <v-card>
+        <v-card-title>Xác nhận hủy đơn</v-card-title>
         
         <v-card-text>
-          <p>Are you sure you want to cancel this order? This action cannot be undone.</p>
-          <v-radio-group
+          <p class="mb-4">Bạn có chắc chắn muốn hủy đơn hàng này?</p>
+          <v-select
             v-model="cancelDialog.reason"
-            label="Reason for cancellation"
-            hide-details
-          >
-            <v-radio
-              v-for="reason in cancellationReasons"
-              :key="reason.value"
-              :label="reason.label"
-              :value="reason.value"
-            ></v-radio>
-          </v-radio-group>
-          
-          <v-textarea
-            v-if="cancelDialog.reason === 'other'"
-            v-model="cancelDialog.otherReason"
-            label="Please specify"
-            class="mt-3"
-            rows="2"
-            auto-grow
-          ></v-textarea>
+            label="Lý do hủy đơn"
+            :items="cancelReasons"
+            variant="outlined"
+            :rules="[v => !!v || 'Vui lòng chọn lý do hủy đơn']"
+            required
+          ></v-select>
         </v-card-text>
         
         <v-card-actions>
@@ -454,14 +305,15 @@
             variant="text"
             @click="cancelDialog.show = false"
           >
-            No, Keep Order
+            Không
           </v-btn>
           <v-btn
             color="error"
             :loading="cancelDialog.loading"
-            @click="cancelOrder"
+            :disabled="!cancelDialog.reason"
+            @click="confirmCancelOrder"
           >
-            Yes, Cancel Order
+            Hủy đơn
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -470,10 +322,11 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useToast } from 'vue-toastification';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
 export default {
   name: 'OrderHistory',
@@ -482,60 +335,100 @@ export default {
     const store = useStore();
     const toast = useToast();
     
-    const orders = ref([]);
-    const filteredOrders = ref([]);
+    // State
     const loading = ref(true);
     const loadingMore = ref(false);
     const error = ref(null);
-    const search = ref('');
-    const filterStatus = ref('all');
-    const filterTimeframe = ref('all');
+    const orders = ref([]);
     const page = ref(1);
-    const perPage = ref(5);
+    const perPage = ref(10);
     const hasMoreOrders = ref(false);
     
-    const statusOptions = [
-      { title: 'All Orders', value: 'all' },
-      { title: 'Active', value: 'active' },
-      { title: 'Delivered', value: 'delivered' },
-      { title: 'Cancelled', value: 'cancelled' }
+    // Filters
+    const filters = reactive({
+      status: null,
+      timeRange: null
+    });
+    
+    // Options
+    const orderStatuses = [
+      { text: 'Đang xử lý', value: 'pending' },
+      { text: 'Đang chuẩn bị', value: 'preparing' },
+      { text: 'Đang giao', value: 'delivering' },
+      { text: 'Đã giao', value: 'delivered' },
+      { text: 'Đã hủy', value: 'cancelled' }
     ];
     
-    const timeframeOptions = [
-      { title: 'All Time', value: 'all' },
-      { title: 'Last 30 Days', value: '30days' },
-      { title: '3 Months', value: '3months' },
-      { title: '6 Months', value: '6months' },
-      { title: 'This Year', value: 'year' }
+    const timeRanges = [
+      { text: '7 ngày qua', value: '7days' },
+      { text: '30 ngày qua', value: '30days' },
+      { text: '3 tháng qua', value: '3months' },
+      { text: '6 tháng qua', value: '6months' }
     ];
     
-    const cancellationReasons = [
-      { label: 'Changed my mind', value: 'changed_mind' },
-      { label: 'Ordered by mistake', value: 'mistake' },
-      { label: 'Taking too long', value: 'too_long' },
-      { label: 'Duplicate order', value: 'duplicate' },
-      { label: 'Other reason', value: 'other' }
+    const cancelReasons = [
+      'Thay đổi địa chỉ giao hàng',
+      'Thời gian giao hàng quá lâu',
+      'Muốn thay đổi món',
+      'Đặt nhầm món',
+      'Lý do khác'
     ];
     
     // Dialogs
-    const orderDetailsDialog = ref({ show: false, order: null });
-    const reviewDialog = ref({ 
-      show: false, 
-      order: null,
-      rating: 0,
-      foodRating: 0,
-      deliveryRating: 0,
-      comment: '',
-      loading: false
-    });
-    const cancelDialog = ref({
+    const reviewDialog = reactive({
       show: false,
-      order: null,
-      reason: 'changed_mind',
-      otherReason: '',
+      orderId: null,
+      comment: '',
+      foodRating: 5,
+      deliveryRating: 5,
       loading: false
     });
     
+    const cancelDialog = reactive({
+      show: false,
+      orderId: null,
+      reason: '',
+      loading: false
+    });
+    
+    // Computed
+    const filteredOrders = computed(() => {
+      let result = [...orders.value];
+      
+      if (filters.status) {
+        result = result.filter(order => order.status === filters.status);
+      }
+      
+      if (filters.timeRange) {
+        const now = new Date();
+        let cutoff = new Date();
+        
+        switch (filters.timeRange) {
+          case '7days':
+            cutoff.setDate(now.getDate() - 7);
+            break;
+          case '30days':
+            cutoff.setDate(now.getDate() - 30);
+            break;
+          case '3months':
+            cutoff.setMonth(now.getMonth() - 3);
+            break;
+          case '6months':
+            cutoff.setMonth(now.getMonth() - 6);
+            break;
+        }
+        
+        result = result.filter(order => new Date(order.createdAt) >= cutoff);
+      }
+      
+      return result;
+    });
+    
+    const isReviewValid = computed(() => {
+      return reviewDialog.foodRating > 0 && reviewDialog.deliveryRating > 0;
+    });
+    
+    // Methods
     const fetchOrders = async () => {
       loading.value = true;
       error.value = null;
@@ -548,12 +441,9 @@ export default {
         
         orders.value = response?.data || [];
         hasMoreOrders.value = response?.meta?.hasNextPage || false;
-        
-        // Initialize filtered orders
-        filterOrders();
       } catch (err) {
         console.error('Error fetching orders:', err);
-        error.value = 'Unable to load your order history';
+        error.value = 'Không thể tải lịch sử đơn hàng';
       } finally {
         loading.value = false;
       }
@@ -575,228 +465,26 @@ export default {
         const newOrders = response?.data || [];
         orders.value = [...orders.value, ...newOrders];
         hasMoreOrders.value = response?.meta?.hasNextPage || false;
-        
-        // Apply current filters to all orders
-        filterOrders();
       } catch (err) {
         console.error('Error loading more orders:', err);
-        toast.error('Failed to load more orders');
+        toast.error('Không thể tải thêm đơn hàng');
       } finally {
         loadingMore.value = false;
       }
     };
     
     const filterOrders = () => {
-      let result = [...orders.value];
-      
-      // Apply search
-      if (search.value) {
-        const searchTerm = search.value.toLowerCase();
-        result = result.filter(order => {
-          // Search in order number and restaurant name
-          return (
-            order.orderNumber.toString().includes(searchTerm) ||
-            order.restaurant.name.toLowerCase().includes(searchTerm) ||
-            order.items.some(item => item.name.toLowerCase().includes(searchTerm))
-          );
-        });
-      }
-      
-      // Apply status filter
-      if (filterStatus.value !== 'all') {
-        result = result.filter(order => order.status === filterStatus.value);
-      }
-      
-      // Apply timeframe filter
-      if (filterTimeframe.value !== 'all') {
-        const now = new Date();
-        let cutoffDate;
-        
-        switch (filterTimeframe.value) {
-          case '30days':
-            cutoffDate = new Date(now.setDate(now.getDate() - 30));
-            break;
-          case '3months':
-            cutoffDate = new Date(now.setMonth(now.getMonth() - 3));
-            break;
-          case '6months':
-            cutoffDate = new Date(now.setMonth(now.getMonth() - 6));
-            break;
-          case 'year':
-            cutoffDate = new Date(now.setFullYear(now.getFullYear() - 1));
-            break;
-          default:
-            cutoffDate = null;
-        }
-        
-        if (cutoffDate) {
-          result = result.filter(order => new Date(order.date) >= cutoffDate);
-        }
-      }
-      
-      filteredOrders.value = result;
+      // Filtering is handled by the computed property
     };
     
     const resetFilters = () => {
-      search.value = '';
-      filterStatus.value = 'all';
-      filterTimeframe.value = 'all';
-      filterOrders();
+      filters.status = null;
+      filters.timeRange = null;
     };
     
-    const viewOrderDetails = (order) => {
-      orderDetailsDialog.value = {
-        show: true,
-        order
-      };
-    };
-    
-    const openReviewDialog = (order) => {
-      reviewDialog.value = {
-        show: true,
-        order,
-        rating: 0,
-        foodRating: 0,
-        deliveryRating: 0,
-        comment: '',
-        loading: false
-      };
-    };
-    
-    const submitReview = async () => {
-      if (reviewDialog.value.rating === 0) return;
-      
-      reviewDialog.value.loading = true;
-      
-      try {
-        await store.dispatch('review/submitReview', {
-          orderId: reviewDialog.value.order.id,
-          restaurantId: reviewDialog.value.order.restaurant.id,
-          rating: reviewDialog.value.rating,
-          foodRating: reviewDialog.value.foodRating,
-          deliveryRating: reviewDialog.value.deliveryRating,
-          comment: reviewDialog.value.comment
-        });
-        
-        // Update local state
-        const index = orders.value.findIndex(o => o.id === reviewDialog.value.order.id);
-        if (index !== -1) {
-          orders.value[index].reviewed = true;
-        }
-        
-        toast.success('Review submitted successfully!');
-        reviewDialog.value.show = false;
-      } catch (err) {
-        console.error('Error submitting review:', err);
-        toast.error('Failed to submit review');
-      } finally {
-        reviewDialog.value.loading = false;
-      }
-    };
-    
-    const confirmCancelOrder = (order) => {
-      cancelDialog.value = {
-        show: true,
-        order,
-        reason: 'changed_mind',
-        otherReason: '',
-        loading: false
-      };
-    };
-    
-    const cancelOrder = async () => {
-      cancelDialog.value.loading = true;
-      
-      const reason = cancelDialog.value.reason === 'other'
-        ? cancelDialog.value.otherReason
-        : cancelDialog.value.reason;
-      
-      try {
-        await store.dispatch('order/cancelOrder', {
-          orderId: cancelDialog.value.order.id,
-          reason
-        });
-        
-        // Update local state
-        const index = orders.value.findIndex(o => o.id === cancelDialog.value.order.id);
-        if (index !== -1) {
-          orders.value[index].status = 'cancelled';
-        }
-        
-        // Update filtered orders
-        filterOrders();
-        
-        toast.success('Order cancelled successfully');
-        cancelDialog.value.show = false;
-      } catch (err) {
-        console.error('Error cancelling order:', err);
-        toast.error(err.response?.data?.message || 'Failed to cancel order');
-      } finally {
-        cancelDialog.value.loading = false;
-      }
-    };
-    
-    const reorderItems = async (order) => {
-      try {
-        await store.dispatch('cart/reorder', { orderId: order.id });
-        toast.success('Items added to cart');
-      } catch (err) {
-        console.error('Error reordering items:', err);
-        toast.error('Failed to add items to cart');
-      }
-    };
-    
-    const downloadReceipt = (order) => {
-      // This would be implemented to generate a PDF receipt
-      toast.info('Downloading receipt...');
-    };
-    
-    const formatDate = (dateString) => {
-      return format(new Date(dateString), 'MMM d, yyyy • h:mm a');
-    };
-    
-    const formatTime = (dateString) => {
-      return format(new Date(dateString), 'h:mm a');
-    };
-    
-    const getStatusColor = (status) => {
-      const colors = {
-        pending: 'grey',
-        confirmed: 'info',
-        preparing: 'info',
-        ready: 'info',
-        picked_up: 'warning',
-        on_the_way: 'warning',
-        delivered: 'success',
-        cancelled: 'error'
-      };
-      return colors[status] || 'grey';
-    };
-    
-    const getStatusText = (status) => {
-      const texts = {
-        pending: 'Pending',
-        confirmed: 'Confirmed',
-        preparing: 'Preparing',
-        ready: 'Ready',
-        picked_up: 'Picked Up',
-        on_the_way: 'On the Way',
-        delivered: 'Delivered',
-        cancelled: 'Cancelled'
-      };
-      return texts[status] || 'Unknown';
-    };
-    
-    const isActiveOrder = (status) => {
-      return ['pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'on_the_way'].includes(status);
-    };
-    
+    // Order Actions
     const canTrackOrder = (status) => {
-      return ['confirmed', 'preparing', 'ready', 'picked_up', 'on_the_way'].includes(status);
-    };
-    
-    const canCancelOrder = (status) => {
-      return ['pending', 'confirmed'].includes(status);
+      return ['preparing', 'delivering'].includes(status);
     };
     
     const canReviewOrder = (status) => {
@@ -807,55 +495,160 @@ export default {
       return ['delivered', 'cancelled'].includes(status);
     };
     
+    const canCancelOrder = (status) => {
+      return ['pending', 'preparing'].includes(status);
+    };
+    
+    const openReviewDialog = (order) => {
+      reviewDialog.orderId = order.id;
+      reviewDialog.comment = '';
+      reviewDialog.foodRating = 5;
+      reviewDialog.deliveryRating = 5;
+      reviewDialog.show = true;
+    };
+    
+    const submitReview = async () => {
+      if (!isReviewValid.value) return;
+      
+      reviewDialog.loading = true;
+      
+      try {
+        await store.dispatch('user/submitOrderReview', {
+          orderId: reviewDialog.orderId,
+          comment: reviewDialog.comment,
+          foodRating: reviewDialog.foodRating,
+          deliveryRating: reviewDialog.deliveryRating
+        });
+        
+        // Update local state
+        const orderIndex = orders.value.findIndex(o => o.id === reviewDialog.orderId);
+        if (orderIndex !== -1) {
+          orders.value[orderIndex].reviewed = true;
+        }
+        
+        reviewDialog.show = false;
+        toast.success('Cảm ơn bạn đã đánh giá!');
+      } catch (err) {
+        console.error('Error submitting review:', err);
+        toast.error('Không thể gửi đánh giá');
+      } finally {
+        reviewDialog.loading = false;
+      }
+    };
+    
+    const openCancelDialog = (order) => {
+      cancelDialog.orderId = order.id;
+      cancelDialog.reason = '';
+      cancelDialog.show = true;
+    };
+    
+    const confirmCancelOrder = async () => {
+      if (!cancelDialog.reason) return;
+      
+      cancelDialog.loading = true;
+      
+      try {
+        await store.dispatch('user/cancelOrder', {
+          orderId: cancelDialog.orderId,
+          reason: cancelDialog.reason
+        });
+        
+        // Update local state
+        const orderIndex = orders.value.findIndex(o => o.id === cancelDialog.orderId);
+        if (orderIndex !== -1) {
+          orders.value[orderIndex].status = 'cancelled';
+        }
+        
+        cancelDialog.show = false;
+        toast.success('Đã hủy đơn hàng');
+      } catch (err) {
+        console.error('Error cancelling order:', err);
+        toast.error('Không thể hủy đơn hàng');
+      } finally {
+        cancelDialog.loading = false;
+      }
+    };
+    
+    const reorderItems = async (order) => {
+      try {
+        await store.dispatch('cart/reorderItems', {
+          items: order.items
+        });
+        
+        toast.success('Đã thêm món vào giỏ hàng');
+      } catch (err) {
+        console.error('Error reordering items:', err);
+        toast.error('Không thể thêm món vào giỏ hàng');
+      }
+    };
+    
+    // Helpers
+    const formatDate = (date) => {
+      return formatDistanceToNow(new Date(date), { addSuffix: true, locale: vi });
+    };
+    
+    const formatPrice = (price) => {
+      return new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND'
+      }).format(price);
+    };
+    
+    const getOrderStatusColor = (status) => {
+      const colors = {
+        pending: 'warning',
+        preparing: 'info',
+        delivering: 'primary',
+        delivered: 'success',
+        cancelled: 'error'
+      };
+      return colors[status] || 'grey';
+    };
+    
+    const formatOrderStatus = (status) => {
+      const statuses = {
+        pending: 'Đang xử lý',
+        preparing: 'Đang chuẩn bị',
+        delivering: 'Đang giao',
+        delivered: 'Đã giao',
+        cancelled: 'Đã hủy'
+      };
+      return statuses[status] || status;
+    };
+    
     onMounted(fetchOrders);
     
     return {
-      orders,
-      filteredOrders,
       loading,
       loadingMore,
       error,
-      search,
-      filterStatus,
-      filterTimeframe,
-      statusOptions,
-      timeframeOptions,
-      hasMoreOrders,
-      orderDetailsDialog,
+      orders,
+      filters,
+      orderStatuses,
+      timeRanges,
+      cancelReasons,
       reviewDialog,
       cancelDialog,
-      cancellationReasons,
-      fetchOrders,
-      loadMoreOrders,
+      filteredOrders,
+      hasMoreOrders,
+      isReviewValid,
       filterOrders,
       resetFilters,
-      viewOrderDetails,
+      loadMoreOrders,
+      canTrackOrder,
+      canReviewOrder,
+      canReorderItems,
+      canCancelOrder,
       openReviewDialog,
       submitReview,
+      openCancelDialog,
       confirmCancelOrder,
-      cancelOrder,
       reorderItems,
-      downloadReceipt,
       formatDate,
-      formatTime,
-      getStatusColor,
-      getStatusText,
-      isActiveOrder,
-      canTrackOrder,
-      canCancelOrder,
-      canReviewOrder,
-      canReorderItems
+      formatPrice,
+      getOrderStatusColor,
+      formatOrderStatus
     };
   }
 };
 </script>
-
-<style scoped>
-.max-width-200 {
-  max-width: 200px;
-}
-
-.border-primary {
-  border: 2px solid rgb(var(--v-theme-primary));
-}
-</style>

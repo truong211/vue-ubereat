@@ -1,70 +1,55 @@
 const express = require('express');
-const { body } = require('express-validator');
+const { protect } = require('../middleware/auth.middleware');
 const cartController = require('../controllers/cart.controller');
-const { authMiddleware } = require('../middleware/auth.middleware');
+const { check } = require('express-validator');
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
-router.use(authMiddleware);
+// All cart routes require authentication
+router.use(protect);
 
-/**
- * @route GET /api/cart
- * @desc Get user cart
- * @access Private
- */
+// Get cart
 router.get('/', cartController.getCart);
 
-/**
- * @route POST /api/cart
- * @desc Add item to cart
- * @access Private
- */
-router.post(
-  '/',
-  [
-    body('productId')
-      .notEmpty()
-      .withMessage('Product ID is required')
-      .isNumeric()
-      .withMessage('Product ID must be a number'),
-    body('quantity')
-      .notEmpty()
-      .withMessage('Quantity is required')
-      .isInt({ min: 1 })
-      .withMessage('Quantity must be at least 1')
-  ],
-  cartController.addToCart
-);
+// Add item to cart
+router.post('/', [
+  check('productId').isInt().withMessage('Product ID must be an integer'),
+  check('quantity').optional().isInt({ min: 1 }).withMessage('Quantity must be at least 1')
+], cartController.addToCart);
 
-/**
- * @route PATCH /api/cart/:id
- * @desc Update cart item
- * @access Private
- */
-router.patch(
-  '/:id',
-  [
-    body('quantity')
-      .optional()
-      .isInt({ min: 1 })
-      .withMessage('Quantity must be at least 1')
-  ],
-  cartController.updateCartItem
-);
+// Update cart item
+router.patch('/:id', [
+  check('quantity').optional().isInt({ min: 1 }).withMessage('Quantity must be at least 1')
+], cartController.updateCartItem);
 
-/**
- * @route DELETE /api/cart/:id
- * @desc Remove item from cart
- * @access Private
- */
+// Remove item from cart
 router.delete('/:id', cartController.removeFromCart);
 
-/**
- * @route DELETE /api/cart
- * @desc Clear cart
- * @access Private
- */
+// Clear cart
 router.delete('/', cartController.clearCart);
 
-module.exports = router; 
+// Set special instructions for the order
+router.post('/instructions', cartController.setSpecialInstructions);
+
+// Set delivery address for the order
+router.post('/address', [
+  check('addressId').isInt().withMessage('Address ID must be an integer')
+], cartController.setDeliveryAddress);
+
+// Schedule delivery
+router.post('/schedule', [
+  check('scheduledTime').isISO8601().withMessage('Invalid date format')
+], cartController.scheduleDelivery);
+
+// Cancel scheduled delivery
+router.delete('/schedule', cartController.cancelScheduledDelivery);
+
+// Apply promotion code
+router.post('/promotion', [
+  check('code').isString().withMessage('Promotion code is required')
+], cartController.applyPromotion);
+
+// Remove promotion code
+router.delete('/promotion', cartController.removePromotion);
+
+module.exports = router;

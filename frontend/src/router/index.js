@@ -1,237 +1,177 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import store from '@/store';
+import { createRouter, createWebHistory } from 'vue-router'
+import store from '@/store'
 
-// Import components
-import HomePage from '@/components/home/HomePage.vue';
-import LoginForm from '@/components/auth/LoginForm.vue';
-import RegisterForm from '@/components/auth/RegisterForm.vue';
-import ForgotPassword from '@/components/auth/ForgotPassword.vue';
-import ResetPassword from '@/components/auth/ResetPassword.vue';
-import VerifyEmail from '@/components/auth/VerifyEmail.vue';
-import UserProfile from '@/components/profile/UserProfile.vue';
-import OrderTracking from '@/components/order/OrderTracking.vue';
-import PaymentStatusPage from '@/components/payment/PaymentStatusPage.vue';
-import StaticPage from '@/components/static/StaticPage.vue';
-import SocialCallback from '@/views/auth/SocialCallback.vue';
+// Auth routes
+const Login = () => import('@/views/auth/Login.vue')
+const Register = () => import('@/views/auth/Register.vue')
+const ForgotPassword = () => import('@/views/auth/ForgotPassword.vue')
+const VerifyEmail = () => import('@/views/auth/VerifyEmail.vue')
+const VerifyOTP = () => import('@/views/auth/VerifyOTP.vue')
 
-// Route definitions
+// Payment methods route
+const PaymentMethods = () => import('@/views/payment/PaymentMethods.vue')
+
 const routes = [
+  // Auth routes
   {
-    path: '/',
-    name: 'Home',
-    component: HomePage,
-    meta: { title: 'Home' }
+    path: '/auth',
+    component: () => import('@/layouts/AuthLayout.vue'),
+    children: [
+      {
+        path: 'login',
+        name: 'Login',
+        component: Login,
+        meta: { guest: true }
+      },
+      {
+        path: 'register',
+        name: 'Register',
+        component: Register,
+        meta: { guest: true }
+      },
+      {
+        path: 'forgot-password',
+        name: 'ForgotPassword',
+        component: ForgotPassword,
+        meta: { guest: true }
+      },
+      {
+        path: 'verify-email',
+        name: 'VerifyEmail',
+        component: VerifyEmail,
+        meta: { guest: true }
+      },
+      {
+        path: 'verify-otp',
+        name: 'VerifyOTP',
+        component: VerifyOTP,
+        meta: { guest: true }
+      }
+    ]
   },
-  {
-    path: '/login',
-    name: 'Login',
-    component: LoginForm,
-    meta: { title: 'Login', guest: true }
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: RegisterForm,
-    meta: { title: 'Register', guest: true }
-  },
-  {
-    path: '/forgot-password',
-    name: 'ForgotPassword',
-    component: ForgotPassword,
-    meta: { title: 'Forgot Password', guest: true }
-  },
-  {
-    path: '/reset-password/:token',
-    name: 'ResetPassword',
-    component: ResetPassword,
-    meta: { title: 'Reset Password', guest: true }
-  },
-  {
-    path: '/verify-email',
-    name: 'VerifyEmail',
-    component: VerifyEmail,
-    meta: { title: 'Verify Email' }
-  },
-  {
-    path: '/verify-email/:token',
-    name: 'verify-email',
-    component: VerifyEmail,
-    meta: { requiresAuth: false }
-  },
-  // Add social login callback route
-  {
-    path: '/auth/social',
-    name: 'SocialCallback',
-    component: SocialCallback,
-    meta: { title: 'Completing Login', guest: true }
-  },
+  
+  // Protected routes that require authentication
   {
     path: '/profile',
-    name: 'Profile',
-    component: UserProfile,
-    meta: { title: 'My Profile', requiresAuth: true }
+    component: () => import('@/layouts/MainLayout.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'Profile',
+        component: () => import('@/views/profile/Profile.vue')
+      },
+      {
+        path: 'settings',
+        name: 'ProfileSettings',
+        component: () => import('@/views/profile/Settings.vue')
+      },
+      {
+        path: 'payment-methods',
+        name: 'PaymentMethods',
+        component: PaymentMethods
+      }
+    ]
   },
-  {
-    path: '/order/:id/tracking',
-    name: 'OrderTracking',
-    component: OrderTracking,
-    props: true,
-    meta: { title: 'Track Order', requiresAuth: true }
-  },
-  // Lazy-loaded routes for better performance
-  {
-    path: '/restaurants',
-    name: 'Restaurants',
-    component: () => import('@/components/restaurant/RestaurantList.vue'),
-    meta: { title: 'Restaurants' }
-  },
-  {
-    path: '/restaurants/:id',
-    name: 'RestaurantDetail',
-    component: () => import('@/components/restaurant/RestaurantDetail.vue'),
-    props: true,
-    meta: { title: 'Restaurant Details' }
-  },
+  
+  // Cart and Order routes
   {
     path: '/cart',
     name: 'Cart',
-    component: () => import('@/components/cart/CartView.vue'),
-    meta: { title: 'Shopping Cart' }
+    component: () => import('@/views/Cart.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/checkout',
     name: 'Checkout',
-    component: () => import('@/components/checkout/CheckoutPage.vue'),
-    meta: { title: 'Checkout', requiresAuth: true }
+    component: () => import('@/views/Checkout.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/orders',
     name: 'Orders',
-    component: () => import('@/components/order/OrderList.vue'),
-    meta: { title: 'My Orders', requiresAuth: true }
+    component: () => import('@/views/Orders.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/orders/:id',
-    name: 'OrderDetail',
-    component: () => import('@/components/order/OrderDetail.vue'),
-    props: true,
-    meta: { title: 'Order Details', requiresAuth: true }
+    name: 'OrderDetails',
+    component: () => import('@/views/OrderDetails.vue'),
+    meta: { requiresAuth: true },
+    props: true
   },
-  /* Commented out until component is created
+  
+  // Other routes...
   {
-    path: '/favorites',
-    name: 'Favorites',
-    component: () => import('@/components/favorites/FavoritesList.vue'),
-    meta: { title: 'My Favorites', requiresAuth: true }
+    path: '/',
+    name: 'Home',
+    component: () => import('@/views/Home.vue')
   },
-  */
-  {
-    path: '/addresses',
-    name: 'Addresses',
-    component: () => import('@/components/address/AddressList.vue'),
-    meta: { title: 'My Addresses', requiresAuth: true }
-  },
-  /* Commented out until component is created
-  {
-    path: '/payment-methods',
-    name: 'PaymentMethods',
-    component: () => import('@/components/payment/PaymentMethodList.vue'),
-    meta: { title: 'Payment Methods', requiresAuth: true }
-  },
-  */
-  /* Commented out until component is created
-  {
-    path: '/about',
-    name: 'About',
-    component: () => import('@/components/static/AboutPage.vue'),
-    meta: { title: 'About Us' }
-  },
-  */
-  /* Commented out until component is created
-  {
-    path: '/contact',
-    name: 'Contact',
-    component: () => import('@/components/static/ContactPage.vue'),
-    meta: { title: 'Contact Us' }
-  },
-  */
-  /* Commented out until component is created
-  {
-    path: '/terms',
-    name: 'Terms',
-    component: () => import('@/components/static/TermsPage.vue'),
-    meta: { title: 'Terms of Service' }
-  },
-  */
-  /* Commented out until component is created
-  {
-    path: '/privacy',
-    name: 'Privacy',
-    component: () => import('@/components/static/PrivacyPage.vue'),
-    meta: { title: 'Privacy Policy' }
-  },
-  */
-  {
-    path: '/payment/status',
-    name: 'PaymentStatus',
-    component: PaymentStatusPage,
-    meta: {
-      requiresAuth: true,
-      title: 'Payment Status'
-    }
-  },
-  {
-    path: '/pages/:slug',
-    name: 'StaticPage',
-    component: StaticPage,
-    props: true,
-    meta: { title: route => route.params.slug }
-  },
-  // 404 page - using a simple component for now
+  
+  // 404 Not Found
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    component: { 
-      template: '<div class="not-found"><h1>404 - Page Not Found</h1><p>The page you are looking for does not exist.</p><router-link to="/">Go Home</router-link></div>' 
-    },
-    meta: { title: 'Page Not Found' }
+    component: () => import('@/views/NotFound.vue')
   }
-];
+]
 
-// Create router instance
 const router = createRouter({
-  history: createWebHistory(),
-  routes,
-  scrollBehavior(to, from, savedPosition) {
-    if (savedPosition) {
-      return savedPosition;
-    } else {
-      return { top: 0 };
+  history: createWebHistory(process.env.BASE_URL),
+  routes
+})
+
+// Navigation guards for authentication
+router.beforeEach(async (to, from, next) => {
+  // Check if route requires authentication
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    // Check authentication status
+    const isAuthenticated = store.getters['auth/isAuthenticated']
+    
+    if (!isAuthenticated) {
+      // If not authenticated, check if we can restore the session
+      const restored = await store.dispatch('auth/checkAuth')
+      
+      if (!restored) {
+        // Redirect to login if session can't be restored
+        next({
+          path: '/auth/login',
+          query: { redirect: to.fullPath }
+        })
+        return
+      }
     }
   }
-});
-
-// Navigation guards
-router.beforeEach((to, from, next) => {
-  // Update page title
-  document.title = to.meta.title ? `${to.meta.title} | UberEat` : 'UberEat';
   
-  // Check authentication for protected routes
-  const isAuthenticated = store.getters['auth/isAuthenticated'];
-  
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    // Redirect to login page if authentication is required
-    next({ 
-      name: 'Login', 
-      query: { redirect: to.fullPath } 
-    });
-  } else if (to.meta.guest && isAuthenticated) {
-    // Redirect to home page if the route is for guests only
-    next({ name: 'Home' });
-  } else {
-    // Proceed as normal
-    next();
+  // Check if route is for guests only (login, register, etc.)
+  if (to.matched.some(record => record.meta.guest)) {
+    const isAuthenticated = store.getters['auth/isAuthenticated']
+    
+    if (isAuthenticated) {
+      // If already authenticated, redirect to home
+      next({ path: '/' })
+      return
+    }
   }
-});
+  
+  // If role requirements are present, check user role
+  if (to.meta.roles && to.meta.roles.length > 0) {
+    const userRole = store.getters['auth/user']?.role
+    
+    if (!to.meta.roles.includes(userRole)) {
+      // If user doesn't have required role, redirect to appropriate page
+      if (userRole === 'admin') {
+        next({ path: '/admin' })
+      } else if (userRole === 'restaurant') {
+        next({ path: '/restaurant-admin' })
+      } else {
+        next({ path: '/' })
+      }
+      return
+    }
+  }
+  
+  next()
+})
 
-export default router;
+export default router

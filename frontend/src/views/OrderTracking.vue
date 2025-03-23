@@ -1,1055 +1,765 @@
 <template>
-  <v-container class="order-tracking-page py-8">
-    <div v-if="isLoading" class="text-center py-12">
-      <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-      <p class="mt-4">Loading order details...</p>
-    </div>
+  <div class="order-tracking-page">
+    <v-container class="tracker-container">
+      <v-card class="tracking-card">
+        <v-toolbar color="primary" flat>
+          <v-toolbar-title class="white--text">
+            Theo dõi đơn hàng #{{ orderNumberFormatted }}
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon @click="refreshData" :loading="isLoading">
+            <v-icon>mdi-refresh</v-icon>
+          </v-btn>
+        </v-toolbar>
 
-    <div v-else>
-      <!-- Order Status Header -->
-      <v-card class="mb-6">
-        <v-card-text class="pa-4">
-          <v-row>
-            <v-col cols="12" md="8">
-              <div class="d-flex align-center mb-2">
-                <h1 class="text-h5 font-weight-bold">Order #{{ order.id }}</h1>
-                <v-chip
-                  :color="getStatusColor(order.status)"
-                  class="ml-4"
-                  size="small"
-                >
-                  {{ getStatusText(order.status) }}
-                </v-chip>
-              </div>
-              <p class="text-subtitle-1 mb-1">
-                <v-icon size="small" class="mr-1">mdi-store</v-icon>
-                {{ order.restaurant.name }}
-              </p>
-              <p class="text-body-2 text-medium-emphasis mb-4">
-                <v-icon size="small" class="mr-1">mdi-calendar-clock</v-icon>
-                Placed on {{ formatDate(order.createdAt) }} at {{ formatTime(order.createdAt) }}
-              </p>
-              
-              <div v-if="order.status === 'delivered'" class="success-message pa-4 rounded mb-4">
-                <div class="d-flex align-center mb-2">
-                  <v-icon color="success" class="mr-2">mdi-check-circle</v-icon>
-                  <span class="text-h6 font-weight-bold">Order Delivered!</span>
+        <!-- Order Status Timeline -->
+        <v-card-text>
+          <div class="mt-4 mb-4">
+            <h3 class="text-h6 mb-3">Trạng thái đơn hàng</h3>
+            <v-timeline side="end" align="start" truncate-line="both">
+              <v-timeline-item 
+                v-for="(status, index) in orderStatusTimeline" 
+                :key="index"
+                :dot-color="getStatusColor(status.completed, status.current)"
+                :size="status.current ? 'large' : 'small'"
+                :icon="status.icon"
+              >
+                <div class="d-flex align-center mb-1 mt-n2">
+                  <strong :class="{'primary--text': status.current }">{{ status.label }}</strong>
+                  <v-spacer></v-spacer>
+                  <span class="text-caption text-grey">{{ formatTime(status.time) }}</span>
                 </div>
-                <p>Your order was delivered at {{ formatTime(order.deliveredAt) }}. Enjoy your meal!</p>
-                <v-btn class="mt-2" variant="text" color="primary" @click="rateOrder">
-                  Rate Your Order
-                </v-btn>
-              </div>
-              
-              <div v-else-if="order.status === 'cancelled'" class="error-message pa-4 rounded mb-4">
-                <div class="d-flex align-center mb-2">
-                  <v-icon color="error" class="mr-2">mdi-close-circle</v-icon>
-                  <span class="text-h6 font-weight-bold">Order Cancelled</span>
+                <div v-if="status.message" class="text-body-2 mt-1">
+                  {{ status.message }}
                 </div>
-                <p>{{ order.cancellationReason }}</p>
-                <v-btn class="mt-2" color="primary" to="/restaurants">
-                  Order Again
-                </v-btn>
-              </div>
-              
-              <div v-else>
-                <p class="text-body-1 mb-1">
-                  <strong>Estimated delivery:</strong> {{ order.estimatedDeliveryTime }}
-                </p>
-                <p v-if="order.status === 'on_the_way'" class="text-body-2 text-medium-emphasis">
-                  Your order is on the way! Track your driver on the map.
-                </p>
-              </div>
-            </v-col>
-            
-            <v-col cols="12" md="4" class="d-flex justify-end align-start">
+              </v-timeline-item>
+            </v-timeline>
+          </div>
+
+          <!-- Delivery ETA -->
+          <v-card class="mb-4 delivery-eta-card" v-if="order && order.status !== 'delivered' && order.status !== 'cancelled'">
+            <v-card-text class="d-flex align-center">
+              <v-icon class="mr-2" color="primary">mdi-clock-outline</v-icon>
               <div>
-                <v-btn 
-                  variant="outlined" 
-                  class="mb-2 ml-auto d-block"
-                  prepend-icon="mdi-chat"
-                  :href="`tel:${order.driver?.phone || order.restaurant.phone}`"
-                  v-if="order.status === 'on_the_way' || order.status === 'preparing'"
-                >
-                  Contact {{ order.status === 'on_the_way' ? 'Driver' : 'Restaurant' }}
-                </v-btn>
-                <v-btn 
-                  variant="outlined"
-                  color="error"
-                  class="ml-auto d-block"
-                  prepend-icon="mdi-cancel"
-                  @click="showCancelDialog = true"
-                  v-if="['pending', 'confirmed', 'preparing'].includes(order.status)"
-                >
-                  Cancel Order
-                </v-btn>
+                <div class="text-subtitle-2">Thời gian giao hàng ước tính</div>
+                <div class="text-h6 mt-1">{{ formatETA(order.estimatedDeliveryTime) }}</div>
               </div>
-            </v-col>
-          </v-row>
-        </v-card-text>
-      </v-card>
-
-      <v-row>
-        <!-- Order Progress and Map (left) -->
-        <v-col cols="12" md="8">
-          <!-- Order Progress -->
-          <v-card class="mb-6" v-if="order.status !== 'cancelled'">
-            <v-card-title>Order Progress</v-card-title>
-            <v-card-text>
-              <v-timeline align="start">
-                <v-timeline-item
-                  dot-color="primary"
-                  size="small"
-                  fill-dot
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1 font-weight-bold">Order Placed</div>
-                      <div class="text-caption">Your order has been received by the restaurant</div>
-                    </div>
-                    <div class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.createdAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-                
-                <v-timeline-item
-                  dot-color="primary"
-                  size="small"
-                  :fill-dot="order.status !== 'pending'"
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1" :class="{ 'font-weight-bold': order.status !== 'pending' }">
-                        Order Confirmed
-                      </div>
-                      <div class="text-caption">Restaurant has confirmed your order</div>
-                    </div>
-                    <div v-if="order.confirmedAt" class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.confirmedAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-                
-                <v-timeline-item
-                  dot-color="primary"
-                  size="small"
-                  :fill-dot="['preparing', 'ready', 'on_the_way', 'delivered'].includes(order.status)"
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1" :class="{ 'font-weight-bold': ['preparing', 'ready', 'on_the_way', 'delivered'].includes(order.status) }">
-                        Preparing Order
-                      </div>
-                      <div class="text-caption">Your food is being prepared</div>
-                    </div>
-                    <div v-if="order.preparingAt" class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.preparingAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-                
-                <v-timeline-item
-                  dot-color="primary"
-                  size="small"
-                  :fill-dot="['ready', 'on_the_way', 'delivered'].includes(order.status)"
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1" :class="{ 'font-weight-bold': ['ready', 'on_the_way', 'delivered'].includes(order.status) }">
-                        Ready for Pickup
-                      </div>
-                      <div class="text-caption">Your order is ready and waiting for the driver</div>
-                    </div>
-                    <div v-if="order.readyAt" class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.readyAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-                
-                <v-timeline-item
-                  dot-color="primary"
-                  size="small"
-                  :fill-dot="['on_the_way', 'delivered'].includes(order.status)"
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1" :class="{ 'font-weight-bold': ['on_the_way', 'delivered'].includes(order.status) }">
-                        On the Way
-                      </div>
-                      <div v-if="order.driver && ['on_the_way', 'delivered'].includes(order.status)" class="text-caption">
-                        {{ order.driver.name }} is delivering your order
-                      </div>
-                      <div v-else class="text-caption">
-                        Your order will be picked up by a driver
-                      </div>
-                    </div>
-                    <div v-if="order.pickedUpAt" class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.pickedUpAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-                
-                <v-timeline-item
-                  dot-color="success"
-                  size="small"
-                  :fill-dot="order.status === 'delivered'"
-                >
-                  <div class="d-flex justify-space-between">
-                    <div>
-                      <div class="text-subtitle-1" :class="{ 'font-weight-bold': order.status === 'delivered' }">
-                        Delivered
-                      </div>
-                      <div class="text-caption">Your order has been delivered</div>
-                    </div>
-                    <div v-if="order.deliveredAt" class="text-caption text-medium-emphasis">
-                      {{ formatTime(order.deliveredAt) }}
-                    </div>
-                  </div>
-                </v-timeline-item>
-              </v-timeline>
+              <v-spacer></v-spacer>
+              <v-chip v-if="etaCountdown" color="primary" text-color="white">
+                {{ etaCountdown }}
+              </v-chip>
             </v-card-text>
           </v-card>
 
-          <!-- Map -->
-          <v-card class="mb-6 d-flex flex-column" v-if="['on_the_way', 'preparing', 'ready'].includes(order.status)">
-            <v-card-title class="d-flex justify-space-between align-center">
-              <div class="d-flex align-center">
-                <span>Live Tracking</span>
-                <v-chip 
-                  v-if="trackingStatus !== 'active'" 
-                  size="small" 
-                  :color="trackingStatus === 'connecting' ? 'warning' : 'error'"
-                  class="ml-2"
-                >
-                  {{ trackingStatus === 'connecting' ? 'Connecting...' : 'Connection lost' }}
-                </v-chip>
-              </div>
-              <div>
-                <v-btn
-                  v-if="trackingStatus === 'error'"
-                  size="small"
-                  color="error"
-                  variant="text"
-                  prepend-icon="mdi-refresh"
-                  @click="retryConnection"
-                  class="mr-2"
-                >
-                  Retry
-                </v-btn>
-                <v-chip v-if="driverInfo.eta" color="primary" size="small">
-                  <v-icon start size="small">mdi-clock-outline</v-icon>
-                  Arriving in {{ driverInfo.eta }} mins
-                </v-chip>
-              </div>
-            </v-card-title>
-            <v-card-text class="pa-0 flex-grow-1" style="min-height: 400px;">
-              <delivery-map
-                v-if="mapReady && trackingStatus !== 'error'"
-                :restaurant-location="restaurantLocation"
-                :delivery-location="deliveryLocation"
+          <!-- Live Map with Driver Location -->
+          <div class="map-wrapper mb-4">
+            <h3 class="text-h6 mb-2">Vị trí tài xế</h3>
+            <div class="live-map">
+              <LiveMap
+                v-if="mapDataReady"
                 :driver-location="driverLocation"
-                :restaurant-name="order.restaurant?.name || 'Restaurant'"
-                :delivery-address="order.deliveryAddress || 'Delivery Address'"
-                :driver-info="driverInfo"
-                :height="400"
-                show-location-details
-                @map-loaded="onMapLoaded"
-                @map-error="onMapError"
-              ></delivery-map>
-              <div v-else-if="trackingStatus === 'error'" class="map-placeholder d-flex flex-column justify-center align-center" style="height: 400px;">
-                <v-icon size="64" color="error" class="mb-4">mdi-access-point-network-off</v-icon>
-                <p class="text-h6 mb-2">Connection Error</p>
-                <p class="text-body-2 text-center mb-4" style="max-width: 300px;">
-                  {{ trackingError || 'Unable to connect to tracking service. Please try again.' }}
-                </p>
-                <v-btn color="primary" prepend-icon="mdi-refresh" @click="retryConnection">
-                  Retry Connection
-                </v-btn>
+                :delivery-address="deliveryAddress"
+                :restaurant-location="restaurantLocation"
+                :route-points="routePoints"
+                :eta="order?.estimatedDeliveryTime"
+                @map-ready="onMapReady"
+              />
+              <div v-else class="map-loading-placeholder d-flex align-center justify-center">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+                <span class="ml-2">Đang tải bản đồ...</span>
               </div>
-              <div v-else class="map-placeholder d-flex flex-column justify-center align-center" style="height: 400px;">
-                <v-progress-circular indeterminate color="primary" size="48" class="mb-4"></v-progress-circular>
-                <p>{{ trackingStatus === 'connecting' ? 'Connecting to tracking service...' : 'Loading map...' }}</p>
-              </div>
-            </v-card-text>
-          </v-card>
-
-          <!-- Driver Information -->
-          <v-card v-if="order.driver && order.status === 'on_the_way'">
-            <v-card-title>Your Driver</v-card-title>
-            <v-card-text>
-              <div class="d-flex align-center">
-                <v-avatar size="64" class="mr-4">
-                  <v-img v-if="order.driver.avatar" :src="order.driver.avatar" alt="Driver" cover></v-img>
-                  <v-icon v-else size="32" color="primary">mdi-account</v-icon>
+            </div>
+            
+            <!-- Driver Info Card -->
+            <v-card v-if="order && order.driver" class="mt-3 driver-info-card">
+              <v-card-text class="d-flex align-center">
+                <v-avatar size="50" class="mr-3">
+                  <v-img :src="order.driver.avatar || '/img/avatar-placeholder.png'" alt="Driver"></v-img>
                 </v-avatar>
                 <div>
-                  <div class="text-h6">{{ order.driver.name }}</div>
-                  <div class="d-flex align-center">
-                    <v-rating
-                      :model-value="order.driver.rating"
-                      color="amber"
-                      density="compact"
-                      half-increments
-                      readonly
-                      size="small"
-                    ></v-rating>
-                    <span class="ml-2 text-caption">{{ order.driver.rating }} ({{ order.driver.totalDeliveries }}+ deliveries)</span>
-                  </div>
+                  <div class="text-subtitle-1 font-weight-bold">{{ order.driver.name }}</div>
+                  <div class="text-body-2">{{ order.driver.vehicleInfo }}</div>
                 </div>
                 <v-spacer></v-spacer>
-                <v-btn 
-                  color="primary" 
-                  prepend-icon="mdi-phone" 
-                  variant="outlined"
-                  :href="`tel:${order.driver.phone}`"
-                >
-                  Call
+                <v-btn icon color="primary" @click="callDriver">
+                  <v-icon>mdi-phone</v-icon>
                 </v-btn>
-              </div>
-            </v-card-text>
-          </v-card>
-        </v-col>
+                <v-btn icon color="primary" class="ml-2" @click="openChat">
+                  <v-icon>mdi-chat</v-icon>
+                </v-btn>
+              </v-card-text>
+            </v-card>
+          </div>
 
-        <!-- Order Details (right) -->
-        <v-col cols="12" md="4">
-          <v-card class="mb-6">
-            <v-card-title>Order Details</v-card-title>
-            <v-card-text>
-              <div v-for="(item, index) in order.items" :key="index" class="mb-3 pb-3" :class="{'border-bottom': index < order.items.length - 1}">
-                <div class="d-flex justify-space-between">
-                  <div>
-                    <div class="text-subtitle-1">{{ item.quantity }}× {{ item.name }}</div>
-                    <div v-if="item.options && item.options.length" class="text-caption text-grey">
-                      {{ item.options.join(', ') }}
-                    </div>
-                  </div>
-                  <div class="text-subtitle-1">${{ (item.price * item.quantity).toFixed(2) }}</div>
-                </div>
-              </div>
-              
-              <v-divider class="my-4"></v-divider>
-              
-              <div class="d-flex justify-space-between mb-2">
-                <span>Subtotal</span>
-                <span>${{ order.subtotal.toFixed(2) }}</span>
-              </div>
-              <div class="d-flex justify-space-between mb-2">
-                <span>Delivery Fee</span>
-                <span>${{ order.deliveryFee.toFixed(2) }}</span>
-              </div>
-              <div v-if="order.tip" class="d-flex justify-space-between mb-2">
-                <span>Driver Tip</span>
-                <span>${{ order.tip.toFixed(2) }}</span>
-              </div>
-              <div class="d-flex justify-space-between mb-2">
-                <span>Tax</span>
-                <span>${{ order.tax.toFixed(2) }}</span>
-              </div>
-              <div v-if="order.discount" class="d-flex justify-space-between mb-2 text-success">
-                <span>Discount</span>
-                <span>-${{ order.discount.toFixed(2) }}</span>
-              </div>
-              
-              <div class="d-flex justify-space-between font-weight-bold text-subtitle-1 mt-4">
-                <span>Total</span>
-                <span>${{ order.total.toFixed(2) }}</span>
-              </div>
-            </v-card-text>
-          </v-card>
-          
-          <v-card class="mb-6">
-            <v-card-title>Delivery Information</v-card-title>
-            <v-card-text>
-              <div class="mb-4">
-                <div class="text-subtitle-2 font-weight-bold mb-1">Delivery Address</div>
-                <p class="text-body-2">{{ order.deliveryAddress }}</p>
-                <p v-if="order.deliveryInstructions" class="text-caption text-medium-emphasis mt-1">
-                  <strong>Instructions:</strong> {{ order.deliveryInstructions }}
-                </p>
-              </div>
-              
-              <div>
-                <div class="text-subtitle-2 font-weight-bold mb-1">Contact</div>
-                <p class="text-body-2">{{ order.customerName }}</p>
-                <p class="text-body-2">{{ order.customerPhone }}</p>
-              </div>
-            </v-card-text>
-          </v-card>
-          
-          <v-card v-if="order.status === 'delivered'">
-            <v-card-title>Need Help?</v-card-title>
-            <v-card-text>
-              <p class="text-body-2 mb-4">Something wrong with your order?</p>
-              <v-btn 
-                color="primary" 
-                variant="outlined" 
-                prepend-icon="mdi-help-circle" 
-                block
-                @click="reportIssue"
-              >
-                Report an Issue
-              </v-btn>
-            </v-card-text>
-          </v-card>
-          
-          <v-card v-else-if="['pending', 'confirmed', 'preparing'].includes(order.status)">
-            <v-card-title>Delivery Updates</v-card-title>
-            <v-card-text>
-              <p class="text-body-2 mb-4">We'll send you notifications about your order status.</p>
-              <div class="d-flex align-center mb-3">
-                <v-switch 
-                  v-model="notificationPrefs.sms" 
-                  color="primary" 
-                  hide-details
-                  class="mr-2"
-                ></v-switch>
-                <span>Receive SMS updates</span>
-              </div>
-              <div class="d-flex align-center">
-                <v-switch 
-                  v-model="notificationPrefs.email" 
-                  color="primary" 
-                  hide-details
-                  class="mr-2"
-                ></v-switch>
-                <span>Receive email updates</span>
-              </div>
-            </v-card-text>
-          </v-card>
-        </v-col>
-      </v-row>
-    </div>
-
-    <!-- Cancel Order Dialog -->
-    <v-dialog v-model="showCancelDialog" max-width="500">
-      <v-card>
-        <v-card-title>Cancel Order</v-card-title>
-        <v-card-text>
-          <p class="mb-4">Are you sure you want to cancel your order? Cancellation fees may apply.</p>
-          <v-select
-            v-model="cancellationReason"
-            label="Reason for cancellation"
-            :items="cancellationReasons"
-            variant="outlined"
-          ></v-select>
+          <!-- Order details summary -->
+          <div class="order-summary">
+            <h3 class="text-h6 mb-2">Chi tiết đơn hàng</h3>
+            <v-card>
+              <v-list>
+                <v-list-item v-for="(item, i) in order?.items" :key="i">
+                  <v-list-item-title>
+                    {{ item.quantity }}x {{ item.name }}
+                    <span v-if="item.options && item.options.length" class="text-body-2 text-grey">
+                      ({{ item.options.map(o => o.value).join(', ') }})
+                    </span>
+                  </v-list-item-title>
+                  <v-list-item-action>
+                    {{ formatPrice(item.price * item.quantity) }}
+                  </v-list-item-action>
+                </v-list-item>
+                
+                <v-divider></v-divider>
+                
+                <v-list-item>
+                  <v-list-item-title>Tổng cộng món</v-list-item-title>
+                  <v-list-item-action>{{ formatPrice(order?.subtotal) }}</v-list-item-action>
+                </v-list-item>
+                
+                <v-list-item v-if="order?.deliveryFee">
+                  <v-list-item-title>Phí giao hàng</v-list-item-title>
+                  <v-list-item-action>{{ formatPrice(order?.deliveryFee) }}</v-list-item-action>
+                </v-list-item>
+                
+                <v-list-item v-if="order?.discount">
+                  <v-list-item-title>Giảm giá</v-list-item-title>
+                  <v-list-item-action class="success--text">-{{ formatPrice(order?.discount) }}</v-list-item-action>
+                </v-list-item>
+                
+                <v-list-item class="font-weight-bold">
+                  <v-list-item-title>Tổng thanh toán</v-list-item-title>
+                  <v-list-item-action>{{ formatPrice(order?.total) }}</v-list-item-action>
+                </v-list-item>
+              </v-list>
+            </v-card>
+          </div>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showCancelDialog = false">
-            Keep Order
-          </v-btn>
-          <v-btn 
-            color="error" 
-            @click="cancelOrder" 
-            :loading="isCancelling"
-          >
-            Cancel Order
-          </v-btn>
-        </v-card-actions>
       </v-card>
-    </v-dialog>
+    </v-container>
 
-    <!-- Rate Order Dialog -->
-    <v-dialog v-model="showRatingDialog" max-width="500">
+    <!-- Chat Dialog -->
+    <v-dialog v-model="showChatDialog" max-width="400">
       <v-card>
-        <v-card-title>Rate Your Order</v-card-title>
-        <v-card-text>
-          <div class="text-center py-4">
-            <div class="text-subtitle-1 mb-2">Food Quality</div>
-            <v-rating
-              v-model="rating.food"
-              color="amber"
-              hover
-              half-increments
-              size="large"
-            ></v-rating>
+        <v-toolbar color="primary" dark>
+          <v-toolbar-title>
+            Chat với tài xế
+          </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <v-btn icon @click="showChatDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-toolbar>
+        <v-card-text class="chat-container" ref="chatContainer">
+          <div v-for="(message, i) in chatMessages" :key="i" 
+               :class="['message-bubble', message.fromDriver ? 'from-driver' : 'from-me']">
+            <div class="message-content">{{ message.text }}</div>
+            <div class="message-time">{{ formatTime(message.time) }}</div>
           </div>
-          
-          <div class="text-center py-4">
-            <div class="text-subtitle-1 mb-2">Delivery Experience</div>
-            <v-rating
-              v-model="rating.delivery"
-              color="amber"
-              hover
-              half-increments
-              size="large"
-            ></v-rating>
-          </div>
-          
+        </v-card-text>
+        <v-card-actions class="chat-input">
           <v-text-field
-            v-model="rating.comment"
-            label="Comments (optional)"
+            v-model="chatMessage"
+            placeholder="Nhập tin nhắn..."
+            append-inner-icon="mdi-send"
             variant="outlined"
-            counter="250"
-            rows="3"
+            hide-details
+            @click:append-inner="sendMessage"
+            @keyup.enter="sendMessage"
           ></v-text-field>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showRatingDialog = false">
-            Skip
-          </v-btn>
-          <v-btn 
-            color="primary" 
-            @click="submitRating" 
-            :loading="isSubmittingRating"
-            :disabled="!canSubmitRating"
-          >
-            Submit
-          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Issue Reporting Dialog -->
-    <v-dialog v-model="showIssueDialog" max-width="500">
-      <v-card>
-        <v-card-title>Report an Issue</v-card-title>
-        <v-card-text>
-          <v-select
-            v-model="issue.type"
-            label="What went wrong?"
-            :items="issueTypes"
-            variant="outlined"
-            class="mb-4"
-          ></v-select>
-          
-          <v-textarea
-            v-model="issue.description"
-            label="Please provide details"
-            variant="outlined"
-            counter="500"
-            rows="4"
-            :rules="[v => !!v || 'Please describe the issue']"
-          ></v-textarea>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn variant="text" @click="showIssueDialog = false">
-            Cancel
-          </v-btn>
-          <v-btn 
-            color="primary" 
-            @click="submitIssue" 
-            :loading="isSubmittingIssue"
-            :disabled="!issue.description"
-          >
-            Submit
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </v-container>
+    <!-- Notification Toast -->
+    <v-snackbar
+      v-model="showNotification"
+      :color="notificationColor"
+      :timeout="5000"
+      location="top"
+    >
+      {{ notificationMessage }}
+      <template v-slot:actions>
+        <v-btn
+          variant="text"
+          @click="showNotification = false"
+        >
+          Đóng
+        </v-btn>
+      </template>
+    </v-snackbar>
+  </div>
 </template>
 
-<script>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { useStore } from 'vuex';
-import { useRoute, useRouter } from 'vue-router';
-import DeliveryMap from '@/components/common/DeliveryMap.vue';
-import websocketService from '@/services/websocket';
-import L from 'leaflet';
-import { io } from 'socket.io-client';
-import 'leaflet/dist/leaflet.css';
+<script setup>
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useOrderStore } from '@/store/order'
+import { useNotificationStore } from '@/store/notification'
+import { formatCurrency } from '@/utils/format'
+import LiveMap from '@/components/LiveMap.vue'
+import io from 'socket.io-client'
 
-export default {
-  name: 'OrderTracking',
-  components: {
-    DeliveryMap
-  },
+// Router
+const route = useRoute()
+const router = useRouter()
+
+// Stores
+const orderStore = useOrderStore()
+const notificationStore = useNotificationStore()
+
+// Data
+const order = ref(null)
+const isLoading = ref(false)
+const socket = ref(null)
+const driverLocation = ref(null)
+const restaurantLocation = ref(null)
+const deliveryAddress = ref(null)
+const routePoints = ref([])
+const etaInterval = ref(null)
+const etaCountdown = ref(null)
+const mapDataReady = ref(false)
+const chatMessages = ref([])
+const chatMessage = ref('')
+const showChatDialog = ref(false)
+const showNotification = ref(false)
+const notificationMessage = ref('')
+const notificationColor = ref('primary')
+
+// Computed
+const orderId = computed(() => route.params.id)
+
+const orderNumberFormatted = computed(() => {
+  return order.value?.orderNumber.toString().padStart(6, '0') || ''
+})
+
+const orderStatusTimeline = computed(() => {
+  if (!order.value) return []
   
-  setup() {
-    const store = useStore();
-    const route = useRoute();
-    const router = useRouter();
-    
-    // Order state - use the orderTracking module instead of local state
-    const isLoading = ref(true);
-    const socket = ref(null);
-    const map = ref(null);
-    const driverMarker = ref(null);
-    
-    // Map and location state
-    const mapReady = ref(false);
-    const restaurantLocation = ref({ lat: 0, lng: 0 });
-    const deliveryLocation = ref({ lat: 0, lng: 0 });
-    
-    // Cancel order
-    const showCancelDialog = ref(false);
-    const cancellationReason = ref('');
-    const cancellationReasons = [
-      'Changed my mind',
-      'Ordered by mistake',
-      'Delivery taking too long',
-      'Want to change my order',
-      'Restaurant taking too long',
-      'Other'
-    ];
-    const isCancelling = ref(false);
-    
-    // Rating
-    const showRatingDialog = ref(false);
-    const rating = ref({
-      food: 0,
-      delivery: 0,
-      comment: ''
-    });
-    const isSubmittingRating = ref(false);
-    
-    // Issue reporting
-    const showIssueDialog = ref(false);
-    const issue = ref({
-      type: '',
-      description: ''
-    });
-    const issueTypes = [
-      'Missing items',
-      'Incorrect items',
-      'Food quality issue',
-      'Late delivery',
-      'Delivery driver issue',
-      'Damaged items',
-      'Other'
-    ];
-    const isSubmittingIssue = ref(false);
-    
-    // Notification preferences
-    const notificationPrefs = ref({
-      sms: true,
-      email: true
-    });
-    
-    // Computed properties to access orderTracking store state
-    const order = computed(() => store.getters['orderTracking/getCurrentOrder'] || {});
-    const driverLocation = computed(() => store.getters['orderTracking/getDriverLocation']);
-    const trackingStatus = computed(() => store.state.orderTracking.trackingStatus);
-    const trackingError = computed(() => store.getters['orderTracking/getError']);
-    const orderUpdates = computed(() => store.getters['orderTracking/getOrderUpdates']);
-    const eta = computed(() => store.getters['orderTracking/getEta']);
-    
-    // Computed driver info
-    const driverInfo = computed(() => {
-      if (!order.value || !order.value.driver) return {};
-      
-      return {
-        name: order.value.driver.name,
-        phone: order.value.driver.phone,
-        avatar: order.value.driver.avatar,
-        rating: order.value.driver.rating,
-        eta: eta.value || order.value.driverTimeAway,
-        status: order.value.status
-      };
-    });
-    
-    // Fetch order data
-    const fetchOrder = async () => {
-      isLoading.value = true;
-      
-      try {
-        const orderId = route.params.id;
-        const orderData = await store.dispatch('orders/fetchOrderDetails', orderId);
-        
-        // Setup map locations
-        if (orderData.restaurant && orderData.restaurant.location) {
-          restaurantLocation.value = orderData.restaurant.location;
-        }
-        
-        if (orderData.deliveryLocationCoordinates) {
-          deliveryLocation.value = orderData.deliveryLocationCoordinates;
-        }
-        
-        // Start tracking with the orderTracking module
-        if (['confirmed', 'preparing', 'ready', 'on_the_way'].includes(orderData.status)) {
-          store.dispatch('orderTracking/startTracking', orderData);
-        }
-        
-        isLoading.value = false;
-      } catch (error) {
-        console.error('Failed to load order:', error);
-        isLoading.value = false;
-        
-        // Show error notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Failed to load order details. Please try again.',
-          color: 'error'
-        });
-        
-        // Redirect to orders page
-        router.push('/orders');
+  const statusSteps = [
+    {
+      status: 'pending',
+      label: 'Đã đặt hàng',
+      icon: 'mdi-cart-check',
+      completed: false,
+      current: false,
+      time: order.value.createdAt,
+      message: 'Đơn hàng đã được nhà hàng ghi nhận'
+    },
+    {
+      status: 'confirmed',
+      label: 'Đã xác nhận',
+      icon: 'mdi-check-circle',
+      completed: false,
+      current: false,
+      time: order.value.confirmedAt,
+      message: 'Nhà hàng đang chuẩn bị món ăn'
+    },
+    {
+      status: 'preparing',
+      label: 'Đang chuẩn bị',
+      icon: 'mdi-food',
+      completed: false,
+      current: false,
+      time: order.value.preparingAt,
+      message: 'Nhà hàng đang chuẩn bị món ăn'
+    },
+    {
+      status: 'ready',
+      label: 'Sẵn sàng giao hàng',
+      icon: 'mdi-package-variant-closed',
+      completed: false,
+      current: false,
+      time: order.value.readyAt,
+      message: 'Đơn hàng đã sẵn sàng để giao'
+    },
+    {
+      status: 'pickup',
+      label: 'Tài xế đã lấy hàng',
+      icon: 'mdi-bike',
+      completed: false,
+      current: false,
+      time: order.value.pickedUpAt,
+      message: 'Tài xế đang trên đường đến'
+    },
+    {
+      status: 'delivering',
+      label: 'Đang giao hàng',
+      icon: 'mdi-truck-delivery',
+      completed: false,
+      current: false,
+      time: order.value.deliveringAt,
+      message: 'Đơn hàng đang được giao đến bạn'
+    },
+    {
+      status: 'delivered',
+      label: 'Đã giao hàng',
+      icon: 'mdi-check-decagram',
+      completed: false,
+      current: false,
+      time: order.value.deliveredAt,
+      message: 'Đơn hàng đã được giao thành công'
+    }
+  ]
+  
+  // If cancelled, replace the timeline with a single cancelled status
+  if (order.value.status === 'cancelled') {
+    return [
+      {
+        status: 'cancelled',
+        label: 'Đã hủy',
+        icon: 'mdi-cancel',
+        completed: true,
+        current: false,
+        time: order.value.cancelledAt,
+        message: order.value.cancellationReason || 'Đơn hàng đã bị hủy'
       }
-    };
-    
-    // Format date and time helpers
-    const formatDate = (dateString) => {
-      if (!dateString) return '';
-      
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-    };
-    
-    const formatTime = (dateString) => {
-      if (!dateString) return '';
-      
-      const date = new Date(dateString);
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: true
-      });
-    };
-    
-    // Get status color and text
-    const getStatusColor = (status) => {
-      const statusColors = {
-        pending: 'warning',
-        confirmed: 'info',
-        preparing: 'info',
-        ready: 'info',
-        on_the_way: 'primary',
-        delivered: 'success',
-        cancelled: 'error'
-      };
-      
-      return statusColors[status] || 'grey';
-    };
-    
-    const getStatusText = (status) => {
-      const statusText = {
-        pending: 'Pending',
-        confirmed: 'Confirmed',
-        preparing: 'Preparing',
-        ready: 'Ready for pickup',
-        on_the_way: 'On the way',
-        delivered: 'Delivered',
-        cancelled: 'Cancelled'
-      };
-      
-      return statusText[status] || 'Unknown';
-    };
-    
-    // Map event handlers
-    const onMapLoaded = (mapInstance) => {
-      mapReady.value = true;
-      console.log('Map loaded successfully');
-    };
-    
-    const onMapError = (error) => {
-      console.error('Map error:', error);
-      
-      // Show error notification
-      store.dispatch('ui/showSnackbar', {
-        text: 'Failed to load map. Please refresh the page.',
-        color: 'error'
-      });
-    };
-    
-    // Retry connection when websocket has error
-    const retryConnection = () => {
-      store.dispatch('orderTracking/retryConnection');
-    };
-    
-    // Cancel order
-    const cancelOrder = async () => {
-      if (!cancellationReason.value) {
-        store.dispatch('ui/showSnackbar', {
-          text: 'Please select a reason for cancellation',
-          color: 'error'
-        });
-        return;
-      }
-      
-      isCancelling.value = true;
-      
-      try {
-        await store.dispatch('orders/cancelOrder', {
-          orderId: order.value.id,
-          reason: cancellationReason.value
-        });
-        
-        // Update order in tracking store
-        store.dispatch('orderTracking/updateOrderInfo', {
-          ...order.value,
-          status: 'cancelled',
-          cancellationReason: cancellationReason.value
-        });
-        
-        // Close dialog
-        showCancelDialog.value = false;
-        
-        // Show success notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Order cancelled successfully',
-          color: 'success'
-        });
-        
-        // Stop tracking
-        store.dispatch('orderTracking/stopTracking');
-      } catch (error) {
-        console.error('Failed to cancel order:', error);
-        
-        // Show error notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Failed to cancel order. Please try again.',
-          color: 'error'
-        });
-      } finally {
-        isCancelling.value = false;
-      }
-    };
-    
-    // Rating
-    const rateOrder = () => {
-      showRatingDialog.value = true;
-    };
-    
-    const canSubmitRating = computed(() => {
-      return rating.value.food > 0 && rating.value.delivery > 0;
-    });
-    
-    const submitRating = async () => {
-      if (!canSubmitRating.value) return;
-      
-      isSubmittingRating.value = true;
-      
-      try {
-        await store.dispatch('orders/rateOrder', {
-          orderId: order.value.id,
-          restaurantId: order.value.restaurant.id,
-          foodRating: rating.value.food,
-          deliveryRating: rating.value.delivery,
-          comment: rating.value.comment
-        });
-        
-        // Update order in tracking store
-        store.dispatch('orderTracking/updateOrderInfo', {
-          ...order.value,
-          isRated: true
-        });
-        
-        // Close dialog
-        showRatingDialog.value = false;
-        
-        // Show success notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Thank you for your feedback!',
-          color: 'success'
-        });
-      } catch (error) {
-        console.error('Failed to submit rating:', error);
-        
-        // Show error notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Failed to submit rating. Please try again.',
-          color: 'error'
-        });
-      } finally {
-        isSubmittingRating.value = false;
-      }
-    };
-    
-    // Issue reporting
-    const reportIssue = () => {
-      showIssueDialog.value = true;
-    };
-    
-    const submitIssue = async () => {
-      if (!issue.value.type || !issue.value.description) {
-        store.dispatch('ui/showSnackbar', {
-          text: 'Please fill in all fields',
-          color: 'error'
-        });
-        return;
-      }
-      
-      isSubmittingIssue.value = true;
-      
-      try {
-        await store.dispatch('orders/reportIssue', {
-          orderId: order.value.id,
-          issueType: issue.value.type,
-          description: issue.value.description
-        });
-        
-        // Close dialog
-        showIssueDialog.value = false;
-        
-        // Reset form
-        issue.value = {
-          type: '',
-          description: ''
-        };
-        
-        // Show success notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Your issue has been reported. Our team will contact you shortly.',
-          color: 'success'
-        });
-      } catch (error) {
-        console.error('Failed to submit issue:', error);
-        
-        // Show error notification
-        store.dispatch('ui/showSnackbar', {
-          text: 'Failed to submit issue. Please try again.',
-          color: 'error'
-        });
-      } finally {
-        isSubmittingIssue.value = false;
-      }
-    };
-    
-    // Notification preferences
-    const updateNotificationPrefs = async () => {
-      try {
-        await store.dispatch('user/updateNotificationPreferences', {
-          orderId: order.value.id,
-          preferences: {
-            sms: notificationPrefs.value.sms,
-            email: notificationPrefs.value.email
-          }
-        });
-      } catch (error) {
-        console.error('Failed to update notification preferences:', error);
-      }
-    };
-    
-    // Watch for changes to notification preferences
-    watch(notificationPrefs, () => {
-      updateNotificationPrefs();
-    }, { deep: true });
-    
-    // Watch for order status changes to prompt for rating
-    watch(() => order.value.status, (newStatus, oldStatus) => {
-      if (newStatus === 'delivered' && oldStatus !== 'delivered' && !order.value.isRated) {
-        // Delay the rating dialog to give the user time to see the delivery notification
-        setTimeout(() => {
-          showRatingDialog.value = true;
-        }, 2000);
-      }
-    });
-    
-    const initializeMap = () => {
-      if (!map.value && order.value.status === 'on_the_way') {
-        map.value = L.map('map').setView([0, 0], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(map.value);
-
-        driverMarker.value = L.marker([0, 0])
-          .addTo(map.value)
-          .bindPopup('Driver Location');
-      }
-    };
-
-    const updateDriverLocation = (location) => {
-      if (map.value && driverMarker.value) {
-        const { latitude, longitude } = location;
-        const newLatLng = [latitude, longitude];
-        
-        driverMarker.value.setLatLng(newLatLng);
-        map.value.setView(newLatLng);
-      }
-    };
-
-    // Lifecycle hooks
-    onMounted(() => {
-      fetchOrder();
-
-      // Initialize Socket.IO connection
-      socket.value = io(import.meta.env.VITE_API_URL);
-      socket.value.emit('join-order', order.value.id);
-
-      socket.value.on('driver-location', updateDriverLocation);
-      socket.value.on('order-status', (status) => {
-        order.value.status = status.status;
-        if (status.status === 'on_the_way') {
-          initializeMap();
-        }
-      });
-
-      // Initialize map if order is already on the way
-      if (order.value.status === 'on_the_way') {
-        initializeMap();
-      };
-    });
-    
-    onUnmounted(() => {
-      // Stop tracking when component is unmounted
-      store.dispatch('orderTracking/stopTracking');
-      
-      if (socket.value) {
-        socket.value.disconnect();
-      }
-      if (map.value) {
-        map.value.remove();
-      }
-    });
-    
-    return {
-      order,
-      isLoading,
-      mapReady,
-      restaurantLocation,
-      deliveryLocation,
-      driverLocation,
-      driverInfo,
-      trackingStatus,
-      trackingError,
-      showCancelDialog,
-      cancellationReason,
-      cancellationReasons,
-      isCancelling,
-      showRatingDialog,
-      rating,
-      isSubmittingRating,
-      showIssueDialog,
-      issue,
-      issueTypes,
-      isSubmittingIssue,
-      notificationPrefs,
-      formatDate,
-      formatTime,
-      getStatusColor,
-      getStatusText,
-      retryConnection,
-      cancelOrder,
-      rateOrder,
-      canSubmitRating,
-      submitRating,
-      reportIssue,
-      submitIssue,
-      onMapLoaded,
-      onMapError
-    };
+    ]
   }
-};
+  
+  // Update the completion and current status for each step
+  const currentStatusIndex = statusSteps.findIndex(step => step.status === order.value.status)
+  
+  return statusSteps.map((step, index) => {
+    return {
+      ...step,
+      completed: index < currentStatusIndex || order.value.status === step.status,
+      current: order.value.status === step.status
+    }
+  })
+})
+
+// Methods
+const fetchOrder = async () => {
+  isLoading.value = true
+  try {
+    const response = await orderStore.getOrder(orderId.value)
+    order.value = response
+    
+    // Set up map data
+    if (order.value) {
+      deliveryAddress.value = {
+        lat: order.value.deliveryAddress.latitude,
+        lng: order.value.deliveryAddress.longitude,
+        address: order.value.deliveryAddress.formattedAddress
+      }
+      
+      restaurantLocation.value = {
+        lat: order.value.restaurant.latitude,
+        lng: order.value.restaurant.longitude,
+        name: order.value.restaurant.name
+      }
+      
+      // If driver is assigned, set initial driver location (will be updated by socket)
+      if (order.value.driver && order.value.driver.lastLocation) {
+        driverLocation.value = {
+          lat: order.value.driver.lastLocation.latitude,
+          lng: order.value.driver.lastLocation.longitude
+        }
+      }
+      
+      mapDataReady.value = true
+      
+      // Start countdown timer for ETA
+      startEtaCountdown()
+    }
+  } catch (error) {
+    showErrorNotification('Không thể tải thông tin đơn hàng')
+    console.error('Error fetching order:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const onMapReady = (mapInstance) => {
+  // We can store the map instance if needed for future manipulation
+  console.log('Map is ready')
+}
+
+const refreshData = () => {
+  fetchOrder()
+}
+
+const startEtaCountdown = () => {
+  // Clear any existing interval
+  if (etaInterval.value) {
+    clearInterval(etaInterval.value)
+  }
+  
+  // Only start countdown if we have an ETA and order is not delivered yet
+  if (order.value && order.value.estimatedDeliveryTime && 
+      order.value.status !== 'delivered' && order.value.status !== 'cancelled') {
+    
+    const updateCountdown = () => {
+      const now = new Date()
+      const eta = new Date(order.value.estimatedDeliveryTime)
+      const diff = eta - now
+      
+      if (diff <= 0) {
+        etaCountdown.value = 'Sắp đến'
+        return
+      }
+      
+      const minutes = Math.floor(diff / 60000)
+      const seconds = Math.floor((diff % 60000) / 1000)
+      
+      etaCountdown.value = `${minutes}:${seconds.toString().padStart(2, '0')}`
+    }
+    
+    // Update immediately and then every second
+    updateCountdown()
+    etaInterval.value = setInterval(updateCountdown, 1000)
+  } else {
+    etaCountdown.value = null
+  }
+}
+
+const callDriver = () => {
+  if (order.value && order.value.driver && order.value.driver.phone) {
+    window.location.href = `tel:${order.value.driver.phone}`
+  } else {
+    showErrorNotification('Không có thông tin liên lạc với tài xế')
+  }
+}
+
+const openChat = () => {
+  showChatDialog.value = true
+  // Scroll to bottom of chat
+  setTimeout(() => {
+    if (this.$refs.chatContainer) {
+      this.$refs.chatContainer.scrollTop = this.$refs.chatContainer.scrollHeight
+    }
+  }, 100)
+}
+
+const sendMessage = () => {
+  if (!chatMessage.value.trim()) return
+  
+  const message = {
+    orderId: orderId.value,
+    text: chatMessage.value,
+    fromDriver: false,
+    time: new Date()
+  }
+  
+  // Add to local chat messages
+  chatMessages.value.push(message)
+  
+  // Send via socket
+  if (socket.value) {
+    socket.value.emit('send-message', message)
+  }
+  
+  // Clear input
+  chatMessage.value = ''
+  
+  // Scroll to bottom
+  setTimeout(() => {
+    if (this.$refs.chatContainer) {
+      this.$refs.chatContainer.scrollTop = this.$refs.chatContainer.scrollHeight
+    }
+  }, 100)
+}
+
+const connectToSocket = () => {
+  // Connect to socket.io server
+  const socketUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+  socket.value = io(socketUrl, {
+    query: {
+      orderId: orderId.value
+    }
+  })
+  
+  // Socket event listeners
+  socket.value.on('connect', () => {
+    console.log('Connected to socket server')
+  })
+  
+  socket.value.on('order-status-update', (data) => {
+    if (data.orderId === orderId.value) {
+      // Update order status locally
+      order.value = {
+        ...order.value,
+        status: data.status,
+        [data.status + 'At']: new Date()
+      }
+      
+      // Show notification
+      showNotification.value = true
+      notificationColor.value = 'primary'
+      notificationMessage.value = data.message || `Đơn hàng của bạn đã được cập nhật thành "${getStatusLabel(data.status)}"`
+      
+      // Refresh data from server to get all updated fields
+      fetchOrder()
+    }
+  })
+  
+  socket.value.on('driver-location-update', (data) => {
+    if (data.orderId === orderId.value) {
+      driverLocation.value = {
+        lat: data.latitude,
+        lng: data.longitude
+      }
+      
+      // If we have route points, update them
+      if (data.routePoints) {
+        routePoints.value = data.routePoints.map(point => ({
+          lat: point.latitude,
+          lng: point.longitude
+        }))
+      }
+      
+      // Update ETA if provided
+      if (data.estimatedDeliveryTime) {
+        order.value = {
+          ...order.value,
+          estimatedDeliveryTime: data.estimatedDeliveryTime
+        }
+        
+        startEtaCountdown()
+      }
+    }
+  })
+  
+  socket.value.on('chat-message', (data) => {
+    if (data.orderId === orderId.value) {
+      chatMessages.value.push({
+        text: data.text,
+        fromDriver: data.fromDriver,
+        time: new Date(data.time)
+      })
+      
+      // If chat dialog is not open, show notification
+      if (!showChatDialog.value) {
+        showNotification.value = true
+        notificationColor.value = 'info'
+        notificationMessage.value = `Tin nhắn mới từ tài xế: ${data.text}`
+      }
+      
+      // Scroll to bottom if chat is open
+      if (showChatDialog.value) {
+        setTimeout(() => {
+          if (this.$refs.chatContainer) {
+            this.$refs.chatContainer.scrollTop = this.$refs.chatContainer.scrollHeight
+          }
+        }, 100)
+      }
+    }
+  })
+  
+  socket.value.on('disconnect', () => {
+    console.log('Disconnected from socket server')
+  })
+  
+  socket.value.on('error', (error) => {
+    console.error('Socket error:', error)
+  })
+}
+
+const getStatusColor = (completed, current) => {
+  if (current) return 'primary'
+  return completed ? 'success' : 'grey'
+}
+
+const getStatusLabel = (status) => {
+  const statusMap = {
+    'pending': 'Đã đặt hàng',
+    'confirmed': 'Đã xác nhận',
+    'preparing': 'Đang chuẩn bị',
+    'ready': 'Sẵn sàng giao hàng',
+    'pickup': 'Tài xế đã lấy hàng',
+    'delivering': 'Đang giao hàng',
+    'delivered': 'Đã giao hàng',
+    'cancelled': 'Đã hủy'
+  }
+  
+  return statusMap[status] || status
+}
+
+const formatTime = (time) => {
+  if (!time) return ''
+  
+  const date = new Date(time)
+  return date.toLocaleTimeString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatETA = (time) => {
+  if (!time) return 'Không có thông tin'
+  
+  const date = new Date(time)
+  return date.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
+
+const formatPrice = (price) => {
+  return formatCurrency(price || 0)
+}
+
+const showErrorNotification = (message) => {
+  notificationMessage.value = message
+  notificationColor.value = 'error'
+  showNotification.value = true
+}
+
+// Register for push notifications
+const registerForNotifications = async () => {
+  try {
+    // Request notification permission
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission()
+      
+      if (permission === 'granted') {
+        // Register with notification service
+        await notificationStore.registerForOrderNotifications(orderId.value)
+      }
+    }
+  } catch (error) {
+    console.error('Error registering for notifications:', error)
+  }
+}
+
+// Lifecycle hooks
+onMounted(() => {
+  fetchOrder()
+  connectToSocket()
+  registerForNotifications()
+  
+  // Listen for notifications
+  window.addEventListener('notification', (event) => {
+    if (event.detail && event.detail.orderId === orderId.value) {
+      showNotification.value = true
+      notificationColor.value = event.detail.type || 'primary'
+      notificationMessage.value = event.detail.message
+      
+      // Refresh data if it's an order status update
+      if (event.detail.refreshData) {
+        fetchOrder()
+      }
+    }
+  })
+})
+
+onUnmounted(() => {
+  // Clean up
+  if (socket.value) {
+    socket.value.disconnect()
+  }
+  
+  if (etaInterval.value) {
+    clearInterval(etaInterval.value)
+  }
+  
+  // Unregister from notifications
+  if (orderId.value) {
+    notificationStore.unregisterFromOrderNotifications(orderId.value)
+      .catch(error => console.error('Error unregistering from notifications:', error))
+  }
+})
+
+// Watch for route changes to update the order ID
+watch(() => route.params.id, (newId) => {
+  if (newId && newId !== orderId.value) {
+    fetchOrder()
+    
+    // Reconnect socket with new order ID
+    if (socket.value) {
+      socket.value.disconnect()
+    }
+    
+    connectToSocket()
+  }
+})
 </script>
 
 <style scoped>
-.order-tracking-page {
-  min-height: calc(100vh - 200px);
+.tracker-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
 }
 
-.success-message {
-  background-color: rgb(232, 245, 233);
-  border-left: 4px solid #4CAF50;
+.tracking-card {
+  border-radius: 12px;
+  overflow: hidden;
 }
 
-.error-message {
-  background-color: rgb(253, 236, 234);
-  border-left: 4px solid #F44336;
+.live-map {
+  height: 300px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
 }
 
-.border-bottom {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-.map-placeholder {
+.map-loading-placeholder {
+  height: 100%;
   background-color: #f5f5f5;
-  border-radius: 0 0 8px 8px;
+  color: #757575;
+}
+
+.delivery-eta-card {
+  border-left: 4px solid var(--v-primary-base);
+}
+
+.driver-info-card {
+  border-radius: 8px;
+}
+
+.chat-container {
+  height: 300px;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message-bubble {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 18px;
+  margin-bottom: 8px;
+  position: relative;
+}
+
+.message-bubble.from-driver {
+  align-self: flex-start;
+  background-color: #f5f5f5;
+  border-bottom-left-radius: 4px;
+}
+
+.message-bubble.from-me {
+  align-self: flex-end;
+  background-color: var(--v-primary-lighten3);
+  border-bottom-right-radius: 4px;
+}
+
+.message-content {
+  word-break: break-word;
+}
+
+.message-time {
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.6);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.chat-input {
+  padding: 8px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 600px) {
+  .tracker-container {
+    padding: 8px;
+  }
+  
+  .live-map {
+    height: 250px;
+  }
 }
 </style>

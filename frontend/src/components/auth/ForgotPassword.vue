@@ -1,192 +1,158 @@
 <template>
-  <div class="forgot-password-form">
-    <v-form ref="form" @submit.prevent="sendResetLink" v-model="isFormValid">
-      <!-- Step 1: Enter Email -->
-      <div v-if="currentStep === 1">
-        <h2 class="text-h4 font-weight-bold text-center mb-4">Forgot Password</h2>
-        <p class="text-body-1 text-center mb-6">
-          Enter your email address and we'll send you a link to reset your password.
-        </p>
-        
-        <!-- Error Alert -->
-        <v-alert
-          v-if="error"
-          type="error"
-          variant="tonal"
-          closable
-          class="mb-4"
-          @click:close="error = ''"
-        >
-          {{ error }}
-        </v-alert>
-        
-        <!-- Success Alert -->
-        <v-alert
-          v-if="successMessage"
-          type="success"
-          variant="tonal"
-          closable
-          class="mb-4"
-          @click:close="successMessage = ''"
-        >
-          {{ successMessage }}
-        </v-alert>
-        
-        <!-- Email Field -->
-        <v-text-field
-          v-model="email"
-          label="Email Address"
-          type="email"
-          variant="outlined"
-          prepend-inner-icon="mdi-email"
-          :rules="[rules.required, rules.email]"
-          :disabled="loading"
-          required
-          class="mb-6"
-        ></v-text-field>
-        
-        <!-- Submit Button -->
-        <v-btn
-          type="submit"
-          color="primary"
-          block
-          size="large"
-          :loading="loading"
-          :disabled="!isFormValid || loading"
-          class="mb-6"
-        >
-          Send Reset Link
-        </v-btn>
-        
-        <!-- Back to Login -->
-        <div class="text-center">
-          <v-btn
-            variant="text"
-            color="primary"
-            :to="{ name: 'Login' }"
-            :disabled="loading"
-          >
-            Back to Login
-          </v-btn>
-        </div>
+  <div class="forgot-password-container">
+    <div class="forgot-password-form">
+      <h1 class="text-2xl font-bold mb-6">Quên mật khẩu</h1>
+      
+      <div v-if="message" :class="['alert', messageType === 'error' ? 'alert-error' : 'alert-success']">
+        {{ message }}
       </div>
       
-      <!-- Step 2: Check Email -->
-      <div v-if="currentStep === 2" class="text-center">
-        <v-icon
-          icon="mdi-email-check"
-          color="primary"
-          size="64"
-          class="mb-4"
-        ></v-icon>
+      <p class="mb-4">Nhập địa chỉ email của bạn để nhận liên kết đặt lại mật khẩu.</p>
+      
+      <form @submit.prevent="sendResetLink">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input 
+            type="email" 
+            id="email" 
+            v-model="email"
+            class="form-control"
+            required
+          />
+        </div>
         
-        <h2 class="text-h4 font-weight-bold mb-4">Check Your Email</h2>
-        <p class="text-body-1 mb-2">
-          We've sent a password reset link to:
-        </p>
-        <p class="text-body-1 font-weight-bold mb-6">{{ email }}</p>
-        
-        <p class="text-body-2 mb-6">
-          Click the link in the email to reset your password. If you don't see the email, check your spam folder.
-        </p>
-        
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="resendEmail"
-          :loading="resendLoading"
-          :disabled="resendLoading"
-          class="mb-4"
+        <button 
+          type="submit" 
+          class="btn btn-primary w-full mt-4"
+          :disabled="isLoading"
         >
-          Resend Email
-        </v-btn>
-        
-        <p class="text-body-2 mb-6">
-          Didn't receive the email? Check your spam folder or try another email address.
-        </p>
-        
-        <v-btn
-          variant="text"
-          color="primary"
-          @click="currentStep = 1"
-          :disabled="resendLoading"
-        >
-          Try Another Email
-        </v-btn>
+          {{ isLoading ? 'Đang xử lý...' : 'Gửi liên kết đặt lại' }}
+        </button>
+      </form>
+      
+      <div class="mt-6 text-center">
+        <p>Đã nhớ mật khẩu? <router-link to="/login" class="text-primary">Đăng nhập</router-link></p>
       </div>
-    </v-form>
+    </div>
   </div>
 </template>
 
 <script>
-import { mapActions } from 'vuex';
+import { ref } from 'vue';
+import { useStore } from 'vuex';
 
 export default {
   name: 'ForgotPassword',
   
-  data() {
-    return {
-      email: '',
-      loading: false,
-      resendLoading: false,
-      error: '',
-      successMessage: '',
-      isFormValid: false,
-      currentStep: 1,
-      rules: {
-        required: v => !!v || 'This field is required',
-        email: v => /.+@.+\..+/.test(v) || 'Please enter a valid email'
+  setup() {
+    const store = useStore();
+    const email = ref('');
+    const isLoading = ref(false);
+    const message = ref('');
+    const messageType = ref('');
+    
+    const sendResetLink = async () => {
+      try {
+        isLoading.value = true;
+        message.value = '';
+        
+        // Send forgot password request via store
+        await store.dispatch('auth/forgotPassword', email.value);
+        
+        message.value = 'Hướng dẫn đặt lại mật khẩu đã được gửi đến email của bạn.';
+        messageType.value = 'success';
+        
+        // Clear form
+        email.value = '';
+      } catch (error) {
+        message.value = error.response?.data?.message || 'Gửi yêu cầu đặt lại mật khẩu thất bại. Vui lòng thử lại.';
+        messageType.value = 'error';
+      } finally {
+        isLoading.value = false;
       }
     };
-  },
-  
-  methods: {
-    ...mapActions({
-      forgotPasswordAction: 'auth/forgotPassword'
-    }),
     
-    async sendResetLink() {
-      if (!this.$refs.form.validate()) return;
-      
-      this.loading = true;
-      this.error = '';
-      this.successMessage = '';
-      
-      try {
-        await this.forgotPasswordAction({ email: this.email });
-        
-        // Move to step 2
-        this.currentStep = 2;
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to send reset link. Please try again.';
-        console.error('Password reset error:', error);
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async resendEmail() {
-      this.resendLoading = true;
-      this.error = '';
-      
-      try {
-        await this.forgotPasswordAction({ email: this.email });
-        this.successMessage = 'Reset link has been resent to your email.';
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to resend reset link. Please try again.';
-        console.error('Password reset error:', error);
-      } finally {
-        this.resendLoading = false;
-      }
-    }
+    return {
+      email,
+      isLoading,
+      message,
+      messageType,
+      sendResetLink
+    };
   }
 };
 </script>
 
 <style scoped>
-.forgot-password-form {
-  max-width: 500px;
-  margin: 0 auto;
+.forgot-password-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
   padding: 20px;
+  background-color: #f5f5f5;
+}
+
+.forgot-password-form {
+  width: 100%;
+  max-width: 400px;
+  padding: 30px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.form-control {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background-color: #FF5A5F;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #FF2D55;
+}
+
+.alert {
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.alert-error {
+  background-color: #FECACA;
+  color: #B91C1C;
+}
+
+.alert-success {
+  background-color: #D1FAE5;
+  color: #047857;
+}
+
+.text-primary {
+  color: #FF5A5F;
 }
 </style>

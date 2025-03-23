@@ -3,6 +3,9 @@ const { DriverLocation, User, Order } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const sequelize = require('../config/database');
 const { emitToOrder, emitToUser } = require('../socket/handlers');
+const trackingService = require('../services/tracking.service');
+const catchAsync = require('../utils/catchAsync');
+const { Order, Driver, DriverLocation } = require('../models');
 
 /**
  * Update driver location
@@ -370,3 +373,248 @@ module.exports = {
   getDriverLocation,
   getOrderTracking
 };
+
+/**
+ * Start tracking an order
+ * @route POST /api/tracking/start/:orderId
+ * @access Private
+ */
+exports.startTracking = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+
+  // Validate order ID
+  if (!orderId) {
+    return next(new AppError('ID đơn hàng không hợp lệ', 400));
+  }
+
+  // Start tracking
+  const trackingData = await trackingService.startTracking(orderId, req.user);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      tracking: {
+        orderId: trackingData.orderId,
+        status: trackingData.status,
+        driverLocation: trackingData.driverLocation,
+        estimatedDeliveryTime: trackingData.estimatedDeliveryTime
+      }
+    }
+  });
+});
+
+/**
+ * Stop tracking an order
+ * @route POST /api/tracking/stop/:orderId
+ * @access Private
+ */
+exports.stopTracking = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+
+  // Validate order ID
+  if (!orderId) {
+    return next(new AppError('ID đơn hàng không hợp lệ', 400));
+  }
+
+  // Stop tracking
+  const result = trackingService.stopTracking(orderId, req.user.id);
+
+  if (!result) {
+    return next(new AppError('Không thể dừng theo dõi đơn hàng', 400));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Đã dừng theo dõi đơn hàng'
+  });
+});
+
+/**
+ * Get tracking data for an order
+ * @route GET /api/tracking/:orderId
+ * @access Private
+ */
+exports.getTrackingData = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+
+  // Validate order ID
+  if (!orderId) {
+    return next(new AppError('ID đơn hàng không hợp lệ', 400));
+  }
+
+  // Get order first to validate ownership
+  const order = await Order.findByPk(orderId);
+  
+  if (!order) {
+    return next(new AppError('Đơn hàng không tồn tại', 404));
+  }
+  
+  if (order.userId !== req.user.id) {
+    return next(new AppError('Bạn không có quyền truy cập đơn hàng này', 403));
+  }
+
+  // Get tracking data
+  let trackingData = trackingService.getTrackingData(orderId);
+
+  // If not tracking yet, get basic data
+  if (!trackingData) {
+    const driverLocation = order.driverId 
+      ? await DriverLocation.findOne({
+          where: { driverId: order.driverId },
+          order: [['createdAt', 'DESC']]
+        })
+      : null;
+
+    trackingData = {
+      orderId,
+      status: order.status,
+      driverLocation: driverLocation 
+        ? {
+            lat: driverLocation.latitude,
+            lng: driverLocation.longitude,
+            heading: driverLocation.heading,
+            updatedAt: driverLocation.createdAt
+          } 
+        : null,
+      estimatedDeliveryTime: order.estimatedDeliveryTime
+    };
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      tracking: trackingData
+    }
+  });
+});
+
+/**
+ * Update driver location (for drivers only)
+ * @route POST /api/tracking/driver/location
+ * @access Private/Driver
+ */
+exports.updateDriverLocation = catchAsync(async (req, res, next) => {
+  const { latitude, longitude, heading, speed, accuracy } = req.body;
+
+  // Validate required fields
+  if (!latitude || !longitude) {
+    return next(new AppError('Vĩ độ và kinh độ là bắt buộc', 400));
+  }
+
+  // Check if user is a driver
+  const driver = await Driver.findOne({ where: { userId: req.user.id } });
+  
+  if (!driver) {
+    return next(new AppError('Chỉ tài xế mới có thể cập nhật vị trí', 403));
+  }
+
+  // Update driver location
+  const result = await trackingService.updateDriverLocation(driver.id, {
+    latitude,
+    longitude,
+    heading: heading || 0,
+    speed: speed || 0,
+    accuracy: accuracy || 0
+  });
+
+  if (!result) {
+    return next(new AppError('Không thể cập nhật vị trí tài xế', 400));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Đã cập nhật vị trí tài xế'
+  });
+});
+
+/**
+ * Get driver location for an order
+ * @route GET /api/tracking/:orderId/driver
+ * @access Private
+ */
+exports.getDriverLocation = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+
+  // Validate order ID
+  if (!orderId) {
+    return next(new AppError('ID đơn hàng không hợp lệ', 400));
+  }
+
+  // Get order to validate ownership and get driver ID
+  const order = await Order.findByPk(orderId);
+  
+  if (!order) {
+    return next(new AppError('Đơn hàng không tồn tại', 404));
+  }
+  
+  if (order.userId !== req.user.id) {
+    return next(new AppError('Bạn không có quyền truy cập đơn hàng này', 403));
+  }
+
+  if (!order.driverId) {
+    return next(new AppError('Đơn hàng chưa được gán tài xế', 400));
+  }
+
+  // Get driver location
+  const location = await trackingService.getDriverLocation(order.driverId);
+
+  if (!location) {
+    return next(new AppError('Không tìm thấy vị trí tài xế', 404));
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      driverLocation: location
+    }
+  });
+});
+
+/**
+ * Update order status (for admin and restaurant)
+ * @route POST /api/orders/:orderId/status
+ * @access Private/Admin/Restaurant
+ */
+exports.updateOrderStatus = catchAsync(async (req, res, next) => {
+  const { orderId } = req.params;
+  const { status } = req.body;
+
+  // Validate required fields
+  if (!status) {
+    return next(new AppError('Trạng thái là bắt buộc', 400));
+  }
+
+  // Valid statuses
+  const validStatuses = [
+    'pending', 'confirmed', 'preparing', 'ready_for_pickup', 
+    'out_for_delivery', 'delivered', 'cancelled'
+  ];
+
+  if (!validStatuses.includes(status)) {
+    return next(new AppError('Trạng thái không hợp lệ', 400));
+  }
+
+  // Get order
+  const order = await Order.findByPk(orderId);
+  
+  if (!order) {
+    return next(new AppError('Đơn hàng không tồn tại', 404));
+  }
+
+  // Update order status in database
+  order.status = status;
+  await order.save();
+
+  // Update status in tracking service
+  trackingService.updateOrderStatus(orderId, status);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      order: {
+        id: order.id,
+        status: order.status
+      }
+    }
+  });
+});

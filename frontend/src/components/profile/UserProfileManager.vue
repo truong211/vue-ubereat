@@ -34,16 +34,8 @@
                 />
               </div>
               
-              <h2 class="text-h6 mb-1">{{ user.name }}</h2>
+              <h2 class="text-h6 mb-1">{{ user.name || 'Người dùng' }}</h2>
               <p class="text-medium-emphasis">{{ user.email }}</p>
-              
-              <v-chip
-                v-if="loyaltyTier"
-                :color="getTierColor(loyaltyTier)"
-                class="mt-2"
-              >
-                {{ loyaltyTier.charAt(0).toUpperCase() + loyaltyTier.slice(1) }} Member
-              </v-chip>
             </v-card-text>
           </v-card>
           
@@ -80,31 +72,6 @@
             <v-window-item value="orders">
               <order-history />
             </v-window-item>
-            
-            <!-- Favorite Restaurants Tab -->
-            <v-window-item value="favorites">
-              <favorites-manager />
-            </v-window-item>
-            
-            <!-- Saved Items Tab -->
-            <v-window-item value="saved-items">
-              <saved-items-manager />
-            </v-window-item>
-            
-            <!-- Payment Methods Tab -->
-            <v-window-item value="payment">
-              <payment-methods />
-            </v-window-item>
-            
-            <!-- Notification Settings Tab -->
-            <v-window-item value="notifications">
-              <notification-preferences />
-            </v-window-item>
-            
-            <!-- Account Settings Tab -->
-            <v-window-item value="account">
-              <account-settings />
-            </v-window-item>
           </v-window>
         </v-col>
       </v-row>
@@ -115,14 +82,10 @@
 <script>
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
+import { useToast } from 'vue-toastification';
 import PersonalInfo from './sections/PersonalInfo.vue';
 import AddressManager from './AddressManager.vue';
 import OrderHistory from './sections/OrderHistory.vue';
-import FavoritesManager from './sections/FavoritesManager.vue';
-import SavedItemsManager from './sections/SavedItemsManager.vue';
-import PaymentMethods from './sections/PaymentMethods.vue';
-import NotificationPreferences from '../NotificationPreferences.vue';
-import AccountSettings from './sections/AccountSettings.vue';
 
 export default {
   name: 'UserProfileManager',
@@ -130,33 +93,37 @@ export default {
   components: {
     PersonalInfo,
     AddressManager,
-    OrderHistory,
-    FavoritesManager,
-    SavedItemsManager,
-    PaymentMethods,
-    NotificationPreferences,
-    AccountSettings
+    OrderHistory
   },
   
   setup() {
     const store = useStore();
+    const toast = useToast();
     const fileInput = ref(null);
     const activeTab = ref('personal');
     
     const user = computed(() => store.state.auth.user || {});
-    const loyaltyTier = computed(() => store.state.loyalty?.tier || null);
-    
+
+    // Navigation menu items
     const menuItems = [
-      { title: 'Personal Information', icon: 'mdi-account-outline', value: 'personal' },
-      { title: 'My Addresses', icon: 'mdi-map-marker-outline', value: 'addresses' },
-      { title: 'Order History', icon: 'mdi-history', value: 'orders' },
-      { title: 'Favorite Restaurants', icon: 'mdi-heart-outline', value: 'favorites' },
-      { title: 'Saved Items', icon: 'mdi-food', value: 'saved-items' },
-      { title: 'Payment Methods', icon: 'mdi-credit-card-outline', value: 'payment' },
-      { title: 'Notification Settings', icon: 'mdi-bell-outline', value: 'notifications' },
-      { title: 'Account Settings', icon: 'mdi-cog-outline', value: 'account' }
+      {
+        title: 'Thông tin cá nhân',
+        icon: 'mdi-account',
+        value: 'personal'
+      },
+      {
+        title: 'Địa chỉ giao hàng',
+        icon: 'mdi-map-marker',
+        value: 'addresses'
+      },
+      {
+        title: 'Lịch sử đơn hàng',
+        icon: 'mdi-history',
+        value: 'orders'
+      }
     ];
-    
+
+    // Methods
     const triggerFileInput = () => {
       fileInput.value.click();
     };
@@ -164,40 +131,35 @@ export default {
     const handleAvatarUpload = async (event) => {
       const file = event.target.files[0];
       if (!file) return;
-      
+
+      // Validate file type
+      if (!file.type.match('image.*')) {
+        toast.error('Vui lòng chọn file hình ảnh');
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Kích thước ảnh không được vượt quá 5MB');
+        return;
+      }
+
       try {
         await store.dispatch('user/updateAvatar', file);
-        // Show success toast or notification
+        toast.success('Cập nhật ảnh đại diện thành công');
       } catch (error) {
         console.error('Failed to upload avatar:', error);
-        // Show error toast or notification
+        toast.error('Không thể cập nhật ảnh đại diện');
       }
     };
-    
-    const getTierColor = (tier) => {
-      const colors = {
-        bronze: 'amber-darken-1',
-        silver: 'grey',
-        gold: 'amber',
-        platinum: 'blue-grey-darken-1'
-      };
-      return colors[tier] || 'primary';
-    };
-    
-    onMounted(() => {
-      // Load any necessary user data
-      store.dispatch('user/fetchProfile');
-    });
     
     return {
       activeTab,
       user,
-      loyaltyTier,
       menuItems,
       fileInput,
       triggerFileInput,
-      handleAvatarUpload,
-      getTierColor
+      handleAvatarUpload
     };
   }
 };

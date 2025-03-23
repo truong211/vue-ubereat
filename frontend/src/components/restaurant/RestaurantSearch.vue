@@ -1,10 +1,10 @@
 <template>
   <div class="restaurant-search">
-    <!-- Search Header -->
+    <!-- Enhanced Search Bar -->
     <div class="search-header mb-4">
       <v-text-field
         v-model="searchQuery"
-        placeholder="Search for restaurants or cuisines..."
+        placeholder="Search restaurants, cuisines, or dishes..."
         variant="outlined"
         density="comfortable"
         hide-details
@@ -13,122 +13,187 @@
         prepend-inner-icon="mdi-magnify"
         @update:model-value="handleSearch"
       >
-        <!-- Add recent searches dropdown -->
+        <!-- Auto-suggestions dropdown -->
         <template v-slot:append-inner>
-          <v-menu v-if="recentSearches.length > 0">
+          <v-menu
+            v-model="showSuggestions"
+            :close-on-content-click="false"
+            location="bottom end"
+            max-height="300"
+          >
             <template v-slot:activator="{ props }">
               <v-btn
                 icon
                 variant="text"
                 v-bind="props"
                 size="small"
+                :disabled="!searchQuery"
               >
-                <v-icon>mdi-history</v-icon>
+                <v-icon>mdi-chevron-down</v-icon>
               </v-btn>
             </template>
-            <v-list density="compact">
-              <v-list-item
-                v-for="(search, index) in recentSearches"
-                :key="index"
-                :value="search"
-                @click="selectRecentSearch(search)"
-              >
-                <v-list-item-title>{{ search }}</v-list-item-title>
-              </v-list-item>
-              <v-divider></v-divider>
-              <v-list-item @click="clearSearchHistory">
-                <v-list-item-title class="text-caption">Clear History</v-list-item-title>
-              </v-list-item>
-            </v-list>
+
+            <v-card min-width="300">
+              <v-list v-if="suggestions.length > 0">
+                <v-list-item
+                  v-for="suggestion in suggestions"
+                  :key="suggestion.id"
+                  :subtitle="suggestion.type"
+                  @click="selectSuggestion(suggestion)"
+                >
+                  <template v-slot:prepend>
+                    <v-icon :color="getSuggestionIcon(suggestion.type).color">
+                      {{ getSuggestionIcon(suggestion.type).icon }}
+                    </v-icon>
+                  </template>
+                  <v-list-item-title>{{ suggestion.text }}</v-list-item-title>
+                </v-list-item>
+              </v-list>
+              <v-card-text v-else class="text-center text-body-2 py-4">
+                No suggestions found
+              </v-card-text>
+            </v-card>
           </v-menu>
         </template>
       </v-text-field>
     </div>
 
-    <!-- Enhanced Filter Panel -->
+    <!-- Filter Panel -->
     <v-expand-transition>
       <div v-show="showFilters" class="filters-panel mb-4">
         <v-card>
           <v-card-text>
-            <!-- Sort Options -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Sort By</div>
-              <v-btn-toggle
-                v-model="sortBy"
-                mandatory
-                divided
-                color="primary"
-              >
-                <v-btn value="rating">
-                  <v-icon start>mdi-star</v-icon>
-                  Rating
-                </v-btn>
-                <v-btn value="distance">
-                  <v-icon start>mdi-map-marker</v-icon>
-                  Distance
-                </v-btn>
-                <v-btn value="price_asc">
-                  <v-icon start>mdi-currency-usd</v-icon>
-                  Price: Low to High
-                </v-btn>
-                <v-btn value="price_desc">
-                  <v-icon start>mdi-currency-usd</v-icon>
-                  Price: High to Low
-                </v-btn>
-              </v-btn-toggle>
-            </div>
-
-            <!-- Cuisine Types -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Cuisines</div>
-              <v-chip-group
-                v-model="selectedCuisines"
-                multiple
-                selected-class="selected-chip"
-              >
-                <v-chip
-                  v-for="cuisine in cuisineTypes"
-                  :key="cuisine.id"
-                  :value="cuisine.id"
-                  filter
-                  variant="elevated"
+            <!-- Primary Filters -->
+            <v-row>
+              <!-- Sort Options -->
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="sortBy"
+                  :items="sortOptions"
+                  label="Sort By"
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details
+                  @update:model-value="applyFilters"
                 >
-                  <v-icon start size="small">{{ cuisine.icon }}</v-icon>
-                  {{ cuisine.name }}
-                </v-chip>
-              </v-chip-group>
-            </div>
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small">mdi-sort</v-icon>
+                  </template>
+                </v-select>
+              </v-col>
 
-            <!-- Price Range -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Price Range</div>
-              <v-chip-group
-                v-model="priceRange"
-                multiple
-                selected-class="selected-chip"
-              >
-                <v-chip
-                  v-for="price in priceRanges"
-                  :key="price.value"
-                  :value="price.value"
-                  filter
-                  variant="elevated"
+              <!-- Rating Filter -->
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="filters.rating"
+                  :items="ratingOptions"
+                  label="Rating"
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details
+                  @update:model-value="applyFilters"
                 >
-                  {{ price.label }}
-                </v-chip>
-              </v-chip-group>
-            </div>
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small" color="amber">mdi-star</v-icon>
+                  </template>
+                </v-select>
+              </v-col>
 
-            <!-- Rating Filter -->
-            <div class="mb-4">
-              <div class="text-subtitle-1 mb-2">Minimum Rating</div>
-              <v-rating
-                v-model="minRating"
-                color="amber"
-                half-increments
-                hover
-              ></v-rating>
-            </div>
+              <!-- Distance Filter -->
+              <v-col cols="12" sm="4">
+                <v-select
+                  v-model="filters.distance"
+                  :items="distanceOptions"
+                  label="Distance"
+                  variant="outlined"
+                  density="comfortable"
+                  hide-details
+                  :disabled="!userLocation"
+                  @update:model-value="applyFilters"
+                >
+                  <template v-slot:prepend-inner>
+                    <v-icon size="small">mdi-map-marker</v-icon>
+                  </template>
+                </v-select>
+              </v-col>
+            </v-row>
+
+            <!-- Advanced Filters -->
+            <v-row class="mt-4">
+              <!-- Cuisine Types -->
+              <v-col cols="12">
+                <div class="text-subtitle-1 mb-2">Cuisines</div>
+                <v-chip-group
+                  v-model="selectedCuisines"
+                  multiple
+                  selected-class="selected-chip"
+                  @update:model-value="applyFilters"
+                >
+                  <v-chip
+                    v-for="cuisine in cuisineTypes"
+                    :key="cuisine.id"
+                    :value="cuisine.id"
+                    filter
+                    variant="elevated"
+                  >
+                    <v-icon start size="small">{{ cuisine.icon }}</v-icon>
+                    {{ cuisine.name }}
+                  </v-chip>
+                </v-chip-group>
+              </v-col>
+
+              <!-- Price Range -->
+              <v-col cols="12" md="6">
+                <div class="text-subtitle-1 mb-2">Price Range</div>
+                <v-chip-group
+                  v-model="priceRange"
+                  multiple
+                  selected-class="selected-chip"
+                  @update:model-value="applyFilters"
+                >
+                  <v-chip
+                    v-for="price in priceRanges"
+                    :key="price.value"
+                    :value="price.value"
+                    filter
+                    variant="elevated"
+                  >
+                    {{ price.label }}
+                  </v-chip>
+                </v-chip-group>
+              </v-col>
+
+              <!-- Additional Filters -->
+              <v-col cols="12" md="6">
+                <div class="text-subtitle-1 mb-2">Additional Filters</div>
+                <v-checkbox
+                  v-model="filters.freeDelivery"
+                  label="Free Delivery"
+                  hide-details
+                  class="mb-2"
+                  @update:model-value="applyFilters"
+                ></v-checkbox>
+                <v-checkbox
+                  v-model="filters.openNow"
+                  label="Open Now"
+                  hide-details
+                  @update:model-value="applyFilters"
+                ></v-checkbox>
+              </v-col>
+            </v-row>
+
+            <!-- Reset Button -->
+            <v-row class="mt-4">
+              <v-col cols="12" class="text-center">
+                <v-btn
+                  variant="text"
+                  color="primary"
+                  @click="resetFilters"
+                >
+                  Reset All Filters
+                </v-btn>
+              </v-col>
+            </v-row>
           </v-card-text>
         </v-card>
       </div>
@@ -202,7 +267,7 @@
           lg="3"
         >
           <v-card
-            :to="{ name: 'RestaurantDetail', params: { id: restaurant.id }}"
+            :to="{ name: 'RestaurantDetail', params: { id: restaurant.id }} "
             class="h-100"
           >
             <v-img
@@ -277,7 +342,7 @@
         <v-list-item
           v-for="restaurant in filteredRestaurants"
           :key="restaurant.id"
-          :to="{ name: 'RestaurantDetail', params: { id: restaurant.id }}"
+          :to="{ name: 'RestaurantDetail', params: { id: restaurant.id }} "
           :title="restaurant.name"
         >
           <template v-slot:prepend>
@@ -362,313 +427,168 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
-import RestaurantMap from '@/components/restaurant/RestaurantMap.vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useDebounce } from '@/composables/useDebounce'
+import { useRestaurantSearch } from '@/composables/useRestaurantSearch'
+import { useMapService } from '@/composables/useMapService'
 
 export default {
   name: 'RestaurantSearch',
-  
-  components: {
-    RestaurantMap
-  },
-  
-  props: {
-    // Initial search parameters
-    initialQuery: {
-      type: String,
-      default: ''
-    },
-    
-    initialFilters: {
-      type: Object,
-      default: () => ({})
-    }
-  },
-  
-  emits: [
-    'update:search',
-    'update:filters',
-    'restaurant-selected'
-  ],
-  
-  setup(props, { emit }) {
-    // Search state
-    const searchQuery = ref(props.initialQuery)
-    const isLoading = ref(false)
-    const isLoadingMore = ref(false)
-    const hasMoreResults = ref(true)
-    
-    // Filter states
+
+  setup() {
+    const {
+      restaurants,
+      loading: isLoading,
+      filters,
+      sortOptions,
+      ratingOptions,
+      distanceOptions,
+      userLocation,
+      searchRestaurants
+    } = useRestaurantSearch()
+
+    const searchQuery = ref('')
+    const showSuggestions = ref(false)
+    const suggestions = ref([])
+    const selectedCuisines = ref([])
+    const priceRange = ref([])
     const showFilters = ref(false)
-    const selectedCuisines = ref(JSON.parse(localStorage.getItem('filter_cuisines') || '[]'))
-    const sortBy = ref(localStorage.getItem('filter_sortBy') || 'rating')
-    const priceRange = ref(JSON.parse(localStorage.getItem('filter_priceRange') || '[]'))
-    const dietaryPreferences = ref(JSON.parse(localStorage.getItem('filter_dietary') || '[]'))
-    const freeDelivery = ref(localStorage.getItem('filter_freeDelivery') === 'true')
-    const openNow = ref(localStorage.getItem('filter_openNow') === 'true')
-    const onlyRated = ref(localStorage.getItem('filter_onlyRated') === 'true')
-    const distanceRange = ref([0, parseInt(localStorage.getItem('filter_maxDistance') || '10')])
-    const ratingRange = ref([0, parseFloat(localStorage.getItem('filter_minRating') || '5')])
-    const minRating = ref(0)
-    
-    // View state
-    const viewMode = ref('grid')
-    const selectedRestaurant = ref(null)
-    
-    // Mock data for demo
+
+    // Options data
     const cuisineTypes = [
-      { id: 'italian', name: 'Italian', icon: 'mdi-pizza' },
+      { id: 'vietnamese', name: 'Vietnamese', icon: 'mdi-bowl' },
       { id: 'japanese', name: 'Japanese', icon: 'mdi-food-sushi' },
       { id: 'chinese', name: 'Chinese', icon: 'mdi-noodles' },
-      { id: 'indian', name: 'Indian', icon: 'mdi-food-curry' },
+      { id: 'italian', name: 'Italian', icon: 'mdi-pizza' },
       { id: 'thai', name: 'Thai', icon: 'mdi-bowl-mix' },
-      { id: 'mexican', name: 'Mexican', icon: 'mdi-taco' }
+      { id: 'indian', name: 'Indian', icon: 'mdi-food-curry' }
     ]
-    
+
     const priceRanges = [
       { value: 1, label: '$' },
       { value: 2, label: '$$' },
       { value: 3, label: '$$$' },
       { value: 4, label: '$$$$' }
     ]
-    
-    const dietaryOptions = [
-      { id: 'vegetarian', name: 'Vegetarian', icon: 'mdi-leaf' },
-      { id: 'vegan', name: 'Vegan', icon: 'mdi-sprout' },
-      { id: 'gluten_free', name: 'Gluten Free', icon: 'mdi-grain-off' },
-      { id: 'halal', name: 'Halal', icon: 'mdi-food-halal' }
-    ]
-    
-    // Mock restaurants data
-    const restaurants = ref([
-      {
-        id: 1,
-        name: 'Pizza Palace',
-        image: '/images/restaurants/pizza-palace.jpg',
-        cuisines: ['Italian', 'Pizza'],
-        rating: 4.5,
-        reviewCount: 234,
-        deliveryTime: 30,
-        distance: 2.5,
-        deliveryFee: 0,
-        priceRange: 2
-      },
-      // Add more restaurants...
-    ])
-    
-    // Computed properties
-    const hasActiveFilters = computed(() => {
-      return selectedCuisines.value.length > 0 ||
-        priceRange.value.length > 0 ||
-        dietaryPreferences.value.length > 0 ||
-        freeDelivery.value ||
-        openNow.value ||
-        onlyRated.value
-    })
-    
-    const activeFiltersCount = computed(() => {
-      let count = 0
-      count += selectedCuisines.value.length
-      count += priceRange.value.length
-      count += dietaryPreferences.value.length
-      if (freeDelivery.value) count++
-      if (openNow.value) count++
-      if (onlyRated.value) count++
-      return count
-    })
-    
-    const activeFilters = computed(() => {
-      const filters = []
-      
-      selectedCuisines.value.forEach(cuisine => {
-        const cuisineType = cuisineTypes.find(c => c.id === cuisine)
-        if (cuisineType) {
-          filters.push({
-            id: `cuisine-${cuisine}`,
-            label: cuisineType.name,
-            icon: cuisineType.icon,
-            type: 'cuisine'
-          })
-        }
-      })
-      
-      if (freeDelivery.value) {
-        filters.push({
-          id: 'free-delivery',
-          label: 'Free Delivery',
-          icon: 'mdi-truck-fast',
-          type: 'delivery'
-        })
-      }
-      
-      if (openNow.value) {
-        filters.push({
-          id: 'open-now',
-          label: 'Open Now',
-          icon: 'mdi-clock',
-          type: 'status'
-        })
-      }
-      
-      if (onlyRated.value) {
-        filters.push({
-          id: '4plus-rating',
-          label: '4+ Rating',
-          icon: 'mdi-star',
-          type: 'rating'
-        })
-      }
-      
-      return filters
-    })
-    
-    const filteredRestaurants = computed(() => {
-      // In a real app, this would be handled by the backend
-      return restaurants.value
-    })
-    
-    // Methods
-    const toggleFilters = () => {
-      showFilters.value = !showFilters.value
-    }
-    
-    const handleSearch = useDebounce((query) => {
-      // In a real app, this would trigger an API call
-      console.log('Searching for:', query)
-      emit('update:search', query)
-    }, 300)
-    
-    const applyFilters = () => {
-      showFilters.value = false
-      // Save filters to localStorage
-      localStorage.setItem('filter_cuisines', JSON.stringify(selectedCuisines.value))
-      localStorage.setItem('filter_sortBy', sortBy.value)
-      localStorage.setItem('filter_priceRange', JSON.stringify(priceRange.value))
-      localStorage.setItem('filter_dietary', JSON.stringify(dietaryPreferences.value))
-      localStorage.setItem('filter_freeDelivery', freeDelivery.value)
-      localStorage.setItem('filter_openNow', openNow.value)
-      localStorage.setItem('filter_maxDistance', distanceRange.value[1])
-      localStorage.setItem('filter_minRating', ratingRange.value[1])
 
-      emit('update:filters', {
+    // Methods
+    const handleSearch = useDebounce(async (query) => {
+      if (!query || query.length < 2) {
+        suggestions.value = []
+        showSuggestions.value = false
+        return
+      }
+
+      isLoading.value = true
+      try {
+        const response = await searchRestaurants({
+          search: query,
+          limit: 5
+        })
+        
+        suggestions.value = [
+          ...response.restaurants.map(r => ({
+            id: r.id,
+            type: 'restaurant',
+            text: r.name
+          })),
+          ...response.cuisines.map(c => ({
+            id: c.id,
+            type: 'cuisine',
+            text: c.name
+          })),
+          ...response.dishes.map(d => ({
+            id: d.id,
+            type: 'dish',
+            text: d.name
+          }))
+        ]
+        showSuggestions.value = true
+      } catch (error) {
+        console.error('Search error:', error)
+      } finally {
+        isLoading.value = false
+      }
+    }, 300)
+
+    const selectSuggestion = (suggestion) => {
+      searchQuery.value = suggestion.text
+      showSuggestions.value = false
+      
+      if (suggestion.type === 'cuisine') {
+        selectedCuisines.value = [suggestion.id]
+      }
+      
+      applyFilters()
+    }
+
+    const getSuggestionIcon = (type) => {
+      switch (type) {
+        case 'restaurant':
+          return { icon: 'mdi-store', color: 'primary' }
+        case 'cuisine':
+          return { icon: 'mdi-food-variant', color: 'success' }
+        case 'dish':
+          return { icon: 'mdi-food', color: 'warning' }
+        default:
+          return { icon: 'mdi-magnify', color: 'grey' }
+      }
+    }
+
+    const applyFilters = () => {
+      searchRestaurants({
+        search: searchQuery.value,
         cuisines: selectedCuisines.value,
         priceRange: priceRange.value,
-        dietary: dietaryPreferences.value,
-        freeDelivery: freeDelivery.value,
-        openNow: openNow.value,
-        distanceRange: distanceRange.value,
-        ratingRange: ratingRange.value
+        ...filters.value
       })
     }
-    
+
     const resetFilters = () => {
+      searchQuery.value = ''
       selectedCuisines.value = []
       priceRange.value = []
-      dietaryPreferences.value = []
-      freeDelivery.value = false
-      openNow.value = false
-      onlyRated.value = false
-      distanceRange.value = [0, 10]
-      ratingRange.value = [0, 5]
-      
-      // Clear localStorage
-      localStorage.removeItem('filter_cuisines')
-      localStorage.removeItem('filter_sortBy')
-      localStorage.removeItem('filter_priceRange')
-      localStorage.removeItem('filter_dietary')
-      localStorage.removeItem('filter_freeDelivery')
-      localStorage.removeItem('filter_openNow')
-      localStorage.removeItem('filter_maxDistance')
-      localStorage.removeItem('filter_minRating')
-      
-      applyFilters()
-    }
-    
-    const removeFilter = (filter) => {
-      switch (filter.type) {
-        case 'cuisine':
-          selectedCuisines.value = selectedCuisines.value.filter(
-            c => `cuisine-${c}` !== filter.id
-          )
-          break
-        case 'delivery':
-          freeDelivery.value = false
-          break
-        case 'status':
-          openNow.value = false
-          break
-        case 'rating':
-          onlyRated.value = false
-          break
+      filters.value = {
+        rating: null,
+        distance: null,
+        freeDelivery: false,
+        openNow: false
       }
       applyFilters()
     }
-    
-    const handleRestaurantClick = (restaurant) => {
-      selectedRestaurant.value = restaurant
-      emit('restaurant-selected', restaurant)
-    }
-    
-    const loadMore = async () => {
-      isLoadingMore.value = true
-      try {
-        // In a real app, this would load more results from the API
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        hasMoreResults.value = false
-      } finally {
-        isLoadingMore.value = false
+
+    // Initialize
+    onMounted(() => {
+      searchRestaurants()
+    })
+
+    // Watch for location changes
+    watch(userLocation, () => {
+      if (userLocation.value && filters.value.distance) {
+        applyFilters()
       }
-    }
-    
-    // Initialize filters from props
-    if (props.initialFilters) {
-      selectedCuisines.value = props.initialFilters.cuisines || []
-      priceRange.value = props.initialFilters.priceRange || []
-      dietaryPreferences.value = props.initialFilters.dietary || []
-      freeDelivery.value = props.initialFilters.freeDelivery || false
-      openNow.value = props.initialFilters.openNow || false
-      onlyRated.value = props.initialFilters.minRating >= 4 || false
-    }
-    
+    })
+
     return {
-      // State
       searchQuery,
-      isLoading,
-      isLoadingMore,
-      hasMoreResults,
-      showFilters,
+      showSuggestions,
+      suggestions,
       selectedCuisines,
-      sortBy,
       priceRange,
-      dietaryPreferences,
-      freeDelivery,
-      openNow,
-      onlyRated,
-      viewMode,
-      selectedRestaurant,
-      minRating,
-      
-      // Data
+      showFilters,
+      filters,
+      isLoading,
+      userLocation,
       cuisineTypes,
       priceRanges,
-      dietaryOptions,
-      restaurants,
-      
-      // Computed
-      hasActiveFilters,
-      activeFiltersCount,
-      activeFilters,
-      filteredRestaurants,
-      
-      // Methods
-      toggleFilters,
+      sortOptions,
+      ratingOptions,
+      distanceOptions,
       handleSearch,
+      selectSuggestion,
+      getSuggestionIcon,
       applyFilters,
-      resetFilters,
-      removeFilter,
-      handleRestaurantClick,
-      loadMore
+      resetFilters
     }
   }
 }
@@ -680,18 +600,13 @@ export default {
   margin: 0 auto;
 }
 
-.filters-panel {
-  position: relative;
-  z-index: 1;
-}
-
 .selected-chip {
   background-color: var(--v-primary-base) !important;
   color: white !important;
 }
 
-.map-view {
-  border-radius: 8px;
-  overflow: hidden;
+.filters-panel {
+  position: relative;
+  z-index: 1;
 }
 </style>

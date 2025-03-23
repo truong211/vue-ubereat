@@ -225,6 +225,178 @@
       </v-card>
     </v-dialog>
   </div>
+
+  <v-menu
+    v-model="menu"
+    :close-on-content-click="false"
+    location="bottom end"
+    max-width="400"
+    offset="8"
+    transition="slide-y-transition"
+  >
+    <template v-slot:activator="{ props }">
+      <v-btn
+        v-bind="props"
+        icon
+        variant="text"
+        class="position-relative"
+      >
+        <v-badge
+          v-if="cartItemCount > 0"
+          :content="cartItemCount.toString()"
+          color="primary"
+        >
+          <v-icon>mdi-cart</v-icon>
+        </v-badge>
+        <v-icon v-else>mdi-cart-outline</v-icon>
+      </v-btn>
+    </template>
+
+    <v-card>
+      <v-card-title class="d-flex align-center">
+        <span>Your Cart</span>
+        <v-spacer></v-spacer>
+        <v-btn
+          variant="text"
+          icon="mdi-close"
+          size="small"
+          @click="menu = false"
+        ></v-btn>
+      </v-card-title>
+
+      <v-divider></v-divider>
+
+      <div v-if="isLoading" class="text-center py-4">
+        <v-progress-circular indeterminate color="primary" size="24"></v-progress-circular>
+        <p class="mt-2">Loading cart...</p>
+      </div>
+
+      <div v-else-if="!cart || !cart.items || cart.items.length === 0" class="text-center py-8">
+        <v-icon size="64" color="grey-lighten-1" class="mb-4">mdi-cart-outline</v-icon>
+        <p class="text-body-1 mb-4">Your cart is empty</p>
+        <v-btn
+          color="primary"
+          variant="outlined"
+          size="small"
+          to="/"
+          prepend-icon="mdi-food"
+          @click="menu = false"
+        >
+          Browse Restaurants
+        </v-btn>
+      </div>
+
+      <div v-else class="cart-content">
+        <!-- Restaurant info -->
+        <div class="d-flex align-center px-4 py-2">
+          <v-avatar size="36" class="mr-2">
+            <v-img :src="cart.restaurant?.logo || '/img/placeholder-restaurant.png'" alt="Restaurant"></v-img>
+          </v-avatar>
+          <div>
+            <div class="text-subtitle-2">{{ cart.restaurant?.name }}</div>
+            <div class="text-caption">{{ cart.items.length }} item{{ cart.items.length > 1 ? 's' : '' }}</div>
+          </div>
+        </div>
+
+        <v-divider></v-divider>
+
+        <!-- Cart items list -->
+        <v-list class="cart-items-list" max-height="300" density="compact">
+          <v-list-item
+            v-for="item in cart.items"
+            :key="item.id"
+            class="py-2"
+          >
+            <template v-slot:prepend>
+              <div class="font-weight-medium">{{ item.quantity }}×</div>
+            </template>
+
+            <v-list-item-title class="text-body-2">{{ item.product.name }}</v-list-item-title>
+            <v-list-item-subtitle v-if="hasOptions(item)" class="text-caption">
+              {{ getOptionsText(item) }}
+            </v-list-item-subtitle>
+
+            <template v-slot:append>
+              <div class="text-right">
+                <div class="text-body-2 font-weight-medium">${{ item.itemTotal.toFixed(2) }}</div>
+                <div class="d-flex mt-1">
+                  <v-btn
+                    icon="mdi-minus"
+                    size="x-small"
+                    variant="text"
+                    density="comfortable"
+                    :disabled="item.quantity <= 1"
+                    @click="updateQuantity(item.id, item.quantity - 1)"
+                  ></v-btn>
+
+                  <v-btn
+                    icon="mdi-plus"
+                    size="x-small"
+                    variant="text"
+                    density="comfortable"
+                    @click="updateQuantity(item.id, item.quantity + 1)"
+                  ></v-btn>
+
+                  <v-btn
+                    icon="mdi-delete-outline"
+                    size="x-small"
+                    variant="text"
+                    color="error"
+                    density="comfortable"
+                    @click="removeItem(item.id)"
+                  ></v-btn>
+                </div>
+              </div>
+            </template>
+          </v-list-item>
+        </v-list>
+
+        <v-divider></v-divider>
+
+        <!-- Price summary -->
+        <div class="px-4 py-2">
+          <div class="d-flex justify-space-between mb-1">
+            <span class="text-caption">Subtotal</span>
+            <span class="text-caption">${{ cart.subtotal?.toFixed(2) }}</span>
+          </div>
+
+          <div v-if="cart.discountAmount > 0" class="d-flex justify-space-between mb-1 text-success">
+            <span class="text-caption">Discount</span>
+            <span class="text-caption">-${{ cart.discountAmount?.toFixed(2) }}</span>
+          </div>
+
+          <div class="d-flex justify-space-between mb-1">
+            <span class="text-caption">Delivery Fee</span>
+            <span class="text-caption">${{ cart.deliveryFee?.toFixed(2) }}</span>
+          </div>
+
+          <div class="d-flex justify-space-between">
+            <span class="text-caption">Tax</span>
+            <span class="text-caption">${{ cart.taxAmount?.toFixed(2) }}</span>
+          </div>
+
+          <v-divider class="my-2"></v-divider>
+
+          <div class="d-flex justify-space-between font-weight-bold">
+            <span>Total</span>
+            <span>${{ cart.total?.toFixed(2) }}</span>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <v-card-actions>
+          <v-btn
+            block
+            color="primary"
+            to="/cart"
+            @click="menu = false"
+          >
+            View Cart
+          </v-btn>
+        </v-card-actions>
+      </div>
+    </v-card>
+  </v-menu>
 </template>
 
 <script>
@@ -395,6 +567,113 @@ export default {
 }
 </script>
 
+<script>
+import { computed, ref, onMounted, watch } from 'vue';
+import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
+
+export default {
+  name: 'CartWidget',
+  setup() {
+    const store = useStore();
+    const router = useRouter();
+    const menu = ref(false);
+    const isLoading = ref(false);
+
+    const cart = computed(() => store.state.cart.cart);
+    const cartItemCount = computed(() => {
+      if (!cart.value || !cart.value.items) return 0;
+      return cart.value.items.reduce((total, item) => total + item.quantity, 0);
+    });
+
+    // Load cart data when the widget is opened
+    watch(menu, async (isOpen) => {
+      if (isOpen && (!cart.value || !cart.value.items)) {
+        await loadCart();
+      }
+    });
+
+    // Load cart data when the component is mounted
+    onMounted(async () => {
+      await loadCart();
+    });
+
+    const loadCart = async () => {
+      if (!store.getters['auth/isAuthenticated']) return;
+      
+      try {
+        isLoading.value = true;
+        await store.dispatch('cart/fetchCart');
+      } catch (error) {
+        console.error('Failed to load cart:', error);
+      } finally {
+        isLoading.value = false;
+      }
+    };
+
+    const updateQuantity = async (itemId, quantity) => {
+      try {
+        await store.dispatch('cart/updateCartItem', {
+          id: itemId,
+          quantity
+        });
+      } catch (error) {
+        console.error('Failed to update quantity:', error);
+      }
+    };
+
+    const removeItem = async (itemId) => {
+      try {
+        await store.dispatch('cart/removeCartItem', itemId);
+      } catch (error) {
+        console.error('Failed to remove item:', error);
+      }
+    };
+
+    const hasOptions = (item) => {
+      return item.options && Object.keys(item.options).length > 0;
+    };
+
+    const getOptionsText = (item) => {
+      if (!item.options) return '';
+
+      const options = [];
+
+      if (item.options.size) {
+        options.push(`Size: ${item.options.size.name}`);
+      }
+
+      if (item.options.toppings && item.options.toppings.length) {
+        const toppingsText = item.options.toppings
+          .map(t => `${t.quantity}× ${t.name}`)
+          .join(', ');
+        options.push(`Toppings: ${toppingsText}`);
+      }
+
+      if (item.options.extras && item.options.extras.length) {
+        const extrasText = item.options.extras
+          .map(e => e.name)
+          .join(', ');
+        options.push(`Extras: ${extrasText}`);
+      }
+
+      return options.join(' • ');
+    };
+
+    return {
+      menu,
+      cart,
+      cartItemCount,
+      isLoading,
+      updateQuantity,
+      removeItem,
+      hasOptions,
+      getOptionsText
+    };
+  }
+};
+</script>
+
 <style scoped>
 .cart-widget {
   width: 100%;
@@ -436,5 +715,14 @@ export default {
 
 .cart-items::-webkit-scrollbar-thumb:hover {
   background: #666;
+}
+
+.cart-items-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.position-relative {
+  position: relative;
 }
 </style>

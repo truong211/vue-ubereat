@@ -159,50 +159,58 @@ export const restaurantService = {
   async searchRestaurants(params = {}) {
     const {
       search = '',
-      cuisine = null,
+      cuisines = [],
       sortBy = 'rating',
       rating = null,
-      priceRange = null,
+      priceRange = [],
       maxDeliveryTime = null,
       maxDistance = null,
+      freeDelivery = false,
+      openNow = false,
       page = 1,
       limit = 12,
       latitude = null,
       longitude = null
-    } = params
+    } = params;
 
     const response = await api.get('/restaurants/search', {
       params: {
         search,
-        cuisine,
+        cuisines: cuisines.join(','),
         sort: sortBy,
         minRating: rating,
-        priceRange,
+        priceRange: priceRange.join(','),
         maxDeliveryTime,
         maxDistance,
+        freeDelivery,
+        openNow,
         page,
         limit,
         latitude,
         longitude
       }
-    })
+    });
 
-    return response.data
+    return response.data;
   },
 
   /**
-   * Get restaurant suggestions based on partial search
+   * Get search suggestions based on partial search
    * @param {string} query - Partial search query
    * @returns {Promise} Promise with suggestions data
    */
   async getSearchSuggestions(query) {
-    if (!query || query.length < 2) return []
+    if (!query || query.length < 2) return {
+      restaurants: [],
+      cuisines: [],
+      dishes: []
+    };
     
     const response = await api.get('/restaurants/suggestions', {
       params: { query }
-    })
+    });
 
-    return response.data
+    return response.data;
   },
 
   /**
@@ -210,7 +218,19 @@ export const restaurantService = {
    * @returns {Promise} Promise with cuisine types data
    */
   async getCuisineTypes() {
-    const response = await api.get('/restaurants/cuisines')
-    return response.data
+    const response = await api.get('/restaurants/cuisines');
+    return response.data;
+  },
+
+  /**
+   * Get nearby restaurants based on location
+   * @param {Object} params - Location parameters
+   * @returns {Promise} Promise with nearby restaurant data
+   */
+  async getNearbyRestaurants(params = {}) {
+    const response = await api.get('/restaurants/nearby', { 
+      params
+    });
+    return response.data;
   }
 };

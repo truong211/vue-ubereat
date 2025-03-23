@@ -2,6 +2,8 @@ const { Notification, User, Order, Driver, Restaurant } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const webpush = require('web-push');
 const { Op } = require('sequelize');
+const catchAsync = require('../utils/catchAsync');
+const socketService = require('../services/socket.service');
 
 // Configure web push
 const vapidKeys = {
@@ -191,148 +193,65 @@ exports.updatePreferences = async (req, res, next) => {
  * @route GET /api/notifications
  * @access Private
  */
-exports.getNotifications = async (req, res, next) => {
-  try {
-    const { 
-      page = 1, 
-      limit = 20, 
-      type = null, 
-      read = null,
-      timeRange = null
-    } = req.query;
+exports.getNotifications = catchAsync(async (req, res, next) => {
+  const notifications = await Notification.findAll({
+    where: { userId: req.user.id },
+    order: [['createdAt', 'DESC']],
+    limit: 50
+  });
 
-    // Build filter
-    const filter = {
-      userId: req.user.id
-    };
-
-    // Filter by type if provided
-    if (type && type !== 'all') {
-      filter.type = type;
+  res.status(200).json({
+    status: 'success',
+    data: {
+      notifications
     }
-
-    // Filter by read status if provided
-    if (read !== null) {
-      filter.read = read === 'true';
-    }
-
-    // Filter by time range if provided
-    if (timeRange) {
-      const now = new Date();
-      let startDate;
-
-      switch (timeRange) {
-        case 'today':
-          startDate = new Date(now.setHours(0, 0, 0, 0));
-          break;
-        case 'week':
-          startDate = new Date(now.setDate(now.getDate() - 7));
-          break;
-        case 'month':
-          startDate = new Date(now.setMonth(now.getMonth() - 1));
-          break;
-        default:
-          startDate = null;
-      }
-
-      if (startDate) {
-        filter.createdAt = {
-          [Op.gte]: startDate
-        };
-      }
-    }
-
-    // Calculate pagination
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Get notifications
-    const { count, rows: notifications } = await Notification.findAndCountAll({
-      where: filter,
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        count,
-        totalPages: Math.ceil(count / parseInt(limit)),
-        currentPage: parseInt(page),
-        notifications
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+  });
+});
 
 /**
  * Mark notification as read
- * @route PUT /api/notifications/:id/read
+ * @route PATCH /api/notifications/:id/read
  * @access Private
  */
-exports.markAsRead = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    
-    const notification = await Notification.findOne({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
-
-    if (!notification) {
-      return next(new AppError('Notification not found', 404));
+exports.markAsRead = catchAsync(async (req, res, next) => {
+  const notification = await Notification.findOne({
+    where: {
+      id: req.params.id,
+      userId: req.user.id
     }
+  });
 
-    await notification.update({
-      read: true,
-      readAt: new Date()
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Notification marked as read'
-      }
-    });
-  } catch (error) {
-    next(error);
+  if (!notification) {
+    return next(new AppError('Thông báo không tồn tại', 404));
   }
-};
+
+  notification.isRead = true;
+  await notification.save();
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      notification
+    }
+  });
+});
 
 /**
  * Mark all notifications as read
- * @route PUT /api/notifications/read-all
+ * @route PATCH /api/notifications/read-all
  * @access Private
  */
-exports.markAllAsRead = async (req, res, next) => {
-  try {
-    await Notification.update(
-      {
-        read: true,
-        readAt: new Date()
-      },
-      {
-        where: {
-          userId: req.user.id,
-          read: false
-        }
-      }
-    );
+exports.markAllAsRead = catchAsync(async (req, res, next) => {
+  await Notification.update(
+    { isRead: true },
+    { where: { userId: req.user.id, isRead: false } }
+  );
 
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'All notifications marked as read'
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+  res.status(200).json({
+    status: 'success',
+    message: 'Đã đánh dấu tất cả thông báo là đã đọc'
+  });
+});
 
 /**
  * Delete notification
@@ -821,6 +740,158 @@ exports.getNotificationCounts = async (req, res, next) => {
   }
 };
 
+/**
+ * Create a notification for order status change
+ * @param {Object} options - Notification options
+ * @param {string} options.orderId - Order ID
+ * @param {string} options.userId - User ID
+ * @param {string} options.status - New order status
+ * @param {Object} options.data - Additional data
+ */
+exports.createOrderStatusNotification = async (options) => {
+  try {
+    const { orderId, userId, status, data = {} } = options;
+
+    // Get status text in Vietnamese
+    const statusText = getStatusText(status);
+    
+    const notification = await Notification.create({
+      userId,
+      type: 'ORDER_STATUS',
+      title: `Cập nhật trạng thái đơn hàng #${data.orderNumber || orderId}`,
+      message: `Đơn hàng của bạn đã được cập nhật sang trạng thái: ${statusText}`,
+      data: {
+        orderId,
+        status,
+        ...data
+      },
+      isRead: false
+    });
+
+    // Send notification via socket
+    socketService.sendToUser(userId, 'notification', {
+      notification,
+      orderUpdate: {
+        orderId,
+        status,
+        ...data
+      }
+    });
+
+    return notification;
+  } catch (error) {
+    console.error('Error creating order status notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create a notification for driver location update
+ * @param {Object} options - Notification options
+ */
+exports.createDriverUpdateNotification = async (options) => {
+  try {
+    const { orderId, userId, driverLocation, eta } = options;
+    
+    // Get order for more details
+    const order = await Order.findByPk(orderId);
+    if (!order) return null;
+    
+    const notification = await Notification.create({
+      userId,
+      type: 'DRIVER_LOCATION',
+      title: 'Cập nhật vị trí tài xế',
+      message: eta 
+        ? `Tài xế đang đến trong khoảng ${eta} phút` 
+        : 'Vị trí tài xế vừa được cập nhật',
+      data: {
+        orderId,
+        driverLocation,
+        eta,
+        orderNumber: order.orderNumber
+      },
+      isRead: false
+    });
+
+    // Send notification via socket
+    socketService.sendToUser(userId, 'notification', {
+      notification,
+      driverUpdate: {
+        orderId,
+        driverLocation,
+        eta
+      }
+    });
+
+    return notification;
+  } catch (error) {
+    console.error('Error creating driver update notification:', error);
+    return null;
+  }
+};
+
+/**
+ * Create a notification for ETA update
+ * @param {Object} options - Notification options
+ */
+exports.createEtaUpdateNotification = async (options) => {
+  try {
+    const { orderId, userId, eta, reason } = options;
+    
+    // Get order for more details
+    const order = await Order.findByPk(orderId);
+    if (!order) return null;
+    
+    const message = reason 
+      ? `Thời gian giao hàng dự kiến đã được cập nhật: ${eta} phút (${reason})`
+      : `Thời gian giao hàng dự kiến đã được cập nhật: ${eta} phút`;
+    
+    const notification = await Notification.create({
+      userId,
+      type: 'ETA_UPDATE',
+      title: 'Cập nhật thời gian giao hàng',
+      message,
+      data: {
+        orderId,
+        eta,
+        reason,
+        orderNumber: order.orderNumber
+      },
+      isRead: false
+    });
+
+    // Send notification via socket
+    socketService.sendToUser(userId, 'notification', {
+      notification,
+      etaUpdate: {
+        orderId,
+        eta,
+        reason
+      }
+    });
+
+    return notification;
+  } catch (error) {
+    console.error('Error creating ETA update notification:', error);
+    return null;
+  }
+};
+
+// Helper function to get status text in Vietnamese
+function getStatusText(status) {
+  const statusMap = {
+    'pending': 'Chờ xác nhận',
+    'confirmed': 'Đã xác nhận',
+    'preparing': 'Đang chuẩn bị',
+    'ready_for_pickup': 'Sẵn sàng giao',
+    'out_for_delivery': 'Đang giao hàng',
+    'delivered': 'Đã giao hàng',
+    'cancelled': 'Đã hủy'
+  };
+  
+  return statusMap[status] || status;
+}
+
 module.exports = {
   subscribe,
   unsubscribe,
@@ -834,5 +905,8 @@ module.exports = {
   sendOrderStatusNotification,
   sendDriverLocationNotification,
   sendPromotionNotification,
-  sendMarketingNotification
+  sendMarketingNotification,
+  createOrderStatusNotification,
+  createDriverUpdateNotification,
+  createEtaUpdateNotification
 };

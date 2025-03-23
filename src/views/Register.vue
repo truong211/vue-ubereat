@@ -7,7 +7,8 @@
         {{ message }}
       </div>
       
-      <form @submit.prevent="register">
+      <!-- Registration Form -->
+      <form v-if="!registrationSuccess && !showVerificationForm" @submit.prevent="register">
         <div class="form-group">
           <label for="name">Họ và tên</label>
           <input 
@@ -72,7 +73,58 @@
         </button>
       </form>
       
-      <div class="mt-6 text-center">
+      <!-- OTP Verification Form -->
+      <form v-if="showVerificationForm" @submit.prevent="verifyOTP">
+        <div class="text-center mb-6">
+          <h2 class="text-xl font-bold">Xác thực tài khoản</h2>
+          <p class="mt-2">Vui lòng kiểm tra email và nhập mã OTP được gửi đến số điện thoại của bạn để xác thực tài khoản.</p>
+        </div>
+        
+        <div class="form-group">
+          <label for="otp">Mã OTP</label>
+          <input 
+            type="text" 
+            id="otp" 
+            v-model="otpData.code"
+            class="form-control text-center text-2xl tracking-widest"
+            placeholder="Nhập mã 6 số"
+            maxlength="6"
+            required
+          />
+        </div>
+        
+        <button 
+          type="submit" 
+          class="btn btn-primary w-full mt-4"
+          :disabled="isLoading"
+        >
+          {{ isLoading ? 'Đang xử lý...' : 'Xác thực' }}
+        </button>
+        
+        <div class="mt-4 text-center">
+          <p>Không nhận được mã? 
+            <button 
+              type="button" 
+              class="text-primary"
+              @click="resendOTP"
+              :disabled="isLoading || resendCountdown > 0"
+            >
+              {{ resendCountdown > 0 ? `Gửi lại sau ${resendCountdown}s` : 'Gửi lại' }}
+            </button>
+          </p>
+        </div>
+      </form>
+      
+      <!-- Registration Success Message -->
+      <div v-if="registrationSuccess" class="text-center">
+        <div class="success-icon mb-4">✓</div>
+        <h2 class="text-xl font-bold mb-2">Đăng ký thành công!</h2>
+        <p class="mb-4">Tài khoản của bạn đã được tạo và xác thực.</p>
+        <router-link to="/login" class="btn btn-primary">Đăng nhập ngay</router-link>
+      </div>
+      
+      <!-- Social Login Options (only on initial registration form) -->
+      <div v-if="!showVerificationForm && !registrationSuccess" class="mt-6 text-center">
         <p>Hoặc đăng ký với</p>
         <div class="social-login mt-3">
           <button class="btn btn-google" @click="googleLogin">
@@ -84,7 +136,7 @@
         </div>
       </div>
       
-      <div class="mt-6 text-center">
+      <div class="mt-6 text-center" v-if="!registrationSuccess">
         <p>Đã có tài khoản? <router-link to="/login" class="text-primary">Đăng nhập</router-link></p>
       </div>
     </div>
@@ -92,9 +144,8 @@
 </template>
 
 <script>
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
 export default {
@@ -112,10 +163,20 @@ export default {
       confirmPassword: ''
     });
     
+    const otpData = ref({
+      code: '',
+      phone: ''
+    });
+    
     const isLoading = ref(false);
     const message = ref('');
     const messageType = ref('');
+    const showVerificationForm = ref(false);
+    const registrationSuccess = ref(false);
+    const resendCountdown = ref(0);
+    let countdownTimer = null;
     
+    // Register function
     const register = async () => {
       try {
         // Validate form
@@ -128,30 +189,24 @@ export default {
         isLoading.value = true;
         message.value = '';
         
-        // Send registration request
-        const response = await axios.post('/api/auth/register', {
+        // Register via store
+        await authStore.register({
           name: formData.value.name,
           email: formData.value.email,
           phone: formData.value.phone,
           password: formData.value.password
         });
         
-        message.value = response.data.message;
+        // Store phone for verification
+        otpData.value.phone = formData.value.phone;
+        
+        // Show verification form
+        message.value = 'Đăng ký thành công. Vui lòng xác thực tài khoản qua mã OTP.';
         messageType.value = 'success';
+        showVerificationForm.value = true;
         
-        // Clear form
-        formData.value = {
-          name: '',
-          email: '',
-          phone: '',
-          password: '',
-          confirmPassword: ''
-        };
-        
-        // Redirect to verification page or login
-        setTimeout(() => {
-          router.push('/login');
-        }, 2000);
+        // Start countdown for resend
+        startResendCountdown();
       } catch (error) {
         message.value = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
         messageType.value = 'error';
@@ -160,6 +215,80 @@ export default {
       }
     };
     
+    // Verify OTP function
+    const verifyOTP = async () => {
+      try {
+        isLoading.value = true;
+        message.value = '';
+        
+        // Verify OTP via store
+        await authStore.verifyPhoneOTP(otpData.value.phone, otpData.value.code);
+        
+        // Show success message
+        registrationSuccess.value = true;
+        showVerificationForm.value = false;
+        
+        // Clear forms
+        formData.value = {
+          name: '',
+          email: '',
+          phone: '',
+          password: '',
+          confirmPassword: ''
+        };
+        
+        otpData.value = {
+          code: '',
+          phone: ''
+        };
+      } catch (error) {
+        message.value = error.response?.data?.message || 'Xác thực thất bại. Vui lòng kiểm tra lại mã OTP.';
+        messageType.value = 'error';
+      } finally {
+        isLoading.value = false;
+      }
+    };
+    
+    // Resend OTP function
+    const resendOTP = async () => {
+      try {
+        isLoading.value = true;
+        message.value = '';
+        
+        // Resend OTP via store
+        await authStore.resendPhoneOTP(otpData.value.phone);
+        
+        // Reset countdown
+        startResendCountdown();
+        
+        message.value = 'Mã OTP mới đã được gửi đến điện thoại của bạn.';
+        messageType.value = 'success';
+      } catch (error) {
+        message.value = error.response?.data?.message || 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.';
+        messageType.value = 'error';
+      } finally {
+        isLoading.value = false;
+      }
+    };
+    
+    // Start countdown for resend button
+    const startResendCountdown = () => {
+      resendCountdown.value = 60; // 60 seconds cooldown
+      
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+      }
+      
+      countdownTimer = setInterval(() => {
+        if (resendCountdown.value > 0) {
+          resendCountdown.value -= 1;
+        } else {
+          clearInterval(countdownTimer);
+        }
+      }, 1000);
+    };
+    
+    // Social login functions
     const googleLogin = async () => {
       try {
         // Load Google Sign-In API
@@ -226,12 +355,25 @@ export default {
       }
     };
     
+    // Clean up on component unmount
+    onUnmounted(() => {
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+      }
+    });
+    
     return {
       formData,
+      otpData,
       isLoading,
       message,
       messageType,
+      showVerificationForm,
+      registrationSuccess,
+      resendCountdown,
       register,
+      verifyOTP,
+      resendOTP,
       googleLogin,
       facebookLogin
     };
@@ -334,5 +476,23 @@ export default {
 
 .text-primary {
   color: #FF5A5F;
+}
+
+.success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  background-color: #D1FAE5;
+  color: #047857;
+  font-size: 32px;
+  font-weight: bold;
+  border-radius: 50%;
+}
+
+.tracking-widest {
+  letter-spacing: 0.25em;
 }
 </style>

@@ -1,7 +1,9 @@
 const { validationResult } = require('express-validator');
-const { Product, Category, Restaurant, Review, User } = require('../models');
+const { Product, Category, Restaurant, Review, User, ProductOption, ProductOptionChoice } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const { Op } = require('sequelize');
+const sequelize = require('../config/database');
+const { format } = require('date-fns');
 
 /**
  * Get all products
@@ -427,4 +429,155 @@ exports.getProductReviews = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};
+
+/**
+ * Get product details with options
+ * @route GET /api/products/:id/details
+ * @access Public
+ */
+exports.getProductDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findByPk(id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        },
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name', 'logo', 'address', 'rating']
+        },
+        {
+          model: ProductOption,
+          as: 'options',
+          include: [
+            {
+              model: ProductOptionChoice,
+              as: 'choices',
+              attributes: ['id', 'name', 'price', 'isDefault']
+            }
+          ]
+        },
+        {
+          model: Review,
+          as: 'reviews',
+          where: { isVisible: true },
+          required: false,
+          include: [
+            {
+              model: User,
+              as: 'user',
+              attributes: ['id', 'fullName', 'profileImage']
+            }
+          ],
+          limit: 3,
+          order: [['createdAt', 'DESC']]
+        }
+      ],
+      attributes: {
+        include: [
+          [
+            sequelize.literal(`(
+              SELECT AVG(rating)
+              FROM reviews
+              WHERE productId = Product.id
+              AND isVisible = true
+            )`),
+            'averageRating'
+          ],
+          [
+            sequelize.literal(`(
+              SELECT COUNT(*)
+              FROM reviews
+              WHERE productId = Product.id
+              AND isVisible = true
+            )`),
+            'totalReviews'
+          ]
+        ]
+      }
+    });
+
+    if (!product) {
+      return next(new AppError('Product not found', 404));
+    }
+
+    // Get related products (same category)
+    const relatedProducts = await Product.findAll({
+      where: {
+        categoryId: product.categoryId,
+        id: { [Op.ne]: product.id },
+        status: 'available'
+      },
+      limit: 4,
+      include: [
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name']
+        }
+      ]
+    });
+
+    // Check if product is available based on restaurant settings
+    const restaurantSettings = await db.RestaurantSettings.findOne({
+      where: { restaurantId: product.restaurantId }
+    });
+
+    let isCurrentlyAvailable = product.status === 'available';
+
+    // Check restaurant's temporary closure
+    const restaurant = await Restaurant.findByPk(product.restaurantId);
+    if (restaurant?.tempClosureSettings?.isTemporarilyClosed) {
+      isCurrentlyAvailable = false;
+    }
+
+    // Check restaurant settings
+    if (restaurantSettings?.isOpen === false) {
+      isCurrentlyAvailable = false;
+    }
+
+    // Check category availability if menu scheduling is enabled
+    if (restaurant?.menuAvailability?.scheduleEnabled) {
+      const now = new Date();
+      const dayOfWeek = format(now, 'EEEE');
+      const currentTime = format(now, 'HH:mm');
+      
+      // Find if there's a schedule for this time
+      const schedules = restaurant.menuAvailability.schedules || [];
+      const matchingSchedule = schedules.find(schedule => {
+        return schedule.days.includes(dayOfWeek) && 
+               currentTime >= schedule.startTime && 
+               currentTime <= schedule.endTime;
+      });
+      
+      // If no matching schedule found, check default availability
+      if (!matchingSchedule && !restaurant.menuAvailability.defaultAvailability) {
+        isCurrentlyAvailable = false;
+      }
+      
+      // If schedule found, check if this category is included
+      if (matchingSchedule) {
+        isCurrentlyAvailable = matchingSchedule.categoryIds.includes(product.categoryId);
+      }
+    }
+
+    const result = product.toJSON();
+    result.isCurrentlyAvailable = isCurrentlyAvailable;
+    result.relatedProducts = relatedProducts;
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        product: result
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

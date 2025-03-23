@@ -109,6 +109,96 @@ export const useAuthStore = defineStore('auth', {
       }
     },
     
+    async verifyEmail(token) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.get(`/api/auth/verify-email/${token}`);
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Email verification failed';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async resendVerificationEmail(email) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.post('/api/auth/resend-verification-email', { email });
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to resend verification email';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async verifyPhoneOTP(phone, otp) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.post('/api/auth/verify-phone', { phone, otp });
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Phone verification failed';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async resendPhoneOTP(phone) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.post('/api/auth/resend-phone-otp', { phone });
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to resend OTP';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async forgotPassword(email) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.post('/api/auth/forgot-password', { email });
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to process forgot password request';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
+    async resetPassword(token, password) {
+      this.loading = true;
+      this.error = null;
+      
+      try {
+        const response = await axios.post('/api/auth/reset-password', { token, password });
+        return response.data;
+      } catch (error) {
+        this.error = error.response?.data?.message || 'Failed to reset password';
+        throw error;
+      } finally {
+        this.loading = false;
+      }
+    },
+    
     async logout() {
       this.loading = true;
       

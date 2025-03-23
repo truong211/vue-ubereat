@@ -7,7 +7,16 @@
         {{ message }}
       </div>
       
-      <form @submit.prevent="resetPassword" v-if="!resetSuccess">
+      <!-- Token Verification / Error State -->
+      <div v-if="tokenError" class="text-center">
+        <div class="error-icon mb-4">!</div>
+        <h2 class="text-xl font-bold mb-2">Liên kết không hợp lệ</h2>
+        <p class="mb-4">Liên kết đặt lại mật khẩu của bạn đã hết hạn hoặc không hợp lệ.</p>
+        <router-link to="/forgot-password" class="btn btn-primary">Yêu cầu đặt lại mật khẩu mới</router-link>
+      </div>
+      
+      <!-- Reset Password Form -->
+      <form v-if="!resetSuccess && !tokenError" @submit.prevent="resetPassword">
         <div class="form-group">
           <label for="password">Mật khẩu mới</label>
           <input 
@@ -21,7 +30,7 @@
         </div>
         
         <div class="form-group">
-          <label for="confirmPassword">Xác nhận mật khẩu</label>
+          <label for="confirmPassword">Xác nhận mật khẩu mới</label>
           <input 
             type="password" 
             id="confirmPassword" 
@@ -40,9 +49,11 @@
         </button>
       </form>
       
+      <!-- Reset Success State -->
       <div v-if="resetSuccess" class="text-center">
         <div class="success-icon mb-4">✓</div>
-        <p class="mb-4">Mật khẩu của bạn đã được đặt lại thành công.</p>
+        <h2 class="text-xl font-bold mb-2">Đặt lại mật khẩu thành công!</h2>
+        <p class="mb-4">Mật khẩu của bạn đã được đặt lại. Bạn có thể đăng nhập ngay bây giờ.</p>
         <router-link to="/login" class="btn btn-primary">Đăng nhập</router-link>
       </div>
     </div>
@@ -51,39 +62,46 @@
 
 <script>
 import { ref, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios';
+import { useRoute } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 export default {
   name: 'ResetPassword',
   
   setup() {
     const route = useRoute();
-    const router = useRouter();
+    const authStore = useAuthStore();
     
-    const token = ref('');
     const password = ref('');
     const confirmPassword = ref('');
     const isLoading = ref(false);
     const message = ref('');
     const messageType = ref('');
+    const tokenError = ref(false);
     const resetSuccess = ref(false);
+    const resetToken = ref('');
     
+    // Get token from URL
     onMounted(() => {
-      // Get token from URL
-      token.value = route.params.token;
+      resetToken.value = route.params.token;
       
-      if (!token.value) {
-        message.value = 'Token không hợp lệ hoặc đã hết hạn.';
-        messageType.value = 'error';
+      if (!resetToken.value) {
+        tokenError.value = true;
       }
     });
     
     const resetPassword = async () => {
       try {
-        // Validate passwords match
+        // Check if passwords match
         if (password.value !== confirmPassword.value) {
-          message.value = 'Mật khẩu không khớp.';
+          message.value = 'Mật khẩu không khớp';
+          messageType.value = 'error';
+          return;
+        }
+        
+        // Check password strength
+        if (password.value.length < 6) {
+          message.value = 'Mật khẩu phải có ít nhất 6 ký tự';
           messageType.value = 'error';
           return;
         }
@@ -91,28 +109,19 @@ export default {
         isLoading.value = true;
         message.value = '';
         
-        // Send reset password request
-        const response = await axios.post(`/api/auth/reset-password/${token.value}`, {
-          password: password.value
-        });
+        // Reset password via store
+        await authStore.resetPassword(resetToken.value, password.value);
         
-        // Mark reset as successful
+        // Show success message
         resetSuccess.value = true;
-        messageType.value = 'success';
-        message.value = response.data.message || 'Mật khẩu đã được đặt lại thành công.';
-        
-        // Optionally store tokens if returned
-        if (response.data.token) {
-          localStorage.setItem('token', response.data.token);
-          
-          // Auto-redirect to login after 3 seconds
-          setTimeout(() => {
-            router.push('/login');
-          }, 3000);
-        }
       } catch (error) {
-        message.value = error.response?.data?.message || 'Đặt lại mật khẩu thất bại. Vui lòng thử lại.';
-        messageType.value = 'error';
+        if (error.response?.status === 400) {
+          // Token is invalid or expired
+          tokenError.value = true;
+        } else {
+          message.value = error.response?.data?.message || 'Đặt lại mật khẩu thất bại. Vui lòng thử lại.';
+          messageType.value = 'error';
+        }
       } finally {
         isLoading.value = false;
       }
@@ -124,6 +133,7 @@ export default {
       isLoading,
       message,
       messageType,
+      tokenError,
       resetSuccess,
       resetPassword
     };
@@ -200,12 +210,31 @@ export default {
   color: #047857;
 }
 
-.text-primary {
-  color: #FF5A5F;
+.success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  background-color: #D1FAE5;
+  color: #047857;
+  font-size: 32px;
+  font-weight: bold;
+  border-radius: 50%;
 }
 
-.success-icon {
-  font-size: 64px;
-  color: #047857;
+.error-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto;
+  background-color: #FECACA;
+  color: #B91C1C;
+  font-size: 32px;
+  font-weight: bold;
+  border-radius: 50%;
 }
 </style>

@@ -1,229 +1,422 @@
 <template>
-  <div class="live-map" ref="mapContainer">
-    <slot v-if="loading" name="loading">
-      <div class="loading-overlay">
-        <v-progress-circular indeterminate color="primary"></v-progress-circular>
-      </div>
-    </slot>
+  <div class="map-container" ref="mapContainer">
+    <!-- Placeholder for when map fails to load -->
+    <div v-if="showMapError" class="map-error">
+      <v-alert type="error" variant="tonal">
+        Không thể tải bản đồ. Vui lòng thử lại sau.
+        <template v-slot:append>
+          <v-btn color="error" @click="initMap">Thử lại</v-btn>
+        </template>
+      </v-alert>
+    </div>
   </div>
 </template>
 
-<script>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import 'leaflet/dist/leaflet.css'
+<script setup>
+import { ref, onMounted, onUnmounted, watch, defineProps, defineEmits } from 'vue'
 
-export default {
-  name: 'LiveMap',
-  
-  props: {
-    deliveryAddress: {
-      type: Object,
-      required: true,
-      validator: value => value && typeof value.lat === 'number' && typeof value.lng === 'number'
-    },
-    restaurantLocation: {
-      type: Object,
-      required: true,
-      validator: value => value && typeof value.lat === 'number' && typeof value.lng === 'number'
-    },
-    driverLocation: {
-      type: Object,
-      default: null,
-      validator: value => !value || (typeof value.lat === 'number' && typeof value.lng === 'number')
-    },
-    routePoints: {
-      type: Array,
-      default: () => []
-    },
-    eta: {
-      type: Number,
-      default: null
-    }
+const props = defineProps({
+  deliveryAddress: {
+    type: Object,
+    default: null
   },
+  restaurantLocation: {
+    type: Object,
+    default: null
+  },
+  driverLocation: {
+    type: Object,
+    default: null
+  },
+  routePoints: {
+    type: Array,
+    default: () => []
+  },
+  eta: {
+    type: [String, Number],
+    default: null
+  }
+})
 
-  emits: ['map-ready'],
+const emit = defineEmits(['map-ready'])
 
-  setup(props, { emit }) {
-    const mapContainer = ref(null)
-    const map = ref(null)
-    const markers = ref({})
-    const routeLine = ref(null)
-    const loading = ref(true)
+// Refs
+const mapContainer = ref(null)
+const map = ref(null)
+const markers = ref({
+  restaurant: null,
+  driver: null,
+  delivery: null
+})
+const routePath = ref(null)
+const mapLoadAttempts = ref(0)
+const showMapError = ref(false)
+const driverMarkerAnimation = ref(null)
+const watchId = ref(null)
 
-    let L // Leaflet instance
-
-    const initializeMap = async () => {
-      // Dynamically import Leaflet to avoid SSR issues
-      const leaflet = await import('leaflet')
-      L = leaflet.default
-
-      // Create custom markers
-      const createCustomIcon = (iconUrl, size = [32, 32]) => {
-        return L.icon({
-          iconUrl,
-          iconSize: size,
-          iconAnchor: [size[0]/2, size[1]],
-          popupAnchor: [0, -size[1]]
-        })
-      }
-
-      // Initialize map centered on restaurant
-      map.value = L.map(mapContainer.value).setView(
-        [props.restaurantLocation.lat, props.restaurantLocation.lng],
-        13
-      )
-
-      // Add OpenStreetMap tiles
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-      }).addTo(map.value)
-
-      // Add markers
-      markers.value.restaurant = L.marker(
-        [props.restaurantLocation.lat, props.restaurantLocation.lng],
-        {
-          icon: createCustomIcon('/img/icons/restaurant-marker.png'),
-          title: 'Restaurant'
-        }
-      )
-        .addTo(map.value)
-        .bindPopup('Restaurant Location')
-
-      markers.value.delivery = L.marker(
-        [props.deliveryAddress.lat, props.deliveryAddress.lng],
-        {
-          icon: createCustomIcon('/img/icons/delivery-marker.png'),
-          title: 'Delivery Location'
-        }
-      )
-        .addTo(map.value)
-        .bindPopup('Delivery Location')
-
-      if (props.driverLocation) {
-        markers.value.driver = L.marker(
-          [props.driverLocation.lat, props.driverLocation.lng],
-          {
-            icon: createCustomIcon('/img/icons/driver-marker.png'),
-            title: 'Driver'
-          }
-        )
-          .addTo(map.value)
-          .bindPopup(`ETA: ${props.eta || 'Calculating...'} mins`)
-      }
-
-      // Fit bounds to show all markers
-      const bounds = L.latLngBounds([
-        [props.restaurantLocation.lat, props.restaurantLocation.lng],
-        [props.deliveryAddress.lat, props.deliveryAddress.lng]
-      ])
-      if (props.driverLocation) {
-        bounds.extend([props.driverLocation.lat, props.driverLocation.lng])
-      }
-      map.value.fitBounds(bounds, { padding: [50, 50] })
-
-      // Draw route if points available
-      if (props.routePoints.length > 0) {
-        drawRoute()
-      }
-
-      loading.value = false
-      emit('map-ready')
+// Methods
+const initMap = async () => {
+  if (!mapContainer.value) return
+  if (mapLoadAttempts.value >= 3) {
+    showMapError.value = true
+    return
+  }
+  
+  mapLoadAttempts.value++
+  showMapError.value = false
+  
+  try {
+    // Check if Google Maps script is already loaded
+    if (!window.google || !window.google.maps) {
+      await loadGoogleMapsScript()
     }
-
-    const drawRoute = () => {
-      if (routeLine.value) {
-        routeLine.value.remove()
-      }
-
-      routeLine.value = L.polyline(
-        props.routePoints.map(point => [point.lat, point.lng]),
-        {
-          color: '#2196F3',
-          weight: 4,
-          opacity: 0.8,
-          dashArray: '10, 10'
-        }
-      ).addTo(map.value)
-    }
-
-    const updateDriverMarker = () => {
-      if (!props.driverLocation || !markers.value.driver) return
-
-      markers.value.driver.setLatLng([
-        props.driverLocation.lat,
-        props.driverLocation.lng
-      ])
-
-      if (props.eta) {
-        markers.value.driver.setPopupContent(`ETA: ${props.eta} mins`)
+    
+    // Create map instance
+    const mapOptions = {
+      zoom: 15,
+      mapTypeId: google.maps.MapTypeId.ROADMAP,
+      streetViewControl: false,
+      fullscreenControl: false,
+      mapTypeControl: false,
+      zoomControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_TOP
       }
     }
-
-    // Watch for prop changes
-    watch(() => props.driverLocation, () => {
-      if (map.value && props.driverLocation) {
-        if (!markers.value.driver) {
-          markers.value.driver = L.marker(
-            [props.driverLocation.lat, props.driverLocation.lng],
-            {
-              icon: L.icon({
-                iconUrl: '/img/icons/driver-marker.png',
-                iconSize: [32, 32],
-                iconAnchor: [16, 32]
-              }),
-              title: 'Driver'
-            }
-          )
-            .addTo(map.value)
-            .bindPopup(`ETA: ${props.eta || 'Calculating...'} mins`)
-        } else {
-          updateDriverMarker()
-        }
-      }
-    }, { deep: true })
-
-    watch(() => props.routePoints, () => {
-      if (map.value && props.routePoints.length > 0) {
-        drawRoute()
-      }
-    }, { deep: true })
-
-    onMounted(() => {
-      initializeMap()
-    })
-
-    onUnmounted(() => {
-      if (map.value) {
-        map.value.remove()
-      }
-    })
-
-    return {
-      mapContainer,
-      loading
+    
+    map.value = new google.maps.Map(mapContainer.value, mapOptions)
+    
+    // Center map on delivery location if available, otherwise on restaurant
+    if (props.deliveryAddress) {
+      map.value.setCenter({ 
+        lat: props.deliveryAddress.lat, 
+        lng: props.deliveryAddress.lng 
+      })
+    } else if (props.restaurantLocation) {
+      map.value.setCenter({ 
+        lat: props.restaurantLocation.lat, 
+        lng: props.restaurantLocation.lng 
+      })
     }
+    
+    // Set up markers
+    updateMapMarkers()
+    
+    // Draw route if we have both driver and delivery locations
+    if (props.routePoints && props.routePoints.length > 0) {
+      drawRoute()
+    } else if (props.driverLocation && props.deliveryAddress) {
+      drawDirectRoute()
+    }
+    
+    // Map is ready
+    emit('map-ready', map.value)
+  } catch (error) {
+    console.error('Error initializing map:', error)
+    showMapError.value = true
   }
 }
+
+const loadGoogleMapsScript = () => {
+  return new Promise((resolve, reject) => {
+    const apiKey = 'YOUR_GOOGLE_MAPS_API_KEY' // Replace with actual API key from config
+    const script = document.createElement('script')
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`
+    script.async = true
+    script.defer = true
+    
+    script.onload = resolve
+    script.onerror = () => reject(new Error('Failed to load Google Maps script'))
+    
+    document.head.appendChild(script)
+  })
+}
+
+const updateMapMarkers = () => {
+  if (!map.value) return
+  
+  // Update restaurant marker
+  if (props.restaurantLocation) {
+    if (!markers.value.restaurant) {
+      markers.value.restaurant = new google.maps.Marker({
+        map: map.value,
+        position: { 
+          lat: props.restaurantLocation.lat, 
+          lng: props.restaurantLocation.lng 
+        },
+        icon: {
+          url: '/img/markers/restaurant-marker.png',
+          scaledSize: new google.maps.Size(40, 40)
+        },
+        title: props.restaurantLocation.name || 'Nhà hàng'
+      })
+    } else {
+      markers.value.restaurant.setPosition({ 
+        lat: props.restaurantLocation.lat, 
+        lng: props.restaurantLocation.lng 
+      })
+    }
+  }
+  
+  // Update delivery location marker
+  if (props.deliveryAddress) {
+    if (!markers.value.delivery) {
+      markers.value.delivery = new google.maps.Marker({
+        map: map.value,
+        position: { 
+          lat: props.deliveryAddress.lat, 
+          lng: props.deliveryAddress.lng 
+        },
+        icon: {
+          url: '/img/markers/destination-marker.png',
+          scaledSize: new google.maps.Size(40, 40)
+        },
+        title: 'Địa điểm giao hàng'
+      })
+    } else {
+      markers.value.delivery.setPosition({ 
+        lat: props.deliveryAddress.lat, 
+        lng: props.deliveryAddress.lng 
+      })
+    }
+  }
+  
+  // Update driver marker
+  if (props.driverLocation) {
+    const driverPos = { 
+      lat: props.driverLocation.lat, 
+      lng: props.driverLocation.lng 
+    }
+    
+    if (!markers.value.driver) {
+      markers.value.driver = new google.maps.Marker({
+        map: map.value,
+        position: driverPos,
+        icon: {
+          url: '/img/markers/delivery-bike.png',
+          scaledSize: new google.maps.Size(40, 40)
+        },
+        title: 'Tài xế',
+        animation: google.maps.Animation.BOUNCE
+      })
+      
+      // Stop bouncing after 3 seconds
+      setTimeout(() => {
+        if (markers.value.driver) {
+          markers.value.driver.setAnimation(null)
+        }
+      }, 3000)
+    } else {
+      // Smooth transition to new position with animation
+      animateMarkerMovement(markers.value.driver, driverPos)
+    }
+    
+    // Center map on driver
+    map.value.setCenter(driverPos)
+  }
+  
+  // Fit bounds to show all markers
+  if (Object.values(markers.value).filter(Boolean).length > 1) {
+    const bounds = new google.maps.LatLngBounds()
+    
+    Object.values(markers.value).forEach(marker => {
+      if (marker) {
+        bounds.extend(marker.getPosition())
+      }
+    })
+    
+    map.value.fitBounds(bounds)
+    
+    // Add some padding
+    const padding = {
+      top: 50,
+      right: 50,
+      bottom: 50,
+      left: 50
+    }
+    
+    map.value.fitBounds(bounds, padding)
+  }
+}
+
+const animateMarkerMovement = (marker, newPosition) => {
+  if (driverMarkerAnimation.value) {
+    window.cancelAnimationFrame(driverMarkerAnimation.value)
+  }
+  
+  const startPosition = marker.getPosition()
+  const startLat = startPosition.lat()
+  const startLng = startPosition.lng()
+  const latDiff = newPosition.lat - startLat
+  const lngDiff = newPosition.lng - startLng
+  const frames = 20
+  let frame = 0
+  
+  const animate = () => {
+    if (frame >= frames) {
+      marker.setPosition(newPosition)
+      return
+    }
+    
+    frame++
+    const progress = frame / frames
+    const lat = startLat + latDiff * progress
+    const lng = startLng + lngDiff * progress
+    
+    marker.setPosition({ lat, lng })
+    driverMarkerAnimation.value = window.requestAnimationFrame(animate)
+  }
+  
+  driverMarkerAnimation.value = window.requestAnimationFrame(animate)
+}
+
+const drawRoute = () => {
+  if (!map.value || !props.routePoints || props.routePoints.length < 2) return
+  
+  // Clear existing route
+  if (routePath.value) {
+    routePath.value.setMap(null)
+  }
+  
+  // Convert route points to LatLng objects
+  const path = props.routePoints.map(point => (
+    new google.maps.LatLng(point.lat, point.lng)
+  ))
+  
+  // Create polyline for route
+  routePath.value = new google.maps.Polyline({
+    path: path,
+    geodesic: true,
+    strokeColor: '#4285F4',
+    strokeOpacity: 0.8,
+    strokeWeight: 5
+  })
+  
+  routePath.value.setMap(map.value)
+}
+
+const drawDirectRoute = () => {
+  if (!map.value || !props.driverLocation || !props.deliveryAddress) return
+  
+  // Draw a direct line between driver and delivery address
+  const path = [
+    new google.maps.LatLng(props.driverLocation.lat, props.driverLocation.lng),
+    new google.maps.LatLng(props.deliveryAddress.lat, props.deliveryAddress.lng)
+  ]
+  
+  // Clear existing route
+  if (routePath.value) {
+    routePath.value.setMap(null)
+  }
+  
+  // Create polyline for route
+  routePath.value = new google.maps.Polyline({
+    path: path,
+    geodesic: true,
+    strokeColor: '#4285F4',
+    strokeOpacity: 0.8,
+    strokeWeight: 5,
+    icons: [{
+      icon: {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW
+      },
+      offset: '50%',
+      repeat: '100px'
+    }]
+  })
+  
+  routePath.value.setMap(map.value)
+}
+
+// Watchers
+watch(() => props.driverLocation, () => {
+  if (map.value) {
+    updateMapMarkers()
+    
+    if (props.routePoints && props.routePoints.length > 0) {
+      drawRoute()
+    } else if (props.driverLocation && props.deliveryAddress) {
+      drawDirectRoute()
+    }
+  }
+}, { deep: true })
+
+watch(() => props.routePoints, () => {
+  if (map.value) {
+    drawRoute()
+  }
+}, { deep: true })
+
+// Lifecycle
+onMounted(() => {
+  initMap()
+  
+  // Handle device orientation updates for a more dynamic map
+  if (window.DeviceOrientationEvent) {
+    window.addEventListener('deviceorientation', (event) => {
+      if (map.value && markers.value.driver && event.alpha) {
+        // Update driver marker rotation based on device orientation
+        const icon = markers.value.driver.getIcon()
+        icon.rotation = 360 - event.alpha
+        markers.value.driver.setIcon(icon)
+      }
+    })
+  }
+  
+  // Try to get user's current position (useful for relative ETAs)
+  if (navigator.geolocation) {
+    watchId.value = navigator.geolocation.watchPosition(
+      (position) => {
+        // We could use this to calculate an even more accurate ETA
+        // or show user's position on the map if needed
+      },
+      (error) => {
+        console.warn('Không thể lấy vị trí hiện tại:', error)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 5000,
+        maximumAge: 0
+      }
+    )
+  }
+})
+
+onUnmounted(() => {
+  // Clean up resources
+  if (driverMarkerAnimation.value) {
+    window.cancelAnimationFrame(driverMarkerAnimation.value)
+  }
+  
+  if (watchId.value) {
+    navigator.geolocation.clearWatch(watchId.value)
+  }
+  
+  // Clear markers and polylines
+  Object.values(markers.value).forEach(marker => {
+    if (marker) marker.setMap(null)
+  })
+  
+  if (routePath.value) {
+    routePath.value.setMap(null)
+  }
+})
 </script>
 
 <style scoped>
-.live-map {
+.map-container {
   width: 100%;
   height: 100%;
-  min-height: 400px;
+  background-color: #f5f5f5;
   position: relative;
 }
 
-.loading-overlay {
+.map-error {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  max-width: 400px;
+  z-index: 10;
 }
 </style>

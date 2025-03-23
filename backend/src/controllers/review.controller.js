@@ -83,50 +83,99 @@ exports.getAllReviews = async (req, res, next) => {
 exports.getProductReviews = async (req, res, next) => {
   try {
     const { productId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      sort = 'recent', 
+      rating = null 
+    } = req.query;
+
+    // Build the filter
+    const filter = {
+      productId,
+      isVisible: true
+    };
+
+    // Add rating filter if provided
+    if (rating) {
+      filter.rating = parseFloat(rating);
+    }
+
+    // Determine sort order
+    let order = [['createdAt', 'DESC']]; // default: recent first
+    if (sort === 'rating-high') {
+      order = [['rating', 'DESC'], ['createdAt', 'DESC']];
+    } else if (sort === 'rating-low') {
+      order = [['rating', 'ASC'], ['createdAt', 'DESC']];
+    }
 
     // Calculate pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get product reviews
-    const reviews = await Review.findAndCountAll({
-      where: { productId },
+    // Get reviews
+    const { rows: reviews, count } = await Review.findAndCountAll({
+      where: filter,
       include: [
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'username', 'fullName', 'profileImage']
+          attributes: ['id', 'fullName', 'profileImage']
         },
         {
-          model: Order,
-          as: 'order',
-          attributes: ['id', 'orderNumber', 'createdAt']
+          model: Product,
+          as: 'product',
+          attributes: ['id', 'name', 'image']
         }
       ],
-      order: [['createdAt', 'DESC']],
+      order,
       limit: parseInt(limit),
       offset
     });
 
-    // Calculate average rating
-    const avgRating = await Review.findOne({
-      where: { productId },
+    // Get rating statistics for the product
+    const ratingStats = await Review.findAll({
+      where: { productId, isVisible: true },
       attributes: [
-        [sequelize.fn('AVG', sequelize.col('rating')), 'averageRating'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'totalReviews']
+        'rating',
+        [sequelize.fn('COUNT', sequelize.col('rating')), 'count']
       ],
-      raw: true
+      group: ['rating']
     });
+
+    // Format the statistics
+    const stats = {
+      average: 0,
+      total: 0,
+      distribution: {
+        1: 0, 2: 0, 3: 0, 4: 0, 5: 0
+      }
+    };
+
+    let totalRating = 0;
+    let totalCount = 0;
+
+    ratingStats.forEach(stat => {
+      const rating = stat.rating;
+      const count = parseInt(stat.get('count'));
+      
+      stats.distribution[rating] = count;
+      totalRating += rating * count;
+      totalCount += count;
+    });
+
+    if (totalCount > 0) {
+      stats.average = (totalRating / totalCount).toFixed(1);
+      stats.total = totalCount;
+    }
 
     res.status(200).json({
       status: 'success',
-      results: reviews.count,
-      totalPages: Math.ceil(reviews.count / parseInt(limit)),
+      results: count,
+      totalPages: Math.ceil(count / parseInt(limit)),
       currentPage: parseInt(page),
-      averageRating: avgRating.averageRating ? parseFloat(avgRating.averageRating).toFixed(1) : 0,
-      totalReviews: avgRating.totalReviews,
       data: {
-        reviews: reviews.rows
+        reviews,
+        stats
       }
     });
   } catch (error) {
@@ -142,28 +191,38 @@ exports.getProductReviews = async (req, res, next) => {
 exports.getRestaurantReviews = async (req, res, next) => {
   try {
     const { restaurantId } = req.params;
-    const { page = 1, limit = 10, sort = 'recent' } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      sort = 'recent', 
+      rating = null 
+    } = req.query;
+
+    // Build the filter
+    const filter = {
+      restaurantId,
+      isVisible: true
+    };
+
+    // Add rating filter if provided
+    if (rating) {
+      filter.rating = parseFloat(rating);
+    }
+
+    // Determine sort order
+    let order = [['createdAt', 'DESC']]; // default: recent first
+    if (sort === 'rating-high') {
+      order = [['rating', 'DESC'], ['createdAt', 'DESC']];
+    } else if (sort === 'rating-low') {
+      order = [['rating', 'ASC'], ['createdAt', 'DESC']];
+    }
 
     // Calculate pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    // Define sort options
-    let order = [['createdAt', 'DESC']];
-    switch (sort) {
-      case 'rating-high':
-        order = [['rating', 'DESC']];
-        break;
-      case 'rating-low':
-        order = [['rating', 'ASC']];
-        break;
-      case 'oldest':
-        order = [['createdAt', 'ASC']];
-        break;
-    }
-
     // Get reviews
-    const reviews = await Review.findAndCountAll({
-      where: { restaurantId },
+    const { rows: reviews, count } = await Review.findAndCountAll({
+      where: filter,
       include: [
         {
           model: User,
@@ -171,48 +230,67 @@ exports.getRestaurantReviews = async (req, res, next) => {
           attributes: ['id', 'fullName', 'profileImage']
         },
         {
-          model: Order,
-          as: 'order',
-          attributes: ['id', 'orderNumber']
+          model: OrderItem,
+          as: 'orderItems',
+          attributes: ['id', 'name', 'price'],
+          through: { attributes: [] }
+        },
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name', 'logo']
         }
       ],
       order,
       limit: parseInt(limit),
-      offset
+      offset,
+      distinct: true
     });
 
-    // Calculate rating stats
-    const stats = await Review.findAll({
-      where: { restaurantId },
+    // Get rating statistics for the restaurant
+    const ratingStats = await Review.findAll({
+      where: { restaurantId, isVisible: true },
       attributes: [
         'rating',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+        [sequelize.fn('COUNT', sequelize.col('rating')), 'count']
       ],
       group: ['rating']
     });
 
-    // Calculate average rating
-    const avgRating = await Review.findOne({
-      where: { restaurantId },
-      attributes: [
-        [sequelize.fn('AVG', sequelize.col('rating')), 'average'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'total']
-      ],
-      raw: true
+    // Format the statistics
+    const stats = {
+      average: 0,
+      total: 0,
+      distribution: {
+        1: 0, 2: 0, 3: 0, 4: 0, 5: 0
+      }
+    };
+
+    let totalRating = 0;
+    let totalCount = 0;
+
+    ratingStats.forEach(stat => {
+      const rating = stat.rating;
+      const count = parseInt(stat.get('count'));
+      
+      stats.distribution[rating] = count;
+      totalRating += rating * count;
+      totalCount += count;
     });
+
+    if (totalCount > 0) {
+      stats.average = (totalRating / totalCount).toFixed(1);
+      stats.total = totalCount;
+    }
 
     res.status(200).json({
       status: 'success',
-      results: reviews.count,
-      totalPages: Math.ceil(reviews.count / parseInt(limit)),
+      results: count,
+      totalPages: Math.ceil(count / parseInt(limit)),
       currentPage: parseInt(page),
       data: {
-        reviews: reviews.rows,
-        stats: {
-          distribution: stats,
-          average: avgRating.average ? parseFloat(avgRating.average).toFixed(1) : 0,
-          total: avgRating.total
-        }
+        reviews,
+        stats
       }
     });
   } catch (error) {
@@ -276,84 +354,103 @@ exports.getUserReviews = async (req, res, next) => {
  * @route POST /api/reviews
  * @access Private
  */
-const originalCreateReview = exports.createReview;
 exports.createReview = async (req, res, next) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { orderId, restaurantId, productId, rating, comment, tags } = req.body;
-    const userId = req.user.id;
-
-    // Check if order exists and belongs to user
-    const order = await Order.findOne({
-      where: {
-        id: orderId,
-        userId,
-        status: 'delivered'
-      }
-    });
-
-    if (!order) {
-      return next(new AppError('Order not found or not eligible for review', 404));
-    }
-
-    // Check if user already reviewed this order (if product-specific, check that combination)
-    const whereClause = {
-      userId,
-      orderId
-    };
-    
-    if (productId) {
-      whereClause.productId = productId;
-    } else {
-      whereClause.productId = null;
-    }
-
-    const existingReview = await Review.findOne({
-      where: whereClause
-    });
-
-    if (existingReview) {
-      return next(new AppError('You have already reviewed this item', 400));
-    }
-
-    // Create review object
-    const reviewData = {
-      userId,
+    const { 
+      restaurantId, 
+      productId, 
       orderId,
-      restaurantId,
-      productId,
-      rating,
+      rating, 
       comment,
-      tags: tags || null
-    };
+      orderItemIds = []
+    } = req.body;
 
-    // Check if review needs moderation
-    if (requiresModeration({ rating, comment })) {
-      reviewData.moderationStatus = 'pending';
-      reviewData.isVisible = false;
+    // Check if restaurant exists
+    if (restaurantId) {
+      const restaurant = await Restaurant.findByPk(restaurantId);
+      if (!restaurant) {
+        return next(new AppError('Restaurant not found', 404));
+      }
+    }
+
+    // Check if product exists
+    if (productId) {
+      const product = await Product.findByPk(productId);
+      if (!product) {
+        return next(new AppError('Product not found', 404));
+      }
     }
 
     // Create review
-    const review = await Review.create(reviewData);
+    const review = await Review.create({
+      userId: req.user.id,
+      restaurantId,
+      productId,
+      orderId,
+      rating,
+      comment,
+      isVisible: true,
+      images: req.files?.map(file => file.filename) || []
+    });
 
-    // Update restaurant/product rating
+    // Associate order items if provided
+    if (orderItemIds.length > 0) {
+      await ReviewOrderItem.bulkCreate(
+        orderItemIds.map(itemId => ({
+          reviewId: review.id,
+          orderItemId: itemId
+        }))
+      );
+    }
+
+    // Get the complete review with associations
+    const completeReview = await Review.findByPk(review.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'fullName', 'profileImage']
+        },
+        {
+          model: OrderItem,
+          as: 'orderItems',
+          attributes: ['id', 'name', 'price'],
+          through: { attributes: [] }
+        }
+      ]
+    });
+
+    // Update restaurant or product rating
     if (restaurantId) {
       await updateRestaurantRating(restaurantId);
     }
+
     if (productId) {
       await updateProductRating(productId);
+    }
+
+    // Send notification to restaurant owner
+    if (restaurantId) {
+      const restaurant = await Restaurant.findByPk(restaurantId, {
+        include: [{ model: User, as: 'owner' }]
+      });
+
+      if (restaurant?.owner) {
+        await Notification.create({
+          userId: restaurant.owner.id,
+          title: 'New Review',
+          message: `Your restaurant "${restaurant.name}" received a new ${rating}-star review.`,
+          type: 'review',
+          data: { reviewId: review.id },
+          isRead: false
+        });
+      }
     }
 
     res.status(201).json({
       status: 'success',
       data: {
-        review,
-        requiresModeration: review.moderationStatus === 'pending'
+        review: completeReview
       }
     });
   } catch (error) {
@@ -1190,4 +1287,120 @@ const requiresModeration = (review) => {
   }
   
   return false;
+};
+
+/**
+ * Like or unlike a review
+ * @route PATCH /api/reviews/:id/like
+ * @access Private
+ */
+exports.toggleReviewLike = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const review = await Review.findByPk(id);
+    if (!review) {
+      return next(new AppError('Review not found', 404));
+    }
+
+    // Check if user already liked this review
+    const existingLike = await ReviewLike.findOne({
+      where: {
+        reviewId: id,
+        userId: req.user.id
+      }
+    });
+
+    if (existingLike) {
+      // Unlike
+      await existingLike.destroy();
+      
+      // Decrement likes count
+      review.likes = Math.max(0, review.likes - 1);
+      await review.save();
+      
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          liked: false,
+          likeCount: review.likes
+        }
+      });
+    } else {
+      // Like
+      await ReviewLike.create({
+        reviewId: id,
+        userId: req.user.id
+      });
+      
+      // Increment likes count
+      review.likes = review.likes + 1;
+      await review.save();
+      
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          liked: true,
+          likeCount: review.likes
+        }
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Restaurant owner responds to a review
+ * @route PATCH /api/reviews/:id/respond
+ * @access Private (Restaurant Owner)
+ */
+exports.respondToReview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { response } = req.body;
+    
+    const review = await Review.findByPk(id, {
+      include: [
+        {
+          model: Restaurant,
+          as: 'restaurant'
+        }
+      ]
+    });
+    
+    if (!review) {
+      return next(new AppError('Review not found', 404));
+    }
+    
+    // Check if user is the restaurant owner
+    if (review.restaurant?.userId !== req.user.id && req.user.role !== 'admin') {
+      return next(new AppError('You are not authorized to respond to this review', 403));
+    }
+    
+    // Update review with response
+    review.response = response;
+    review.responseDate = new Date();
+    
+    await review.save();
+    
+    // Notify user about the response
+    await Notification.create({
+      userId: review.userId,
+      title: 'Response to Your Review',
+      message: `Restaurant "${review.restaurant.name}" has responded to your review.`,
+      type: 'review_response',
+      data: { reviewId: review.id },
+      isRead: false
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        review
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };

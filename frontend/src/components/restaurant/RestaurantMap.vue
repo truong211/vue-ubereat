@@ -1,310 +1,194 @@
 <template>
   <div class="restaurant-map">
-    <!-- Map controls -->
-    <div class="map-controls">
-      <v-btn-group>
-        <v-btn
-          icon="mdi-crosshairs-gps"
-          variant="tonal"
-          @click="centerOnUserLocation"
-          :loading="locatingUser"
-        ></v-btn>
-        <v-btn
-          :icon="showList ? 'mdi-map' : 'mdi-format-list-bulleted'"
-          variant="tonal"
-          @click="toggleView"
-        ></v-btn>
-      </v-btn-group>
-    </div>
+    <div id="map-container" ref="mapContainer"></div>
 
-    <!-- Map/List toggle view -->
-    <v-window v-model="activeView">
-      <!-- Map View -->
-      <v-window-item value="map">
-        <div class="map-container" ref="mapContainer">
-          <!-- Map will be mounted here -->
+    <!-- Selected Restaurant Info -->
+    <v-card
+      v-if="selectedRestaurant"
+      class="selected-restaurant-info"
+      elevation="4"
+    >
+      <v-card-text>
+        <div class="d-flex align-center">
+          <v-avatar size="48" class="mr-3">
+            <v-img :src="selectedRestaurant.image" cover></v-img>
+          </v-avatar>
+          <div>
+            <div class="text-subtitle-1 font-weight-bold">{{ selectedRestaurant.name }}</div>
+            <div class="d-flex align-center text-body-2">
+              <v-rating
+                :model-value="selectedRestaurant.rating"
+                density="compact"
+                size="small"
+                readonly
+                half-increments
+              ></v-rating>
+              <span class="ml-1">({{ selectedRestaurant.reviewCount }})</span>
+            </div>
+          </div>
         </div>
-        
-        <!-- Restaurant preview card when marker is clicked -->
-        <v-card
-          v-if="selectedRestaurant"
-          class="restaurant-preview"
-          elevation="4"
-          @click="viewRestaurantDetails(selectedRestaurant.id)"
-        >
-          <div class="d-flex">
-            <v-img
-              :src="selectedRestaurant.image"
-              width="120"
-              height="120"
-              cover
-            ></v-img>
-            <v-card-text class="pa-4">
-              <div class="text-h6 mb-1">{{ selectedRestaurant.name }}</div>
-              <div class="d-flex align-center mb-2">
-                <v-rating
-                  :model-value="selectedRestaurant.rating"
-                  color="amber"
-                  density="compact"
-                  half-increments
-                  readonly
-                  size="small"
-                ></v-rating>
-                <span class="text-body-2 ml-2">({{ selectedRestaurant.reviewCount }})</span>
-              </div>
-              <div class="text-body-2 mb-1">{{ selectedRestaurant.cuisines.join(', ') }}</div>
-              <div class="d-flex align-center">
-                <v-icon size="small" color="grey">mdi-map-marker</v-icon>
-                <span class="text-body-2 ml-1">{{ selectedRestaurant.distance }}km</span>
-                <span class="mx-2">•</span>
-                <span class="text-body-2">{{ selectedRestaurant.deliveryTime }} min</span>
-              </div>
-            </v-card-text>
-          </div>
-        </v-card>
-      </v-window-item>
 
-      <!-- List View -->
-      <v-window-item value="list">
-        <v-container class="py-2">
-          <div v-if="restaurants.length" class="restaurant-list">
-            <v-card
-              v-for="restaurant in sortedRestaurants"
-              :key="restaurant.id"
-              :class="[
-                'restaurant-card mb-4',
-                { 'selected': selectedRestaurant?.id === restaurant.id }
-              ]"
-              @click="selectRestaurant(restaurant)"
-            >
-              <div class="d-flex">
-                <v-img
-                  :src="restaurant.image"
-                  width="120"
-                  height="120"
-                  cover
-                ></v-img>
-                <v-card-text class="pa-4">
-                  <div class="text-h6 mb-1">{{ restaurant.name }}</div>
-                  <div class="d-flex align-center mb-2">
-                    <v-rating
-                      :model-value="restaurant.rating"
-                      color="amber"
-                      density="compact"
-                      half-increments
-                      readonly
-                      size="small"
-                    ></v-rating>
-                    <span class="text-body-2 ml-2">({{ restaurant.reviewCount }})</span>
-                  </div>
-                  <div class="text-body-2 mb-1">{{ restaurant.cuisines.join(', ') }}</div>
-                  <div class="d-flex align-center">
-                    <v-icon size="small" color="grey">mdi-map-marker</v-icon>
-                    <span class="text-body-2 ml-1">{{ restaurant.distance }}km</span>
-                    <span class="mx-2">•</span>
-                    <span class="text-body-2">{{ restaurant.deliveryTime }} min</span>
-                  </div>
-                </v-card-text>
-              </div>
-            </v-card>
+        <div class="mt-2">
+          <div class="text-body-2">{{ selectedRestaurant.address }}</div>
+          <div class="d-flex align-center text-body-2 mt-1">
+            <v-icon size="small" color="primary">mdi-map-marker</v-icon>
+            <span class="ml-1">{{ formatDistance(selectedRestaurant.distance) }}</span>
+            <v-divider vertical class="mx-2"></v-divider>
+            <v-icon size="small" color="primary">mdi-clock-outline</v-icon>
+            <span class="ml-1">{{ selectedRestaurant.deliveryTime }} min</span>
           </div>
-          <v-alert
-            v-else
-            type="info"
-            variant="tonal"
-            class="mt-4"
-          >
-            {{ $t('restaurants.noResults') }}
-          </v-alert>
-        </v-container>
-      </v-window-item>
-    </v-window>
+        </div>
+
+        <v-btn
+          block
+          color="primary"
+          class="mt-3"
+          :to="{ name: 'RestaurantDetail', params: { id: selectedRestaurant.id }}"
+        >
+          View Restaurant
+        </v-btn>
+      </v-card-text>
+    </v-card>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { useStore } from 'vuex'
-import { Loader } from '@googlemaps/js-api-loader'
-import debounce from 'lodash/debounce'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import { useMapService } from '@/composables/useMapService'
 
 export default {
   name: 'RestaurantMap',
-  
+
   props: {
     restaurants: {
       type: Array,
       required: true
     },
-    sortBy: {
-      type: String,
-      default: 'distance'
+    selectedRestaurant: {
+      type: Object,
+      default: null
+    },
+    initialCenter: {
+      type: Object,
+      default: () => ({ lat: 10.7769, lng: 106.7009 }) // Ho Chi Minh City
+    },
+    initialZoom: {
+      type: Number,
+      default: 13
     }
   },
 
-  setup(props) {
-    const store = useStore()
-    const router = useRouter()
+  emits: ['restaurant-clicked'],
+
+  setup(props, { emit }) {
+    const { formatDistance } = useMapService()
     const mapContainer = ref(null)
     const map = ref(null)
     const markers = ref([])
-    const selectedRestaurant = ref(null)
-    const activeView = ref('map')
-    const locatingUser = ref(false)
-    const showList = computed(() => activeView.value === 'list')
+    const selectedMarker = ref(null)
 
-    // Sort restaurants based on selected criteria
-    const sortedRestaurants = computed(() => {
-      const sorted = [...props.restaurants]
-      switch (props.sortBy) {
-        case 'rating':
-          return sorted.sort((a, b) => b.rating - a.rating)
-        case 'distance':
-          return sorted.sort((a, b) => a.distance - b.distance)
-        default:
-          return sorted
-      }
-    })
+    const initializeMap = () => {
+      // Create map instance
+      map.value = L.map(mapContainer.value).setView(
+        [props.initialCenter.lat, props.initialCenter.lng],
+        props.initialZoom
+      )
 
-    // Initialize Google Maps
-    const initMap = async () => {
-      try {
-        const loader = new Loader({
-          apiKey: process.env.VUE_APP_GOOGLE_MAPS_API_KEY,
-          version: 'weekly',
-          libraries: ['places']
-        })
+      // Add tile layer (OpenStreetMap)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map.value)
 
-        const google = await loader.load()
-        const userLocation = await store.dispatch('getUserLocation')
-        
-        map.value = new google.maps.Map(mapContainer.value, {
-          center: { lat: userLocation.lat, lng: userLocation.lng },
-          zoom: 13,
-          styles: [
-            // Custom map styles here
-          ]
-        })
-
-        // Add markers for all restaurants
-        addMarkers()
-
-        // Add user location marker
-        new google.maps.Marker({
-          position: { lat: userLocation.lat, lng: userLocation.lng },
-          map: map.value,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 8,
-            fillColor: '#4285F4',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 2
-          }
-        })
-      } catch (error) {
-        console.error('Error initializing map:', error)
-        store.dispatch('ui/showSnackbar', {
-          text: 'Error loading map',
-          color: 'error'
-        })
-      }
+      // Add restaurants markers
+      updateMarkers()
     }
 
-    // Add restaurant markers to map
-    const addMarkers = () => {
+    const updateMarkers = () => {
       // Clear existing markers
-      markers.value.forEach(marker => marker.setMap(null))
+      markers.value.forEach(marker => marker.remove())
       markers.value = []
 
+      // Add new markers
       props.restaurants.forEach(restaurant => {
-        const marker = new google.maps.Marker({
-          position: {
-            lat: restaurant.location.lat,
-            lng: restaurant.location.lng
-          },
-          map: map.value,
-          title: restaurant.name,
-          animation: google.maps.Animation.DROP
-        })
+        if (restaurant.latitude && restaurant.longitude) {
+          const marker = L.marker([restaurant.latitude, restaurant.longitude], {
+            icon: createCustomIcon(restaurant)
+          })
+            .addTo(map.value)
+            .on('click', () => handleMarkerClick(restaurant, marker))
 
-        marker.addListener('click', () => {
-          selectRestaurant(restaurant)
-        })
-
-        markers.value.push(marker)
-      })
-    }
-
-    // Center map on user's location
-    const centerOnUserLocation = async () => {
-      locatingUser.value = true
-      try {
-        const location = await store.dispatch('getUserLocation')
-        if (map.value && location) {
-          map.value.panTo({ lat: location.lat, lng: location.lng })
-          map.value.setZoom(13)
+          markers.value.push(marker)
         }
-      } catch (error) {
-        console.error('Error getting user location:', error)
-      } finally {
-        locatingUser.value = false
+      })
+
+      // Fit bounds to show all markers
+      if (markers.value.length > 0) {
+        const group = L.featureGroup(markers.value)
+        map.value.fitBounds(group.getBounds(), { padding: [50, 50] })
       }
     }
 
-    // Select a restaurant and show its details
-    const selectRestaurant = (restaurant) => {
-      selectedRestaurant.value = restaurant
-      if (map.value && restaurant.location) {
-        map.value.panTo({
-          lat: restaurant.location.lat,
-          lng: restaurant.location.lng
-        })
-      }
-    }
+    const createCustomIcon = (restaurant) => {
+      const isSelected = props.selectedRestaurant?.id === restaurant.id
 
-    // Toggle between map and list view
-    const toggleView = () => {
-      activeView.value = activeView.value === 'map' ? 'list' : 'map'
-    }
-
-    // Navigate to restaurant details page
-    const viewRestaurantDetails = (restaurantId) => {
-      router.push({
-        name: 'RestaurantDetail',
-        params: { id: restaurantId }
+      return L.divIcon({
+        className: 'custom-marker',
+        html: `<div class="marker-content ${isSelected ? 'selected' : ''}">
+                <i class="v-icon mdi mdi-store"></i>
+                ${restaurant.deliveryFee === 0 ? '<span class="free-badge">Free</span>' : ''}
+               </div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
       })
     }
 
-    // Update markers when restaurants change
-    watch(() => props.restaurants, () => {
-      if (map.value) {
-        addMarkers()
+    const handleMarkerClick = (restaurant, marker) => {
+      // Remove previous selection
+      if (selectedMarker.value) {
+        selectedMarker.value.getElement().classList.remove('selected')
       }
+
+      // Update selection
+      selectedMarker.value = marker
+      marker.getElement().classList.add('selected')
+
+      emit('restaurant-clicked', restaurant)
+    }
+
+    // Watch for restaurant changes
+    watch(() => props.restaurants, updateMarkers, { deep: true })
+
+    // Watch for selected restaurant changes
+    watch(() => props.selectedRestaurant, () => {
+      markers.value.forEach(marker => {
+        const markerElement = marker.getElement()
+        if (markerElement) {
+          markerElement.classList.remove('selected')
+          if (props.selectedRestaurant && 
+              marker.getLatLng().lat === props.selectedRestaurant.latitude &&
+              marker.getLatLng().lng === props.selectedRestaurant.longitude) {
+            markerElement.classList.add('selected')
+          }
+        }
+      })
     })
 
     // Lifecycle hooks
     onMounted(() => {
-      initMap()
+      initializeMap()
     })
 
     onUnmounted(() => {
-      // Clean up markers
-      markers.value.forEach(marker => marker.setMap(null))
+      if (map.value) {
+        map.value.remove()
+      }
     })
 
     return {
       mapContainer,
-      selectedRestaurant,
-      activeView,
-      showList,
-      locatingUser,
-      sortedRestaurants,
-      centerOnUserLocation,
-      selectRestaurant,
-      toggleView,
-      viewRestaurantDetails
+      formatDistance
     }
   }
 }
@@ -313,69 +197,62 @@ export default {
 <style scoped>
 .restaurant-map {
   position: relative;
+  width: 100%;
   height: 100%;
-  min-height: 400px;
 }
 
-.map-container {
+#map-container {
   width: 100%;
   height: 100%;
   min-height: 400px;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.map-controls {
+.selected-restaurant-info {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 1;
+  bottom: 20px;
+  left: 20px;
+  width: 300px;
+  z-index: 1000;
 }
 
-.restaurant-preview {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 90%;
-  max-width: 400px;
-  z-index: 1;
-  cursor: pointer;
+:deep(.custom-marker) {
+  background: none;
+  border: none;
+}
+
+:deep(.marker-content) {
+  width: 40px;
+  height: 40px;
+  background-color: var(--v-primary-base);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   transition: transform 0.2s ease;
+  position: relative;
 }
 
-.restaurant-preview:hover {
-  transform: translateX(-50%) translateY(-4px);
+:deep(.marker-content.selected) {
+  transform: scale(1.2);
+  background-color: var(--v-secondary-base);
 }
 
-.restaurant-list {
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
+:deep(.marker-content:hover) {
+  transform: scale(1.1);
 }
 
-.restaurant-card {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.restaurant-card:hover {
-  transform: translateY(-4px);
-}
-
-.restaurant-card.selected {
-  border: 2px solid var(--v-primary-base);
-}
-
-@media (max-width: 600px) {
-  .restaurant-preview {
-    bottom: 0;
-    left: 0;
-    transform: none;
-    width: 100%;
-    max-width: none;
-    border-radius: 0;
-  }
-
-  .restaurant-preview:hover {
-    transform: none;
-  }
+:deep(.marker-content .free-badge) {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: var(--v-success-base);
+  color: white;
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
 }
 </style>

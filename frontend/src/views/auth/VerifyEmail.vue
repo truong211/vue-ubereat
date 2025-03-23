@@ -1,98 +1,181 @@
-`<template>
-  <div class="verify-email">
-    <div class="verification-container">
-      <div v-if="loading" class="text-center">
-        <div class="spinner-border text-primary" role="status">
-          <span class="visually-hidden">Loading...</span>
+<template>
+  <div class="verify-email-container">
+    <div class="verify-email-card">
+      <v-card class="pa-6 rounded-lg elevation-3">
+        <div v-if="loading" class="text-center py-8">
+          <v-progress-circular
+            indeterminate
+            color="primary"
+            size="64"
+          ></v-progress-circular>
+          <p class="mt-4 text-body-1">Đang xác thực email của bạn...</p>
         </div>
-        <p class="mt-3">Verifying your email...</p>
-      </div>
 
-      <div v-else-if="error" class="alert alert-danger" role="alert">
-        {{ error }}
-        <div class="mt-3">
-          <router-link to="/login" class="btn btn-primary">Go to Login</router-link>
+        <div v-else-if="verified" class="text-center py-6">
+          <v-icon
+            icon="mdi-email-check"
+            color="success"
+            size="64"
+            class="mb-4"
+          ></v-icon>
+          
+          <h2 class="text-h4 font-weight-bold mb-2">Email đã được xác thực!</h2>
+          <p class="text-body-1 mb-6">
+            Địa chỉ email của bạn đã được xác thực thành công. Bạn có thể đăng nhập ngay bây giờ.
+          </p>
+          
+          <v-btn
+            color="primary"
+            size="large"
+            @click="goToLogin"
+          >
+            Đăng nhập
+          </v-btn>
         </div>
-      </div>
 
-      <div v-else class="alert alert-success" role="alert">
-        <h4 class="alert-heading">Email Verified!</h4>
-        <p>Your email has been successfully verified. You can now proceed to login.</p>
-        <div class="mt-3">
-          <router-link to="/login" class="btn btn-primary">Go to Login</router-link>
+        <div v-else class="text-center py-6">
+          <v-icon
+            icon="mdi-email-alert"
+            color="error"
+            size="64"
+            class="mb-4"
+          ></v-icon>
+          
+          <h2 class="text-h4 font-weight-bold mb-2">Xác thực thất bại</h2>
+          <p class="text-body-1 mb-2">
+            {{ errorMessage || 'Liên kết xác thực không hợp lệ hoặc đã hết hạn.' }}
+          </p>
+          <p class="text-body-1 mb-6">
+            Vui lòng yêu cầu gửi lại email xác thực hoặc liên hệ với bộ phận hỗ trợ.
+          </p>
+          
+          <div class="d-flex flex-column gap-3">
+            <v-btn
+              color="primary"
+              variant="outlined"
+              size="large"
+              :loading="resendLoading"
+              :disabled="resendLoading"
+              @click="resendVerification"
+              class="mb-2"
+            >
+              Gửi lại email xác thực
+            </v-btn>
+            
+            <v-btn
+              color="primary"
+              size="large"
+              @click="goToLogin"
+            >
+              Đăng nhập
+            </v-btn>
+          </div>
         </div>
-      </div>
+      </v-card>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import axios from 'axios';
+import { ref, onMounted } from 'vue';
+import { useStore } from 'vuex';
+import { useRouter, useRoute } from 'vue-router';
 
-export default defineComponent({
+export default {
   name: 'VerifyEmail',
+  
   setup() {
-    const route = useRoute();
+    const store = useStore();
     const router = useRouter();
-
+    const route = useRoute();
+    
+    // State
+    const loading = ref(true);
+    const verified = ref(false);
+    const errorMessage = ref('');
+    const email = ref('');
+    const resendLoading = ref(false);
+    
+    // Methods
     const verifyEmail = async (token) => {
       try {
-        await axios.get(`/api/auth/verify-email/${token}`);
-        return { success: true };
+        loading.value = true;
+        
+        // Call API to verify email
+        await store.dispatch('auth/verifyEmail', { token });
+        
+        verified.value = true;
       } catch (error) {
-        return { 
-          success: false, 
-          error: error.response?.data?.message || 'Verification failed'
-        };
+        verified.value = false;
+        errorMessage.value = error || 'Liên kết xác thực không hợp lệ hoặc đã hết hạn.';
+      } finally {
+        loading.value = false;
       }
     };
-
-    return {
-      route,
-      router,
-      verifyEmail
+    
+    const resendVerification = async () => {
+      if (!email.value) {
+        errorMessage.value = 'Không thể gửi lại email xác thực. Vui lòng đăng nhập để yêu cầu gửi lại.';
+        return;
+      }
+      
+      try {
+        resendLoading.value = true;
+        
+        // Call API to resend verification email
+        await store.dispatch('auth/resendVerificationEmail', { email: email.value });
+        
+        errorMessage.value = '';
+        alert('Email xác thực đã được gửi lại. Vui lòng kiểm tra hộp thư của bạn.');
+      } catch (error) {
+        errorMessage.value = error || 'Không thể gửi lại email xác thực. Vui lòng thử lại sau.';
+      } finally {
+        resendLoading.value = false;
+      }
     };
-  },
-  data() {
-    return {
-      loading: true,
-      error: null
+    
+    const goToLogin = () => {
+      router.push('/auth/login');
     };
-  },
-  async mounted() {
-    const token = this.route.params.token;
-    if (!token) {
-      this.error = 'Invalid verification link';
-      this.loading = false;
-      return;
-    }
-
-    const { success, error } = await this.verifyEmail(token);
-    this.loading = false;
-    if (!success) {
-      this.error = error;
-    }
+    
+    // Initialize
+    onMounted(async () => {
+      const token = route.query.token;
+      email.value = route.query.email || '';
+      
+      if (token) {
+        await verifyEmail(token);
+      } else {
+        loading.value = false;
+        verified.value = false;
+        errorMessage.value = 'Không tìm thấy token xác thực trong URL.';
+      }
+    });
+    
+    return {
+      loading,
+      verified,
+      errorMessage,
+      resendLoading,
+      resendVerification,
+      goToLogin
+    };
   }
-});
+};
 </script>
 
 <style scoped>
-.verify-email {
+.verify-email-container {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f8f9fa;
+  padding: 20px;
+  background-color: #f5f5f5;
 }
 
-.verification-container {
+.verify-email-card {
+  width: 100%;
   max-width: 500px;
-  width: 90%;
-  padding: 2rem;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
-</style>`
+</style>
