@@ -1,103 +1,30 @@
 const express = require('express');
-const { body } = require('express-validator');
-const reviewController = require('../controllers/review.controller');
-const { authMiddleware, restrictTo } = require('../middleware/auth.middleware');
-
 const router = express.Router();
+const reviewController = require('../controllers/review.controller');
+const { auth } = require('../middleware/auth.middleware');
+const { uploadImages } = require('../middleware/upload.middleware');
+const { validateReview } = require('../middleware/review.validator');
 
 // Public routes
-router.get('/', reviewController.getAllReviews);
-router.get('/product/:productId', reviewController.getProductReviews);
 router.get('/restaurant/:restaurantId', reviewController.getRestaurantReviews);
 
-// Protected routes (require authentication)
-router.use(authMiddleware);
+// Protected routes
+router.use(auth);
 
-router.get('/user', reviewController.getUserReviews);
-router.get('/dashboard/stats', restrictTo(['admin', 'restaurant']), reviewController.getReviewStats);
-
-// Create a review
-router.post('/',
-  [
-    body('orderId').isInt().withMessage('Order ID is required'),
-    body('restaurantId').isInt().withMessage('Restaurant ID is required'),
-    body('rating').isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5'),
-    body('comment').optional().isString().isLength({ min: 10 }).withMessage('Comment must be at least 10 characters')
-  ],
-  reviewController.createReview
-);
-
-// Update a review
-router.put('/:id',
-  [
-    body('rating').optional().isInt({ min: 1, max: 5 }).withMessage('Rating must be between 1 and 5'),
-    body('comment').optional().isString().isLength({ min: 10 }).withMessage('Comment must be at least 10 characters')
-  ],
-  reviewController.updateReview
-);
-
-// Delete a review
+// Customer routes
+router.post('/', uploadImages.array('images', 5), validateReview, reviewController.createReview);
+router.put('/:id', uploadImages.array('images', 5), validateReview, reviewController.updateReview);
 router.delete('/:id', reviewController.deleteReview);
+router.get('/check-eligibility/:restaurantId', reviewController.checkEligibility);
+router.post('/:id/vote', reviewController.voteReview);
+router.post('/:id/report', reviewController.reportReview);
 
-// Restaurant owner respond to review
-router.post('/:id/respond',
-  restrictTo(['restaurant']),
-  [
-    body('response').isString().isLength({ min: 10, max: 1000 }).withMessage('Response must be between 10 and 1000 characters')
-  ],
-  reviewController.respondToReview
-);
+// Restaurant owner routes
+router.post('/:id/respond', auth(['restaurant']), reviewController.respondToReview);
+router.put('/:id/respond', auth(['restaurant']), reviewController.updateResponse);
 
-// Update restaurant response to review
-router.put('/:id/respond',
-  restrictTo(['restaurant']),
-  [
-    body('response').isString().isLength({ min: 10, max: 1000 }).withMessage('Response must be between 10 and 1000 characters')
-  ],
-  reviewController.respondToReview  // We can reuse the same controller method for updating
-);
-
-// Vote on a review (helpful/unhelpful)
-router.post('/:id/vote',
-  [
-    body('isHelpful').isBoolean().withMessage('isHelpful must be a boolean value')
-  ],
-  reviewController.voteReview
-);
-
-// Report a review
-router.post('/:id/report',
-  [
-    body('reason').isIn(['inappropriate', 'spam', 'fake', 'offensive', 'other']),
-    body('description').optional().isString().trim()
-  ],
-  reviewController.reportReview
-);
-
-// Upload review images
-router.post('/:id/images',
-  reviewController.uploadReviewImages
-);
-
-// Get review analytics
-router.get('/analytics',
-  restrictTo(['admin', 'restaurant']),
-  reviewController.getReviewAnalytics
-);
-
-// Moderation routes (admin only)
-router.get('/moderation',
-  restrictTo(['admin', 'moderator']),
-  reviewController.getPendingModeration
-);
-
-router.patch('/:id/moderate',
-  restrictTo(['admin', 'moderator']),
-  [
-    body('moderationStatus').isIn(['approved', 'rejected']).withMessage('Status must be approved or rejected'),
-    body('moderationReason').optional().isString().trim()
-  ],
-  reviewController.moderateReview
-);
+// Admin/moderator routes
+router.post('/:id/moderate', auth(['admin', 'moderator']), reviewController.moderateReview);
+router.get('/analytics', auth(['admin', 'moderator', 'restaurant']), reviewController.getAnalytics);
 
 module.exports = router;

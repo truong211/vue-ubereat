@@ -212,6 +212,224 @@ exports.updateUserStatus = async (req, res, next) => {
   }
 };
 
+exports.getUsers = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, search, role, status } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build where clause
+    const where = {};
+    if (role) where.role = role;
+    if (status) where.isActive = status === 'active';
+    if (search) {
+      where[Op.or] = [
+        { fullName: { [Op.like]: `%${search}%` } },
+        { email: { [Op.like]: `%${search}%` } },
+        { phone: { [Op.like]: `%${search}%` } }
+      ];
+    }
+
+    // Get users with pagination
+    const { rows: users, count: total } = await User.findAndCountAll({
+      where,
+      attributes: { exclude: ['password', 'verificationToken', 'resetPasswordToken'] },
+      limit: parseInt(limit),
+      offset,
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: { 
+        users,
+        totalResults: total,
+        totalPages: Math.ceil(total / parseInt(limit)),
+        currentPage: parseInt(page)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getUserById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByPk(id, {
+      attributes: { exclude: ['password', 'verificationToken', 'resetPasswordToken'] },
+      include: [{
+        model: Address,
+        as: 'addresses'
+      }]
+    });
+
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: { user }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createUser = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { fullName, email, password, phone, role } = req.body;
+
+    // Check if user exists
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return next(new AppError('User already exists with this email', 400));
+    }
+
+    // Generate random password if not provided
+    const userPassword = password || Math.random().toString(36).slice(-8);
+
+    // Create user
+    const user = await User.create({
+      fullName,
+      email,
+      password: userPassword,
+      phone,
+      role,
+      isActive: true,
+      isEmailVerified: true // Admin-created accounts are pre-verified
+    });
+
+    // If no password was provided, send email to user with generated password
+    if (!password) {
+      await emailService.sendWelcomeEmail(email, userPassword, fullName);
+    }
+
+    res.status(201).json({
+      status: 'success',
+      data: {
+        user: {
+          ...user.toJSON(),
+          password: undefined
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateUser = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { fullName, email, phone, role } = req.body;
+
+    // Find user
+    const user = await User.findByPk(id);
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    // Check email uniqueness if changing
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+        return next(new AppError('Email already in use', 400));
+      }
+    }
+
+    // Update user fields
+    await user.update({
+      fullName: fullName || user.fullName,
+      email: email || user.email,
+      phone: phone || user.phone,
+      role: role || user.role
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: {
+          ...user.toJSON(),
+          password: undefined
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateUserStatus = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { id } = req.params;
+    const { status, reason } = req.body;
+
+    // Find user
+    const user = await User.findByPk(id);
+    if (!user) {
+      return next(new AppError('User not found', 404));
+    }
+
+    // Don't allow suspending another admin
+    if (user.role === 'admin' && status === 'suspended') {
+      return next(new AppError('Cannot suspend administrator accounts', 403));
+    }
+
+    // Update status
+    await user.update({ 
+      isActive: status === 'active',
+      adminNotes: status === 'suspended' ? reason : null
+    });
+
+    // If suspending, log out user from all devices (implementation depends on your auth system)
+    if (status === 'suspended') {
+      // Example: invalidate all refresh tokens
+      await user.update({
+        refreshToken: null,
+        lastLogout: new Date()
+      });
+
+      // Emit event to socket for real-time status update
+      const io = req.app.get('socketio');
+      if (io) {
+        io.to(`user:${user.id}`).emit('account_suspended', { reason });
+      }
+
+      // Send email notification
+      await emailService.sendAccountSuspensionEmail(user.email, reason);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: { 
+        user: {
+          ...user.toJSON(),
+          password: undefined
+        }
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // System Monitoring
 exports.getSystemMetrics = async (req, res, next) => {
   try {
@@ -1005,4 +1223,269 @@ const getTopCities = async () => {
     order: [[sequelize.fn('sum', sequelize.col('orderCount')), 'DESC']],
     limit: 5
   });
+};
+
+// FAQ Management
+exports.getFAQs = async (req, res, next) => {
+  try {
+    const { category, page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    const where = {};
+    if (category) where.category = category;
+    
+    const { rows: faqs, count } = await sequelize.models.FAQ.findAndCountAll({
+      where,
+      order: [['category', 'ASC'], ['order', 'ASC']],
+      limit: parseInt(limit),
+      offset
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        faqs,
+        totalResults: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+        currentPage: parseInt(page)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createFAQ = async (req, res, next) => {
+  try {
+    const { question, answer, category, order } = req.body;
+    
+    const faq = await sequelize.models.FAQ.create({
+      question,
+      answer,
+      category,
+      order: order || 0
+    });
+    
+    res.status(201).json({
+      status: 'success',
+      data: { faq }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateFAQ = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { question, answer, category, order } = req.body;
+    
+    const faq = await sequelize.models.FAQ.findByPk(id);
+    
+    if (!faq) {
+      return next(new AppError('FAQ not found', 404));
+    }
+    
+    await faq.update({
+      question: question || faq.question,
+      answer: answer || faq.answer,
+      category: category || faq.category,
+      order: order !== undefined ? order : faq.order
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: { faq }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteFAQ = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const faq = await sequelize.models.FAQ.findByPk(id);
+    
+    if (!faq) {
+      return next(new AppError('FAQ not found', 404));
+    }
+    
+    await faq.destroy();
+    
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// System Notification Management
+exports.getSystemNotifications = async (req, res, next) => {
+  try {
+    const { type, page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    const where = {};
+    if (type) where.type = type;
+    
+    const { rows: notifications, count } = await sequelize.models.SystemNotification.findAndCountAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        notifications,
+        totalResults: count,
+        totalPages: Math.ceil(count / parseInt(limit)),
+        currentPage: parseInt(page)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createSystemNotification = async (req, res, next) => {
+  try {
+    const { title, message, type, userIds, scheduledFor } = req.body;
+    
+    const notification = await sequelize.models.SystemNotification.create({
+      title,
+      message,
+      type,
+      userIds: userIds || null,
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+      status: scheduledFor ? 'scheduled' : 'draft',
+      sentAt: null
+    });
+    
+    res.status(201).json({
+      status: 'success',
+      data: { notification }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateSystemNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { title, message, type, userIds, scheduledFor, status } = req.body;
+    
+    const notification = await sequelize.models.SystemNotification.findByPk(id);
+    
+    if (!notification) {
+      return next(new AppError('System notification not found', 404));
+    }
+    
+    // Don't allow editing notifications that have already been sent
+    if (notification.sentAt) {
+      return next(new AppError('Cannot edit notification that has already been sent', 400));
+    }
+    
+    await notification.update({
+      title: title || notification.title,
+      message: message || notification.message,
+      type: type || notification.type,
+      userIds: userIds !== undefined ? userIds : notification.userIds,
+      scheduledFor: scheduledFor ? new Date(scheduledFor) : notification.scheduledFor,
+      status: status || notification.status
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: { notification }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteSystemNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const notification = await sequelize.models.SystemNotification.findByPk(id);
+    
+    if (!notification) {
+      return next(new AppError('System notification not found', 404));
+    }
+    
+    // Don't allow deleting notifications that have already been sent
+    if (notification.sentAt) {
+      return next(new AppError('Cannot delete notification that has already been sent', 400));
+    }
+    
+    await notification.destroy();
+    
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.sendSystemNotification = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const notification = await sequelize.models.SystemNotification.findByPk(id);
+    
+    if (!notification) {
+      return next(new AppError('System notification not found', 404));
+    }
+    
+    // Don't send notifications that have already been sent
+    if (notification.sentAt) {
+      return next(new AppError('Notification has already been sent', 400));
+    }
+    
+    const notificationController = require('./notification.controller');
+    
+    // Get users based on notification type
+    let userIds = notification.userIds;
+    
+    if (!userIds && notification.type !== 'all') {
+      const users = await User.findAll({
+        where: { role: notification.type === 'customers' ? 'customer' : notification.type.slice(0, -1) },
+        attributes: ['id']
+      });
+      userIds = users.map(user => user.id);
+    }
+    
+    // Send the notification
+    await notificationController.sendMarketingNotification(
+      notification.title,
+      notification.message,
+      { type: 'system', notificationId: notification.id },
+      userIds
+    );
+    
+    // Update the notification status
+    await notification.update({
+      status: 'sent',
+      sentAt: new Date()
+    });
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        message: 'Notification sent successfully',
+        notification
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };

@@ -1,9 +1,9 @@
-const { DataTypes } = require('sequelize');
+const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
-const User = require('./user.model');
-const Review = require('./review.model');
 
-const ReviewReport = sequelize.define('ReviewReport', {
+class ReviewReport extends Model {}
+
+ReviewReport.init({
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -13,7 +13,7 @@ const ReviewReport = sequelize.define('ReviewReport', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: User,
+      model: 'Users',
       key: 'id'
     }
   },
@@ -21,12 +21,12 @@ const ReviewReport = sequelize.define('ReviewReport', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: Review,
+      model: 'Reviews',
       key: 'id'
     }
   },
   reason: {
-    type: DataTypes.ENUM('inappropriate', 'spam', 'fake', 'offensive', 'other'),
+    type: DataTypes.STRING,
     allowNull: false
   },
   description: {
@@ -34,26 +34,34 @@ const ReviewReport = sequelize.define('ReviewReport', {
     allowNull: true
   },
   status: {
-    type: DataTypes.ENUM('pending', 'resolved', 'rejected'),
+    type: DataTypes.ENUM('pending', 'reviewed', 'resolved'),
     defaultValue: 'pending'
+  },
+  moderatorId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Users',
+      key: 'id'
+    }
+  },
+  resolvedAt: {
+    type: DataTypes.DATE,
+    allowNull: true
   }
 }, {
+  sequelize,
+  modelName: 'ReviewReport',
+  tableName: 'ReviewReports',
   timestamps: true,
-  tableName: 'review_reports',
   indexes: [
     {
-      unique: true,
-      fields: ['userId', 'reviewId']
+      fields: ['status']
+    },
+    {
+      fields: ['reviewId']
     }
   ]
 });
-
-// Define associations
-ReviewReport.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-ReviewReport.belongsTo(Review, { foreignKey: 'reviewId', as: 'review' });
-
-// Add reverse associations
-User.hasMany(ReviewReport, { foreignKey: 'userId', as: 'reviewReports' });
-Review.hasMany(ReviewReport, { foreignKey: 'reviewId', as: 'reports' });
 
 module.exports = ReviewReport;

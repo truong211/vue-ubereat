@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 const User = require('./user.model');
 const Restaurant = require('./restaurant.model');
@@ -9,7 +9,9 @@ const Order = require('./order.model');
  * Review Model
  * Represents customer reviews for restaurants and products
  */
-const Review = sequelize.define('Review', {
+class Review extends Model {}
+
+Review.init({
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -19,7 +21,15 @@ const Review = sequelize.define('Review', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: User,
+      model: 'Users',
+      key: 'id'
+    }
+  },
+  restaurantId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'Restaurants',
       key: 'id'
     }
   },
@@ -27,28 +37,12 @@ const Review = sequelize.define('Review', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: Order,
-      key: 'id'
-    }
-  },
-  restaurantId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: Restaurant,
-      key: 'id'
-    }
-  },
-  productId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: Product,
+      model: 'Orders',
       key: 'id'
     }
   },
   rating: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.FLOAT,
     allowNull: false,
     validate: {
       min: 1,
@@ -57,15 +51,14 @@ const Review = sequelize.define('Review', {
   },
   comment: {
     type: DataTypes.TEXT,
-    allowNull: true
+    allowNull: false,
+    validate: {
+      len: [10, 500]
+    }
   },
   images: {
     type: DataTypes.JSON,
-    allowNull: true
-  },
-  isVisible: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
+    defaultValue: []
   },
   response: {
     type: DataTypes.TEXT,
@@ -75,7 +68,10 @@ const Review = sequelize.define('Review', {
     type: DataTypes.DATE,
     allowNull: true
   },
-  // New fields for additional review features
+  isVisible: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
   moderationStatus: {
     type: DataTypes.ENUM('pending', 'approved', 'rejected'),
     defaultValue: 'approved'
@@ -92,64 +88,24 @@ const Review = sequelize.define('Review', {
     type: DataTypes.INTEGER,
     allowNull: true,
     references: {
-      model: User,
+      model: 'Users',
       key: 'id'
     }
   },
-  helpfulVotes: {
+  likes: {
     type: DataTypes.INTEGER,
     defaultValue: 0
   },
-  unhelpfulVotes: {
+  dislikes: {
     type: DataTypes.INTEGER,
     defaultValue: 0
-  },
-  // Detailed food-specific ratings
-  foodQualityRating: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    validate: {
-      min: 1,
-      max: 5
-    }
-  },
-  valueRating: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    validate: {
-      min: 1,
-      max: 5
-    }
-  },
-  deliveryRating: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    validate: {
-      min: 1,
-      max: 5
-    }
-  },
-  // Tags/Aspects of the review
-  tags: {
-    type: DataTypes.JSON,
-    allowNull: true
   }
 }, {
-  timestamps: true,
-  tableName: 'reviews'
+  sequelize,
+  modelName: 'Review',
+  tableName: 'Reviews',
+  timestamps: true
 });
 
-// Define associations
-Review.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-Review.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
-Review.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
-Review.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
-Review.belongsTo(User, { foreignKey: 'moderatedBy', as: 'moderator' });
-
-// Add reverse associations
-User.hasMany(Review, { foreignKey: 'userId', as: 'reviews' });
-Order.hasMany(Review, { foreignKey: 'orderId', as: 'reviews' });
-Restaurant.hasMany(Review, { foreignKey: 'restaurantId', as: 'reviews' });
-Product.hasMany(Review, { foreignKey: 'productId', as: 'reviews' });
-
+// Associations will be defined in index.js
 module.exports = Review;

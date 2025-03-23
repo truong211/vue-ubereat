@@ -1,5 +1,5 @@
 const { validationResult } = require('express-validator');
-const { Promotion, Product, Restaurant, ProductPromotion } = require('../models');
+const { Promotion, Product, Restaurant, ProductPromotion, UserPromotion, Order } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const sequelize = require('../config/database');
 const { Op } = require('sequelize');
@@ -573,4 +573,123 @@ exports.getProductPromotions = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}
+};
+
+/**
+ * Get promotion statistics
+ * @route GET /api/promotions/:id/stats
+ * @access Private/Admin
+ */
+exports.getPromotionStats = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { timeRange = 30 } = req.query; // Days to look back
+
+    const promotion = await Promotion.findByPk(id);
+    if (!promotion) {
+      return next(new AppError('Promotion not found', 404));
+    }
+
+    // Get usage statistics
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
+
+    const usageStats = await UserPromotion.findAll({
+      where: {
+        promotionId: id,
+        createdAt: { [Op.gte]: startDate }
+      },
+      include: [
+        {
+          model: Order,
+          as: 'order',
+          attributes: ['totalAmount']
+        }
+      ]
+    });
+
+    // Calculate daily statistics
+    const dailyStats = {};
+    usageStats.forEach(usage => {
+      const date = usage.createdAt.toISOString().split('T')[0];
+      if (!dailyStats[date]) {
+        dailyStats[date] = {
+          redemptions: 0,
+          discountAmount: 0,
+          orderValue: 0
+        };
+      }
+      dailyStats[date].redemptions++;
+      dailyStats[date].discountAmount += parseFloat(usage.discountAmount);
+      dailyStats[date].orderValue += parseFloat(usage.order.totalAmount);
+    });
+
+    // Format response data
+    const timeAnalytics = Object.keys(dailyStats).map(date => ({
+      date,
+      ...dailyStats[date],
+      averageOrderValue: dailyStats[date].orderValue / dailyStats[date].redemptions
+    }));
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        id: promotion.id,
+        code: promotion.code,
+        status: promotion.status,
+        totalRedemptions: promotion.currentRedemptions,
+        totalDiscountAmount: promotion.totalDiscountAmount,
+        totalOrderValue: promotion.totalOrderValue,
+        averageOrderValue: promotion.totalOrderValue / promotion.currentRedemptions || 0,
+        redemptionRate: (promotion.currentRedemptions / promotion.maxRedemptions * 100) || 0,
+        timeAnalytics
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Apply a promotion to an order
+ * @route POST /api/promotions/apply
+ * @access Private
+ */
+exports.applyPromotion = async (req, res, next) => {
+  try {
+    const { orderId, promotionId } = req.body;
+
+    const [order, promotion] = await Promise.all([
+      Order.findByPk(orderId),
+      Promotion.findByPk(promotionId)
+    ]);
+
+    if (!order || !promotion) {
+      return next(new AppError('Order or promotion not found', 404));
+    }
+
+    // Record promotion usage
+    await UserPromotion.create({
+      userId: req.user.id,
+      promotionId,
+      orderId,
+      discountAmount: order.discountAmount,
+      orderTotal: order.totalAmount
+    });
+
+    // Update promotion statistics
+    await promotion.update({
+      currentRedemptions: promotion.currentRedemptions + 1,
+      totalDiscountAmount: promotion.totalDiscountAmount + parseFloat(order.discountAmount),
+      totalOrderValue: promotion.totalOrderValue + parseFloat(order.totalAmount),
+      lastUsedAt: new Date()
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Promotion applied successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

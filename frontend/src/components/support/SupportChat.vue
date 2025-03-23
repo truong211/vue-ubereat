@@ -288,12 +288,52 @@ export default {
     const previewImage = ref('');
     
     // Quick actions
-    const quickActions = [
-      { text: 'Track my order', action: 'track_order' },
-      { text: 'Report an issue', action: 'report_issue' },
-      { text: 'Request refund', action: 'request_refund' },
-      { text: 'Speak to an agent', action: 'speak_agent' }
-    ];
+    const quickActions = ref([
+      {
+        text: 'Track my order',
+        action: 'track_order'
+      },
+      {
+        text: 'Report an issue',
+        action: 'report_issue'
+      },
+      {
+        text: 'Request a refund',
+        action: 'request_refund'
+      },
+      {
+        text: 'View FAQs',
+        action: 'view_faq'
+      },
+      {
+        text: 'Speak to an agent',
+        action: 'speak_agent'
+      }
+    ]);
+
+    const faqCategories = ref([
+      {
+        title: 'Delivery',
+        questions: [
+          { q: 'How long will my delivery take?', a: 'Delivery times typically range from 30-45 minutes depending on your location and restaurant preparation time.' },
+          { q: 'Can I track my delivery?', a: 'Yes! Once your order is confirmed, you can track it in real-time through the app.' }
+        ]
+      },
+      {
+        title: 'Orders',
+        questions: [
+          { q: 'How do I cancel my order?', a: 'You can cancel your order through the app within 5 minutes of placing it. After that, please contact support.' },
+          { q: 'What if my order is wrong?', a: 'Please report it immediately through the app or contact our support team.' }
+        ]
+      },
+      {
+        title: 'Payment',
+        questions: [
+          { q: 'What payment methods are accepted?', a: 'We accept credit/debit cards, e-wallets, and cash on delivery.' },
+          { q: 'How do I request a refund?', a: 'You can request a refund through the app within 24 hours of delivery.' }
+        ]
+      }
+    ]);
 
     // Computed
     const canSendMessage = computed(() => {
@@ -518,6 +558,7 @@ export default {
       showImagePreview,
       previewImage,
       quickActions,
+      faqCategories,
       canSendMessage,
       openChat,
       closeChat,

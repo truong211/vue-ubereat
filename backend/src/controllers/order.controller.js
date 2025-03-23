@@ -473,21 +473,17 @@ exports.cancelOrder = async (req, res, next) => {
 exports.getRestaurantOrders = async (req, res, next) => {
   try {
     const { restaurantId } = req.params;
-    const { status, page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 10, sortBy = 'createdAt', order = 'DESC' } = req.query;
 
     // Check if user is the restaurant owner
     const restaurant = await Restaurant.findByPk(restaurantId);
-    if (!restaurant) {
-      return next(new AppError('Restaurant not found', 404));
-    }
-
-    if (restaurant.userId !== req.user.id && req.user.role !== 'admin') {
-      return next(new AppError('You are not authorized to view these orders', 403));
+    if (!restaurant || (restaurant.userId !== req.user.id && req.user.role !== 'admin')) {
+      return next(new AppError('Không có quyền xem đơn hàng của nhà hàng này', 403));
     }
 
     // Build filter object
     const filter = { restaurantId };
-    if (status) {
+    if (status && status !== 'all') {
       filter.status = status;
     }
 
@@ -501,26 +497,14 @@ exports.getRestaurantOrders = async (req, res, next) => {
         {
           model: User,
           as: 'customer',
-          attributes: ['id', 'fullName', 'phone', 'profileImage']
+          attributes: ['id', 'fullName', 'phone', 'email']
         },
         {
-          model: OrderDetail,
-          as: 'orderDetails',
-          include: [
-            {
-              model: Product,
-              as: 'product',
-              attributes: ['id', 'name', 'image']
-            }
-          ]
-        },
-        {
-          model: User,
-          as: 'driver',
-          attributes: ['id', 'fullName', 'phone', 'profileImage']
+          model: OrderItem,
+          as: 'items'
         }
       ],
-      order: [['createdAt', 'DESC']],
+      order: [[sortBy, order]],
       limit: parseInt(limit),
       offset
     });

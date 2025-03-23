@@ -1,5 +1,5 @@
-import api from './api.service'
-import { format, subDays, startOfDay, endOfDay } from 'date-fns'
+import { api } from '@/services/api';
+import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
 class AnalyticsService {
   /**
@@ -38,23 +38,17 @@ class AnalyticsService {
    * @returns {Promise<Object>} Analytics data
    */
   async getCustomerAnalytics(restaurantId, options = {}) {
-    const {
-      startDate = subDays(new Date(), 30),
-      endDate = new Date()
-    } = options
+    const { period = 'month' } = options;
 
     try {
       const response = await api.get(`/analytics/customers/${restaurantId}`, {
-        params: {
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd')
-        }
-      })
+        params: { period }
+      });
 
-      return this.processCustomerData(response.data)
+      return response.data.data;
     } catch (error) {
-      console.error('Failed to fetch customer analytics:', error)
-      throw error
+      console.error('Failed to fetch customer analytics:', error);
+      throw error;
     }
   }
 
@@ -81,26 +75,19 @@ class AnalyticsService {
    */
   async getMenuAnalytics(restaurantId, options = {}) {
     const {
-      startDate = subDays(new Date(), 30),
-      endDate = new Date(),
-      sortBy = 'revenue',
+      period = 'month',
       limit = 10
-    } = options
+    } = options;
 
     try {
       const response = await api.get(`/analytics/menu/${restaurantId}`, {
-        params: {
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd'),
-          sortBy,
-          limit
-        }
-      })
+        params: { period, limit }
+      });
 
-      return this.processMenuData(response.data)
+      return this.processMenuData(response.data.data);
     } catch (error) {
-      console.error('Failed to fetch menu analytics:', error)
-      throw error
+      console.error('Failed to fetch menu analytics:', error);
+      throw error;
     }
   }
 
@@ -128,6 +115,35 @@ class AnalyticsService {
     } catch (error) {
       console.error('Failed to fetch delivery analytics:', error)
       throw error
+    }
+  }
+
+  /**
+   * Get revenue analytics data
+   * @param {string} restaurantId Restaurant ID
+   * @param {Object} options Query options
+   * @returns {Promise<Object>} Analytics data
+   */
+  async getRevenueAnalytics(restaurantId, options = {}) {
+    const {
+      timeRange = 'week',
+      startDate,
+      endDate
+    } = options;
+
+    try {
+      const response = await api.get(`/analytics/revenue/${restaurantId}`, {
+        params: {
+          timeRange,
+          startDate: startDate ? format(startDate, 'yyyy-MM-dd') : undefined,
+          endDate: endDate ? format(endDate, 'yyyy-MM-dd') : undefined
+        }
+      });
+
+      return response.data.data;
+    } catch (error) {
+      console.error('Failed to fetch revenue analytics:', error);
+      throw error;
     }
   }
 
@@ -209,13 +225,16 @@ class AnalyticsService {
    * @returns {Object} Processed menu analytics
    */
   processMenuData(data) {
-    const { items, categories, combinations } = data
-
+    // Calculate percentages for category data
+    const totalRevenue = data.categories.reduce((sum, cat) => sum + cat.totalRevenue, 0);
+    
     return {
-      topItems: this.rankMenuItems(items),
-      categoryPerformance: this.analyzeCategoryPerformance(categories),
-      popularCombinations: this.analyzeItemCombinations(combinations)
-    }
+      ...data,
+      categories: data.categories.map(cat => ({
+        ...cat,
+        percentage: totalRevenue > 0 ? (cat.totalRevenue / totalRevenue) * 100 : 0
+      }))
+    };
   }
 
   /**
@@ -342,3 +361,22 @@ class AnalyticsService {
 }
 
 export default new AnalyticsService()
+
+import api from './api';
+
+export const analyticsService = {
+  async getRevenueAnalytics(restaurantId, params = {}) {
+    const { data } = await api.get(`/analytics/revenue/${restaurantId}`, { params });
+    return data;
+  },
+
+  async getMenuAnalytics(restaurantId, params = {}) {
+    const { data } = await api.get(`/analytics/menu/${restaurantId}`, { params });
+    return data;
+  },
+
+  async getCustomerAnalytics(restaurantId, params = {}) {
+    const { data } = await api.get(`/analytics/customers/${restaurantId}`, { params });
+    return data;
+  }
+};

@@ -135,6 +135,80 @@
                     variant="outlined"
                   ></v-text-field>
                 </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.address.latitude"
+                    label="Latitude"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.address.longitude"
+                    label="Longitude"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+
+              <!-- Tax Information -->
+              <div class="text-subtitle-1 mt-6 mb-2">Tax Information</div>
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.taxInformation.taxId"
+                    label="Tax ID"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.taxInformation.companyName"
+                    label="Company Name"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="forms.profile.taxInformation.businessLicense"
+                    label="Business License"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+              </v-row>
+
+              <!-- Bank Information -->
+              <div class="text-subtitle-1 mt-6 mb-2">Bank Information</div>
+              <v-row>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.bankInformation.bankName"
+                    label="Bank Name"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" md="6">
+                  <v-text-field
+                    v-model="forms.profile.bankInformation.accountNumber"
+                    label="Account Number"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12">
+                  <v-text-field
+                    v-model="forms.profile.bankInformation.accountHolder"
+                    label="Account Holder"
+                    :rules="[rules.required]"
+                    variant="outlined"
+                  ></v-text-field>
+                </v-col>
               </v-row>
             </v-card-text>
 
@@ -576,7 +650,19 @@ export default {
         address: {
           street: '',
           city: '',
-          postalCode: ''
+          postalCode: '',
+          latitude: null,
+          longitude: null
+        },
+        taxInformation: {
+          taxId: '',
+          companyName: '',
+          businessLicense: ''
+        },
+        bankInformation: {
+          bankName: '',
+          accountNumber: '',
+          accountHolder: ''
         }
       },
       hours: {

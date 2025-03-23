@@ -11,6 +11,10 @@ const VerifyOTP = () => import('@/views/auth/VerifyOTP.vue')
 // Payment methods route
 const PaymentMethods = () => import('@/views/payment/PaymentMethods.vue')
 
+// Admin routes
+import adminRoutes from './admin.routes';
+import Analytics from '@/views/admin/Analytics.vue';
+
 const routes = [
   // Auth routes
   {
@@ -70,6 +74,11 @@ const routes = [
         path: 'payment-methods',
         name: 'PaymentMethods',
         component: PaymentMethods
+      },
+      {
+        path: 'reviews',
+        name: 'UserReviews',
+        component: () => import('@/views/profile/Reviews.vue')
       }
     ]
   },
@@ -100,7 +109,74 @@ const routes = [
     meta: { requiresAuth: true },
     props: true
   },
+  {
+    path: '/orders/:id/tracking',
+    name: 'order-tracking',
+    component: () => import('@/components/order/OrderTrackingVi.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Theo dõi đơn hàng'
+    }
+  },
   
+  // Restaurant and Review routes
+  {
+    path: '/restaurant/:id',
+    component: () => import('@/layouts/MainLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'RestaurantDetail',
+        component: () => import('@/views/RestaurantDetail.vue'),
+        props: true
+      },
+      {
+        path: 'reviews',
+        name: 'RestaurantReviews',
+        component: () => import('@/views/restaurant/Reviews.vue'),
+        props: true
+      },
+      {
+        path: 'analytics',
+        name: 'RestaurantAnalytics',
+        component: () => import('@/views/restaurant/RestaurantAnalytics.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['restaurant', 'admin']
+        }
+      }
+    ]
+  },
+  
+  // Admin routes
+  {
+    path: '/admin',
+    component: () => import('@/layouts/AdminLayout.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+    children: [
+      {
+        path: '',
+        redirect: '/admin/dashboard'
+      },
+      {
+        path: 'dashboard',
+        name: 'AdminDashboard',
+        component: () => import('@/views/admin/Dashboard.vue')
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('@/views/admin/Users.vue')
+      },
+      {
+        path: 'analytics',
+        name: 'AdminAnalytics',
+        component: Analytics,
+        meta: { title: 'System Analytics' }
+      }
+    ]
+  },
+
   // Other routes...
   {
     path: '/',
@@ -171,6 +247,25 @@ router.beforeEach(async (to, from, next) => {
     }
   }
   
+  next()
+})
+
+// Admin route guard
+router.beforeEach((to, from, next) => {
+  // Check if route requires admin role
+  if (to.matched.some(record => record.meta.requiresAdmin)) {
+    const userRole = store.getters['auth/user']?.role
+    
+    if (userRole !== 'admin') {
+      // If not admin, redirect to home with error message
+      store.dispatch('ui/showSnackbar', {
+        message: 'Access denied. Admin privileges required.',
+        color: 'error'
+      })
+      next({ path: '/' })
+      return
+    }
+  }
   next()
 })
 

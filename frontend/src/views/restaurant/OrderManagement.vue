@@ -1,206 +1,253 @@
 <template>
   <v-container>
-    <v-row>
-      <v-col cols="12">
-        <h1 class="text-h4 mb-4">Order Management</h1>
-        
-        <!-- Order Filters -->
-        <v-card class="mb-4">
-          <v-card-text>
-            <v-row align="center">
-              <v-col cols="12" sm="4" md="3">
-                <v-select
-                  v-model="filters.status"
-                  :items="orderStatuses"
-                  label="Order Status"
-                  clearable
-                  density="compact"
-                ></v-select>
-              </v-col>
-              
-              <v-col cols="12" sm="4" md="3">
-                <v-text-field
-                  v-model="filters.search"
-                  label="Search Orders"
-                  prepend-icon="mdi-magnify"
-                  density="compact"
-                  clearable
-                ></v-text-field>
-              </v-col>
-              
-              <v-col cols="12" sm="4" md="3">
-                <v-select
-                  v-model="filters.sortBy"
-                  :items="sortOptions"
-                  label="Sort By"
-                  density="compact"
-                ></v-select>
-              </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-        
-        <!-- Orders Table -->
-        <v-card>
-          <v-data-table
-            :headers="headers"
-            :items="filteredOrders"
-            :loading="loading"
-            :items-per-page="10"
-          >
-            <!-- Order Number -->
-            <template v-slot:item.orderNumber="{ item }">
-              <div class="font-weight-medium">#{{ item.orderNumber }}</div>
-              <div class="text-caption">{{ formatDate(item.createdAt) }}</div>
-            </template>
-            
-            <!-- Customer Info -->
-            <template v-slot:item.customer="{ item }">
-              <div>{{ item.customer.name }}</div>
-              <div class="text-caption">{{ item.customer.phone }}</div>
-            </template>
-            
-            <!-- Items -->
-            <template v-slot:item.items="{ item }">
-              <div v-for="(orderItem, index) in item.items" :key="index">
-                {{ orderItem.quantity }}x {{ orderItem.name }}
-              </div>
-            </template>
-            
-            <!-- Total -->
-            <template v-slot:item.total="{ item }">
-              ${{ item.total.toFixed(2) }}
-            </template>
-            
-            <!-- Status -->
-            <template v-slot:item.status="{ item }">
-              <v-chip
-                :color="getStatusColor(item.status)"
-                size="small"
+    <h1 class="text-h4 mb-4">Quản Lý Đơn Hàng</h1>
+
+    <!-- Order Status Tabs -->
+    <v-card class="mb-6">
+      <v-tabs v-model="activeTab" grow>
+        <v-tab value="new" class="text-body-1">
+          Đơn Mới
+          <v-badge
+            :content="newOrdersCount.toString()"
+            :model-value="newOrdersCount > 0"
+            color="error"
+            class="ml-2"
+          ></v-badge>
+        </v-tab>
+        <v-tab value="preparing" class="text-body-1">Đang Chuẩn Bị</v-tab>
+        <v-tab value="ready" class="text-body-1">Sẵn Sàng</v-tab>
+        <v-tab value="completed" class="text-body-1">Hoàn Thành</v-tab>
+      </v-tabs>
+
+      <!-- Orders List -->
+      <v-window v-model="activeTab">
+        <v-window-item v-for="status in ['new', 'preparing', 'ready', 'completed']" :key="status">
+          <v-list>
+            <template v-if="getOrdersByStatus(status).length">
+              <v-list-item
+                v-for="order in getOrdersByStatus(status)"
+                :key="order.id"
+                class="mb-2"
               >
-                {{ item.status }}
-              </v-chip>
-            </template>
-            
-            <!-- Actions -->
-            <template v-slot:item.actions="{ item }">
-              <v-btn
-                icon="mdi-eye"
-                variant="text"
-                size="small"
-                @click="viewOrderDetails(item)"
-              ></v-btn>
-              
-              <v-menu>
-                <template v-slot:activator="{ props }">
-                  <v-btn
-                    icon="mdi-dots-vertical"
-                    variant="text"
-                    size="small"
-                    v-bind="props"
-                  ></v-btn>
+                <template v-slot:prepend>
+                  <v-avatar color="grey-lighten-3" size="48">
+                    <v-icon size="24">mdi-receipt</v-icon>
+                  </v-avatar>
                 </template>
-                
-                <v-list>
-                  <v-list-item
-                    v-for="action in getAvailableActions(item.status)"
-                    :key="action.value"
-                    @click="updateOrderStatus(item.id, action.value)"
+
+                <v-list-item-title class="text-h6 mb-1">
+                  Đơn #{{ order.orderNumber }}
+                  <v-chip
+                    :color="getStatusColor(order.status)"
+                    size="small"
+                    class="ml-2"
                   >
-                    <v-list-item-title>{{ action.text }}</v-list-item-title>
-                  </v-list-item>
-                </v-list>
-              </v-menu>
+                    {{ formatStatus(order.status) }}
+                  </v-chip>
+                </v-list-item-title>
+
+                <v-list-item-subtitle>
+                  <div class="text-body-2">
+                    {{ formatDateTime(order.createdAt) }} • {{ order.items.length }} món • 
+                    {{ formatPrice(order.total) }}
+                  </div>
+                  <div class="text-caption text-grey">
+                    Khách hàng: {{ order.customer.name }} • 
+                    SĐT: {{ order.customer.phone }}
+                  </div>
+                </v-list-item-subtitle>
+
+                <template v-slot:append>
+                  <div class="d-flex align-center">
+                    <!-- Action buttons based on status -->
+                    <template v-if="order.status === 'pending'">
+                      <v-btn
+                        color="success"
+                        variant="text"
+                        class="mr-2"
+                        @click="acceptOrder(order)"
+                      >
+                        <v-icon>mdi-check</v-icon>
+                        Xác Nhận
+                      </v-btn>
+                      <v-btn
+                        color="error"
+                        variant="text"
+                        @click="rejectOrder(order)"
+                      >
+                        <v-icon>mdi-close</v-icon>
+                        Từ Chối
+                      </v-btn>
+                    </template>
+
+                    <template v-if="order.status === 'preparing'">
+                      <v-btn
+                        color="success"
+                        variant="text"
+                        @click="markAsReady(order)"
+                      >
+                        <v-icon>mdi-food</v-icon>
+                        Đã Chuẩn Bị Xong
+                      </v-btn>
+                    </template>
+
+                    <v-btn
+                      icon="mdi-eye"
+                      variant="text"
+                      class="ml-2"
+                      @click="viewOrderDetails(order)"
+                    ></v-btn>
+                  </div>
+                </template>
+              </v-list-item>
             </template>
-          </v-data-table>
-        </v-card>
-      </v-col>
-    </v-row>
-    
+
+            <v-list-item v-else>
+              <v-list-item-title class="text-center py-8 text-grey">
+                Không có đơn hàng nào
+              </v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-window-item>
+      </v-window>
+    </v-card>
+
     <!-- Order Details Dialog -->
     <v-dialog v-model="orderDialog.show" max-width="700">
       <v-card v-if="orderDialog.order">
-        <v-card-title class="d-flex align-center">
-          Order #{{ orderDialog.order.orderNumber }}
-          <v-spacer></v-spacer>
-          <v-chip
-            :color="getStatusColor(orderDialog.order.status)"
-            size="small"
-          >
-            {{ orderDialog.order.status }}
+        <v-card-title class="d-flex justify-space-between align-center">
+          <span>Chi Tiết Đơn Hàng #{{ orderDialog.order.orderNumber }}</span>
+          <v-chip :color="getStatusColor(orderDialog.order.status)">
+            {{ formatStatus(orderDialog.order.status) }}
           </v-chip>
         </v-card-title>
-        
+
         <v-card-text>
           <v-row>
+            <!-- Customer Info -->
             <v-col cols="12" md="6">
-              <h3 class="text-subtitle-1 mb-2">Customer Information</h3>
+              <h3 class="text-subtitle-1 mb-2">Thông Tin Khách Hàng</h3>
               <div>{{ orderDialog.order.customer.name }}</div>
               <div>{{ orderDialog.order.customer.phone }}</div>
               <div class="text-caption">{{ orderDialog.order.customer.email }}</div>
             </v-col>
-            
+
+            <!-- Delivery Info -->
             <v-col cols="12" md="6">
-              <h3 class="text-subtitle-1 mb-2">Delivery Information</h3>
+              <h3 class="text-subtitle-1 mb-2">Thông Tin Giao Hàng</h3>
               <div>{{ orderDialog.order.deliveryAddress }}</div>
-              <div class="text-caption">Delivery Notes: {{ orderDialog.order.deliveryNotes || 'None' }}</div>
+              <div class="text-caption" v-if="orderDialog.order.deliveryNotes">
+                Ghi chú: {{ orderDialog.order.deliveryNotes }}
+              </div>
             </v-col>
-            
+
+            <!-- Order Items -->
             <v-col cols="12">
-              <h3 class="text-subtitle-1 mb-2">Order Items</h3>
+              <h3 class="text-subtitle-1 mb-2">Danh Sách Món</h3>
               <v-list>
                 <v-list-item
                   v-for="item in orderDialog.order.items"
                   :key="item.id"
                 >
-                  <v-list-item-title>
-                    {{ item.quantity }}x {{ item.name }}
-                    <span class="float-right">${{ (item.price * item.quantity).toFixed(2) }}</span>
+                  <v-list-item-title class="d-flex justify-space-between">
+                    <span>{{ item.quantity }}x {{ item.name }}</span>
+                    <span>{{ formatPrice(item.price * item.quantity) }}</span>
                   </v-list-item-title>
                   <v-list-item-subtitle v-if="item.notes">
-                    Note: {{ item.notes }}
+                    Ghi chú: {{ item.notes }}
                   </v-list-item-subtitle>
                 </v-list-item>
+
+                <v-divider class="my-2"></v-divider>
+
+                <!-- Order Summary -->
+                <v-list-item>
+                  <v-list-item-title class="d-flex justify-space-between">
+                    <span>Tạm tính</span>
+                    <span>{{ formatPrice(orderDialog.order.subtotal) }}</span>
+                  </v-list-item-title>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title class="d-flex justify-space-between">
+                    <span>Phí giao hàng</span>
+                    <span>{{ formatPrice(orderDialog.order.deliveryFee) }}</span>
+                  </v-list-item-title>
+                </v-list-item>
+                <v-list-item>
+                  <v-list-item-title class="d-flex justify-space-between font-weight-bold">
+                    <span>Tổng cộng</span>
+                    <span>{{ formatPrice(orderDialog.order.total) }}</span>
+                  </v-list-item-title>
+                </v-list-item>
               </v-list>
-              
-              <v-divider class="my-4"></v-divider>
-              
-              <div class="d-flex justify-space-between mb-2">
-                <span>Subtotal</span>
-                <span>${{ orderDialog.order.subtotal.toFixed(2) }}</span>
-              </div>
-              <div class="d-flex justify-space-between mb-2">
-                <span>Delivery Fee</span>
-                <span>${{ orderDialog.order.deliveryFee.toFixed(2) }}</span>
-              </div>
-              <div class="d-flex justify-space-between mb-2">
-                <span>Tax</span>
-                <span>${{ orderDialog.order.tax.toFixed(2) }}</span>
-              </div>
-              <div class="d-flex justify-space-between font-weight-bold">
-                <span>Total</span>
-                <span>${{ orderDialog.order.total.toFixed(2) }}</span>
-              </div>
             </v-col>
           </v-row>
         </v-card-text>
-        
+
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn
             variant="text"
             @click="orderDialog.show = false"
           >
-            Close
+            Đóng
+          </v-btn>
+          <template v-if="orderDialog.order.status === 'pending'">
+            <v-btn
+              color="success"
+              @click="acceptOrder(orderDialog.order)"
+            >
+              Xác Nhận Đơn
+            </v-btn>
+            <v-btn
+              color="error"
+              @click="rejectOrder(orderDialog.order)"
+            >
+              Từ Chối Đơn
+            </v-btn>
+          </template>
+          <v-btn
+            v-if="orderDialog.order.status === 'preparing'"
+            color="success"
+            @click="markAsReady(orderDialog.order)"
+          >
+            Đã Chuẩn Bị Xong
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Reject Order Dialog -->
+    <v-dialog v-model="rejectDialog.show" max-width="500">
+      <v-card>
+        <v-card-title>Từ Chối Đơn Hàng</v-card-title>
+        <v-card-text>
+          <v-select
+            v-model="rejectDialog.reason"
+            :items="rejectReasons"
+            label="Lý do từ chối"
+            required
+          ></v-select>
+          <v-textarea
+            v-model="rejectDialog.note"
+            label="Ghi chú thêm (không bắt buộc)"
+            rows="3"
+          ></v-textarea>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="rejectDialog.show = false"
+          >
+            Hủy
           </v-btn>
           <v-btn
-            v-for="action in getAvailableActions(orderDialog.order.status)"
-            :key="action.value"
-            :color="action.color"
-            variant="tonal"
-            @click="updateOrderStatus(orderDialog.order.id, action.value)"
+            color="error"
+            :loading="rejectDialog.loading"
+            @click="confirmReject"
           >
-            {{ action.text }}
+            Xác Nhận Từ Chối
           </v-btn>
         </v-card-actions>
       </v-card>
@@ -208,192 +255,184 @@
   </v-container>
 </template>
 
-<script>
-import { ref, computed, onMounted } from 'vue';
-import { useStore } from 'vuex';
-import { format } from 'date-fns';
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useStore } from 'vuex'
+import { format } from 'date-fns'
+import { vi } from 'date-fns/locale'
 
-export default {
-  name: 'OrderManagement',
-  setup() {
-    const store = useStore();
-    const loading = ref(false);
-    const orders = ref([]);
-    const selectedOrder = ref(null);
-    const orderFilters = ref({
-      status: 'all',
-      dateRange: null,
-      searchQuery: ''
-    });
+const store = useStore()
 
-    const orderDialog = ref({
-      show: false,
-      order: null,
-      loading: false,
-      note: ''
-    });
+// State
+const activeTab = ref('new')
+const wsConnection = ref(null)
 
-    // Computed properties for order filtering
-    const filteredOrders = computed(() => {
-      let result = [...orders.value];
-      
-      // Filter by status
-      if (orderFilters.value.status !== 'all') {
-        result = result.filter(order => order.status === orderFilters.value.status);
-      }
-      
-      // Filter by date range
-      if (orderFilters.value.dateRange) {
-        const [start, end] = orderFilters.value.dateRange;
-        result = result.filter(order => {
-          const orderDate = new Date(order.createdAt);
-          return orderDate >= start && orderDate <= end;
-        });
-      }
-      
-      // Filter by search query
-      if (orderFilters.value.searchQuery) {
-        const query = orderFilters.value.searchQuery.toLowerCase();
-        result = result.filter(order => 
-          order.orderNumber.toLowerCase().includes(query) ||
-          order.customer.fullName.toLowerCase().includes(query)
-        );
-      }
-      
-      return result;
-    });
+// Dialogs
+const orderDialog = ref({
+  show: false,
+  order: null
+})
 
-    // Order status groups
-    const orderGroups = computed(() => ({
-      new: filteredOrders.value.filter(order => order.status === 'pending'),
-      preparing: filteredOrders.value.filter(order => order.status === 'preparing'),
-      ready: filteredOrders.value.filter(order => order.status === 'ready'),
-      delivering: filteredOrders.value.filter(order => order.status === 'out_for_delivery'),
-      completed: filteredOrders.value.filter(order => order.status === 'delivered'),
-      cancelled: filteredOrders.value.filter(order => order.status === 'cancelled')
-    }));
+const rejectDialog = ref({
+  show: false,
+  order: null,
+  reason: '',
+  note: '',
+  loading: false
+})
 
-    // Load orders with real-time updates
-    const loadOrders = async () => {
-      loading.value = true;
-      try {
-        const response = await store.dispatch('restaurantAdmin/fetchOrders');
-        orders.value = response.orders;
-        
-        // Initialize WebSocket connection for real-time updates
-        initializeWebSocket();
-      } catch (error) {
-        console.error('Failed to load orders:', error);
-      } finally {
-        loading.value = false;
-      }
-    };
+// Options
+const rejectReasons = [
+  { title: 'Hết nguyên liệu', value: 'out_of_stock' },
+  { title: 'Quá tải đơn hàng', value: 'too_busy' },
+  { title: 'Sắp đóng cửa', value: 'closing_soon' },
+  { title: 'Lý do khác', value: 'other' }
+]
 
-    // WebSocket setup for real-time updates
-    const initializeWebSocket = () => {
-      const socket = store.state.restaurantAdmin.socket;
-      
-      if (!socket) return;
-      
-      socket.on('new_order', (data) => {
-        orders.value.unshift(data.order);
-        // Show notification
-        showNotification('New Order', `Order #${data.order.orderNumber} received`);
-      });
+// Computed
+const orders = computed(() => store.state.restaurantAdmin.orders)
+const newOrdersCount = computed(() => 
+  orders.value.filter(order => order.status === 'pending').length
+)
 
-      socket.on('order_status_updated', (data) => {
-        const index = orders.value.findIndex(order => order.id === data.orderId);
-        if (index !== -1) {
-          orders.value[index].status = data.status;
-          orders.value[index].updatedAt = data.updatedAt;
-        }
-      });
-    };
+// Methods
+const getOrdersByStatus = (status) => {
+  const statusMap = {
+    new: 'pending',
+    preparing: 'preparing',
+    ready: 'ready',
+    completed: 'completed'
+  }
+  return orders.value.filter(order => order.status === statusMap[status])
+}
 
-    // Update order status
-    const updateOrderStatus = async (order, newStatus) => {
-      try {
-        await store.dispatch('restaurantAdmin/updateOrder', {
-          orderId: order.id,
-          status: newStatus,
-          note: orderDialog.value.note
-        });
-        
-        // Show success message
-        showNotification('Order Updated', `Order #${order.orderNumber} status changed to ${newStatus}`);
-      } catch (error) {
-        console.error('Failed to update order status:', error);
-      }
-    };
+const getStatusColor = (status) => {
+  const colors = {
+    pending: 'warning',
+    preparing: 'info',
+    ready: 'success',
+    completed: 'grey',
+    cancelled: 'error'
+  }
+  return colors[status] || 'grey'
+}
 
-    // Show notification using native browser notification
-    const showNotification = (title, body) => {
-      if (!('Notification' in window)) return;
-      
-      if (Notification.permission === 'granted') {
-        new Notification(title, { body });
-      } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            new Notification(title, { body });
-          }
-        });
-      }
-    };
+const formatStatus = (status) => {
+  const statusMap = {
+    pending: 'Chờ xác nhận',
+    preparing: 'Đang chuẩn bị',
+    ready: 'Sẵn sàng',
+    completed: 'Hoàn thành',
+    cancelled: 'Đã hủy'
+  }
+  return statusMap[status] || status
+}
 
-    // Format order total
-    const formatCurrency = (value) => {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(value);
-    };
+const formatDateTime = (dateStr) => {
+  return format(new Date(dateStr), 'HH:mm - dd/MM/yyyy', { locale: vi })
+}
 
-    // Get status color for visual indication
-    const getStatusColor = (status) => {
-      const colors = {
-        pending: 'warning',
-        confirmed: 'info',
-        preparing: 'primary',
-        ready: 'success',
-        out_for_delivery: 'purple',
-        delivered: 'green',
-        cancelled: 'error'
-      };
-      return colors[status] || 'grey';
-    };
+const formatPrice = (amount) => {
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(amount)
+}
 
-    // Initialize component
-    onMounted(() => {
-      loadOrders();
-      
-      // Request notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    });
+const viewOrderDetails = (order) => {
+  orderDialog.value = {
+    show: true,
+    order
+  }
+}
 
-    return {
-      loading,
-      orders,
-      orderFilters,
-      filteredOrders,
-      orderGroups,
-      orderDialog,
-      updateOrderStatus,
-      formatCurrency,
-      getStatusColor
-    };
-  }  
-};
+const acceptOrder = async (order) => {
+  try {
+    await store.dispatch('restaurantAdmin/updateOrderStatus', {
+      orderId: order.id,
+      status: 'preparing'
+    })
+    if (orderDialog.value.show) {
+      orderDialog.value.show = false
+    }
+  } catch (error) {
+    console.error('Failed to accept order:', error)
+  }
+}
+
+const rejectOrder = (order) => {
+  rejectDialog.value = {
+    show: true,
+    order,
+    reason: '',
+    note: '',
+    loading: false
+  }
+}
+
+const confirmReject = async () => {
+  if (!rejectDialog.value.order || !rejectDialog.value.reason) return
+
+  rejectDialog.value.loading = true
+  try {
+    await store.dispatch('restaurantAdmin/updateOrderStatus', {
+      orderId: rejectDialog.value.order.id,
+      status: 'cancelled',
+      reason: rejectDialog.value.reason,
+      note: rejectDialog.value.note
+    })
+    rejectDialog.value.show = false
+    if (orderDialog.value.show) {
+      orderDialog.value.show = false
+    }
+  } catch (error) {
+    console.error('Failed to reject order:', error)
+  } finally {
+    rejectDialog.value.loading = false
+  }
+}
+
+const markAsReady = async (order) => {
+  try {
+    await store.dispatch('restaurantAdmin/updateOrderStatus', {
+      orderId: order.id,
+      status: 'ready'
+    })
+    if (orderDialog.value.show) {
+      orderDialog.value.show = false
+    }
+  } catch (error) {
+    console.error('Failed to mark order as ready:', error)
+  }
+}
+
+// WebSocket connection for real-time updates
+const connectWebSocket = () => {
+  wsConnection.value = new WebSocket('ws://api.example.com/restaurant/orders')
+  
+  wsConnection.value.onmessage = (event) => {
+    const data = JSON.parse(event.data)
+    store.dispatch('restaurantAdmin/handleOrderUpdate', data)
+  }
+}
+
+// Lifecycle hooks
+onMounted(async () => {
+  await store.dispatch('restaurantAdmin/fetchOrders')
+  connectWebSocket()
+})
+
+onUnmounted(() => {
+  if (wsConnection.value) {
+    wsConnection.value.close()
+  }
+})
 </script>
 
 <style scoped>
-.v-data-table ::v-deep .v-data-table__wrapper {
-  overflow-x: auto;
-}
-
-.v-list-item-subtitle {
-  white-space: normal !important;
+.v-list-item {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  margin-bottom: 8px;
 }
 </style>

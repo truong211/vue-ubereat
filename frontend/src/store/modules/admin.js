@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { adminWebSocket } from '@/services/adminWebSocket.service';
+import { adminAPI } from '@/services/api.service'
 
 const state = {
   // Dashboard stats
@@ -57,7 +58,27 @@ const state = {
     restaurants: new Set(),
     users: new Set()
   },
-  systemAlerts: []
+  systemAlerts: [],
+
+  // State for analytics
+  analytics: {
+    loading: false,
+    error: null,
+    stats: {
+      revenue: 0,
+      revenueGrowth: 0,
+      orders: 0,
+      ordersGrowth: 0,
+      restaurants: 0,
+      restaurantsGrowth: 0,
+      users: 0,
+      usersGrowth: 0
+    },
+    trends: [],
+    userSegments: [],
+    restaurants: [],
+    drivers: []
+  }
 }
 
 const mutations = {
@@ -136,6 +157,20 @@ const mutations = {
   },
   CLEAR_SYSTEM_ALERT(state, alertId) {
     state.systemAlerts = state.systemAlerts.filter(alert => alert.id !== alertId);
+  },
+  SET_ANALYTICS_LOADING(state, loading) {
+    state.analytics.loading = loading;
+  },
+  SET_ANALYTICS_ERROR(state, error) {
+    state.analytics.error = error;
+  },
+  SET_ANALYTICS_DATA(state, data) {
+    state.analytics = {
+      ...state.analytics,
+      ...data,
+      loading: false,
+      error: null
+    };
   }
 }
 
@@ -453,6 +488,48 @@ const actions = {
   updatePreferences({ commit }, preferences) {
     commit('UPDATE_PREFERENCES', preferences);
     // Save to localStorage or backend if needed
+  },
+
+  async getAnalytics({ commit }, params) {
+    commit('SET_ANALYTICS_LOADING', true);
+    try {
+      const response = await axios.get('/api/analytics', { params });
+      commit('SET_ANALYTICS_DATA', response.data.data);
+      return response.data.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_ERROR', error.response?.data?.message || 'Failed to load analytics');
+      throw error;
+    }
+  },
+
+  async exportAnalytics({ commit }, { format, sections, period }) {
+    try {
+      const response = await axios.post('/api/analytics/export', {
+        format,
+        sections,
+        period
+      }, {
+        responseType: 'blob'
+      });
+
+      // Create a download link for the file
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Set filename based on format
+      const timestamp = new Date().toISOString().split('T')[0];
+      const extension = format === 'excel' ? 'xlsx' : format;
+      link.setAttribute('download', `analytics-report-${timestamp}.${extension}`);
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      commit('SET_ANALYTICS_ERROR', error.response?.data?.message || 'Failed to export report');
+      throw error;
+    }
   }
 }
 
@@ -480,3 +557,234 @@ export default {
   actions,
   getters
 }
+
+export const adminModule = {
+  namespaced: true,
+
+  state: {
+    restaurants: [],
+    restaurantCounts: {
+      total: 0,
+      active: 0,
+      pending: 0,
+      suspended: 0
+    },
+    loading: false,
+    error: null
+  },
+
+  mutations: {
+    SET_RESTAURANTS(state, restaurants) {
+      state.restaurants = restaurants
+    },
+    SET_RESTAURANT_COUNTS(state, counts) {
+      state.restaurantCounts = counts
+    },
+    SET_LOADING(state, loading) {
+      state.loading = loading
+    },
+    SET_ERROR(state, error) {
+      state.error = error
+    },
+    UPDATE_RESTAURANT(state, updatedRestaurant) {
+      const index = state.restaurants.findIndex(r => r.id === updatedRestaurant.id)
+      if (index !== -1) {
+        state.restaurants.splice(index, 1, updatedRestaurant)
+      }
+    },
+    REMOVE_RESTAURANT(state, restaurantId) {
+      state.restaurants = state.restaurants.filter(r => r.id !== restaurantId)
+    }
+  },
+
+  actions: {
+    // Get all restaurants with filters
+    async getRestaurants({ commit }, params) {
+      commit('SET_LOADING', true)
+      try {
+        const response = await adminAPI.getRestaurants(params)
+        commit('SET_RESTAURANTS', response.data.restaurants)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      } finally {
+        commit('SET_LOADING', false)
+      }
+    },
+
+    // Get restaurant counts by status
+    async getRestaurantCounts({ commit }) {
+      try {
+        const response = await adminAPI.getRestaurantCounts()
+        commit('SET_RESTAURANT_COUNTS', response.data)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Get restaurant verification data
+    async getRestaurantVerificationData({ commit }, restaurantId) {
+      try {
+        const response = await adminAPI.getRestaurantVerificationData(restaurantId)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Get pending menu items for review
+    async getPendingMenuItems({ commit }, restaurantId) {
+      try {
+        const response = await adminAPI.getPendingMenuItems(restaurantId)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Get pending categories for review
+    async getPendingCategories({ commit }, restaurantId) {
+      try {
+        const response = await adminAPI.getPendingCategories(restaurantId)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Approve a restaurant
+    async approveRestaurant({ commit }, { restaurantId, verificationData }) {
+      try {
+        const response = await adminAPI.approveRestaurant(restaurantId, verificationData)
+        commit('UPDATE_RESTAURANT', response.data)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Reject a restaurant
+    async rejectRestaurant({ commit }, { restaurantId, reason }) {
+      try {
+        const response = await adminAPI.rejectRestaurant(restaurantId, { reason })
+        commit('UPDATE_RESTAURANT', response.data)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Suspend a restaurant
+    async suspendRestaurant({ commit }, { restaurantId, reason }) {
+      try {
+        const response = await adminAPI.suspendRestaurant(restaurantId, { reason })
+        commit('UPDATE_RESTAURANT', response.data)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Activate a suspended restaurant
+    async activateRestaurant({ commit }, restaurantId) {
+      try {
+        const response = await adminAPI.activateRestaurant(restaurantId)
+        commit('UPDATE_RESTAURANT', response.data)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Delete a restaurant
+    async deleteRestaurant({ commit }, restaurantId) {
+      try {
+        await adminAPI.deleteRestaurant(restaurantId)
+        commit('REMOVE_RESTAURANT', restaurantId)
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Menu item management
+    async approveMenuItem({ commit }, { restaurantId, itemId, notes }) {
+      try {
+        const response = await adminAPI.approveMenuItem(restaurantId, itemId, { notes })
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    async rejectMenuItem({ commit }, { restaurantId, itemId, notes }) {
+      try {
+        const response = await adminAPI.rejectMenuItem(restaurantId, itemId, { notes })
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Category management
+    async approveCategory({ commit }, { restaurantId, categoryId, notes }) {
+      try {
+        const response = await adminAPI.approveCategory(restaurantId, categoryId, { notes })
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    async rejectCategory({ commit }, { restaurantId, categoryId, notes }) {
+      try {
+        const response = await adminAPI.rejectCategory(restaurantId, categoryId, { notes })
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    },
+
+    // Document management
+    async requestDocument({ commit }, { restaurantId, documentId }) {
+      try {
+        const response = await adminAPI.requestDocument(restaurantId, documentId)
+        return response.data
+      } catch (error) {
+        commit('SET_ERROR', error.message)
+        throw error
+      }
+    }
+  },
+
+  getters: {
+    getRestaurantById: state => id => {
+      return state.restaurants.find(r => r.id === id)
+    },
+    pendingRestaurants: state => {
+      return state.restaurants.filter(r => r.status === 'pending')
+    },
+    activeRestaurants: state => {
+      return state.restaurants.filter(r => r.status === 'active')
+    },
+    suspendedRestaurants: state => {
+      return state.restaurants.filter(r => r.status === 'suspended')
+    }
+  }
+}
+
+export default adminModule

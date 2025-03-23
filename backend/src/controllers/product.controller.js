@@ -163,7 +163,6 @@ exports.getProductById = async (req, res, next) => {
  */
 exports.createProduct = async (req, res, next) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -186,7 +185,9 @@ exports.createProduct = async (req, res, next) => {
       isRecommended,
       nutritionalInfo,
       ingredients,
-      allergens
+      allergens,
+      options,
+      dietaryInfo
     } = req.body;
 
     // Check if restaurant exists and user is authorized
@@ -195,7 +196,6 @@ exports.createProduct = async (req, res, next) => {
       return next(new AppError('Restaurant not found', 404));
     }
 
-    // Check if user is the restaurant owner
     if (restaurant.userId !== req.user.id && req.user.role !== 'admin') {
       return next(new AppError('You are not authorized to create products for this restaurant', 403));
     }
@@ -211,7 +211,10 @@ exports.createProduct = async (req, res, next) => {
       }
     }
 
-    // Create product
+    // Handle image upload
+    const image = req.file ? `/uploads/products/${req.file.filename}` : null;
+
+    // Create product with enhanced fields
     const product = await Product.create({
       name,
       description,
@@ -219,6 +222,7 @@ exports.createProduct = async (req, res, next) => {
       discountPrice,
       categoryId,
       restaurantId,
+      image,
       isVegetarian: isVegetarian === 'true' || isVegetarian === true,
       isVegan: isVegan === 'true' || isVegan === true,
       isGlutenFree: isGlutenFree === 'true' || isGlutenFree === true,
@@ -228,15 +232,28 @@ exports.createProduct = async (req, res, next) => {
       isPopular: isPopular === 'true' || isPopular === true,
       isRecommended: isRecommended === 'true' || isRecommended === true,
       nutritionalInfo: nutritionalInfo ? JSON.parse(nutritionalInfo) : null,
-      ingredients,
-      allergens,
-      image: req.file ? req.file.filename : null
+      ingredients: ingredients ? JSON.parse(ingredients) : [],
+      allergens: allergens ? JSON.parse(allergens) : [],
+      options: options ? JSON.parse(options) : [],
+      dietaryInfo: dietaryInfo ? JSON.parse(dietaryInfo) : {},
+      isActive: true
+    });
+
+    // Fetch the created product with related data
+    const createdProduct = await Product.findByPk(product.id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        }
+      ]
     });
 
     res.status(201).json({
       status: 'success',
       data: {
-        product
+        product: createdProduct
       }
     });
   } catch (error) {
@@ -251,12 +268,6 @@ exports.createProduct = async (req, res, next) => {
  */
 exports.updateProduct = async (req, res, next) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { id } = req.params;
     const {
       name,
@@ -274,10 +285,13 @@ exports.updateProduct = async (req, res, next) => {
       isRecommended,
       nutritionalInfo,
       ingredients,
-      allergens
+      allergens,
+      options,
+      dietaryInfo,
+      isActive
     } = req.body;
 
-    // Find product
+    // Find product and verify ownership
     const product = await Product.findByPk(id, {
       include: [
         {
@@ -291,7 +305,6 @@ exports.updateProduct = async (req, res, next) => {
       return next(new AppError('Product not found', 404));
     }
 
-    // Check if user is the restaurant owner
     if (product.restaurant.userId !== req.user.id && req.user.role !== 'admin') {
       return next(new AppError('You are not authorized to update this product', 403));
     }
@@ -307,35 +320,49 @@ exports.updateProduct = async (req, res, next) => {
       }
     }
 
-    // Update product
+    // Update image if provided
+    if (req.file) {
+      product.image = `/uploads/products/${req.file.filename}`;
+    }
+
+    // Update product with enhanced fields
     product.name = name || product.name;
     product.description = description !== undefined ? description : product.description;
     product.price = price !== undefined ? price : product.price;
     product.discountPrice = discountPrice !== undefined ? discountPrice : product.discountPrice;
     product.categoryId = categoryId || product.categoryId;
-    product.isVegetarian = isVegetarian !== undefined ? (isVegetarian === 'true' || isVegetarian === true) : product.isVegetarian;
-    product.isVegan = isVegan !== undefined ? (isVegan === 'true' || isVegan === true) : product.isVegan;
-    product.isGlutenFree = isGlutenFree !== undefined ? (isGlutenFree === 'true' || isGlutenFree === true) : product.isGlutenFree;
+    product.isVegetarian = isVegetarian !== undefined ? isVegetarian : product.isVegetarian;
+    product.isVegan = isVegan !== undefined ? isVegan : product.isVegan;
+    product.isGlutenFree = isGlutenFree !== undefined ? isGlutenFree : product.isGlutenFree;
     product.spicyLevel = spicyLevel !== undefined ? spicyLevel : product.spicyLevel;
-    product.preparationTime = preparationTime !== undefined ? preparationTime : product.preparationTime;
+    product.preparationTime = preparationTime || product.preparationTime;
     product.status = status || product.status;
-    product.isPopular = isPopular !== undefined ? (isPopular === 'true' || isPopular === true) : product.isPopular;
-    product.isRecommended = isRecommended !== undefined ? (isRecommended === 'true' || isRecommended === true) : product.isRecommended;
+    product.isPopular = isPopular !== undefined ? isPopular : product.isPopular;
+    product.isRecommended = isRecommended !== undefined ? isRecommended : product.isRecommended;
     product.nutritionalInfo = nutritionalInfo ? JSON.parse(nutritionalInfo) : product.nutritionalInfo;
-    product.ingredients = ingredients !== undefined ? ingredients : product.ingredients;
-    product.allergens = allergens !== undefined ? allergens : product.allergens;
-
-    // Update image if provided
-    if (req.file) {
-      product.image = req.file.filename;
-    }
+    product.ingredients = ingredients ? JSON.parse(ingredients) : product.ingredients;
+    product.allergens = allergens ? JSON.parse(allergens) : product.allergens;
+    product.options = options ? JSON.parse(options) : product.options;
+    product.dietaryInfo = dietaryInfo ? JSON.parse(dietaryInfo) : product.dietaryInfo;
+    product.isActive = isActive !== undefined ? isActive : product.isActive;
 
     await product.save();
+
+    // Fetch the updated product with related data
+    const updatedProduct = await Product.findByPk(product.id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        }
+      ]
+    });
 
     res.status(200).json({
       status: 'success',
       data: {
-        product
+        product: updatedProduct
       }
     });
   } catch (error) {

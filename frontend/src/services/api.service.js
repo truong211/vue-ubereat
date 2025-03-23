@@ -492,6 +492,36 @@ export const adminAPI = {
   },
   assignOrder: (assignmentData) => {
     return apiClient.post('/admin/orders/assign', assignmentData);
+  },
+  getRestaurantVerificationData: (restaurantId) => {
+    return apiClient.get(`/admin/restaurants/${restaurantId}/verification`);
+  },
+  suspendRestaurant: (restaurantId, data) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/suspend`, data);
+  },
+  activateRestaurant: (restaurantId) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/activate`);
+  },
+  getPendingMenuItems: (restaurantId) => {
+    return apiClient.get(`/admin/restaurants/${restaurantId}/menu/pending`);
+  },
+  getPendingCategories: (restaurantId) => {
+    return apiClient.get(`/admin/restaurants/${restaurantId}/categories/pending`);
+  },
+  approveMenuItem: (restaurantId, itemId, data) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/menu/${itemId}/approve`, data);
+  },
+  rejectMenuItem: (restaurantId, itemId, data) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/menu/${itemId}/reject`, data);
+  },
+  approveCategory: (restaurantId, categoryId, data) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/categories/${categoryId}/approve`, data);
+  },
+  rejectCategory: (restaurantId, categoryId, data) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/categories/${categoryId}/reject`, data);
+  },
+  requestDocument: (restaurantId, documentId) => {
+    return apiClient.post(`/admin/restaurants/${restaurantId}/documents/${documentId}/request`);
   }
 };
 

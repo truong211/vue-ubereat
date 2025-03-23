@@ -4,6 +4,7 @@ const webpush = require('web-push');
 const { Op } = require('sequelize');
 const catchAsync = require('../utils/catchAsync');
 const socketService = require('../services/socket.service');
+const notificationTrackingService = require('../services/notificationTracking.service');
 
 // Configure web push
 const vapidKeys = {
@@ -892,6 +893,325 @@ function getStatusText(status) {
   return statusMap[status] || status;
 }
 
+/**
+ * Get notifications for current user
+ * @route GET /api/notifications
+ * @access Private
+ */
+exports.getUserNotifications = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (page - 1) * limit;
+
+    const notifications = await Notification.findAndCountAll({
+      where: {
+        [Op.or]: [
+          { userId: req.user.id },
+          { isSystemWide: true }
+        ],
+        [Op.or]: [
+          { validUntil: null },
+          { validUntil: { [Op.gt]: new Date() } }
+        ]
+      },
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        notifications: notifications.rows,
+        totalPages: Math.ceil(notifications.count / limit),
+        currentPage: parseInt(page)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create new notification(s)
+ * @route POST /api/notifications
+ * @access Private (Admin)
+ */
+exports.create = async (req, res, next) => {
+  try {
+    const { title, message, type, userIds, isSystemWide, priority, validUntil, data } = req.body;
+
+    if (!isSystemWide && (!userIds || !userIds.length)) {
+      return next(new AppError('Either userIds or isSystemWide must be provided', 400));
+    }
+
+    let notifications = [];
+
+    if (isSystemWide) {
+      // Create a single system-wide notification
+      notifications = [await Notification.create({
+        title,
+        message,
+        type,
+        isSystemWide: true,
+        priority,
+        validUntil: validUntil ? new Date(validUntil) : null,
+        data
+      })];
+    } else {
+      // Create individual notifications for specified users
+      notifications = await Promise.all(
+        userIds.map(userId =>
+          Notification.create({
+            title,
+            message,
+            type,
+            userId,
+            priority,
+            validUntil: validUntil ? new Date(validUntil) : null,
+            data
+          })
+        )
+      );
+    }
+
+    res.status(201).json({
+      status: 'success',
+      data: { notifications }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Mark notifications as read
+ * @route PATCH /api/notifications/read
+ * @access Private
+ */
+exports.markAsRead = async (req, res, next) => {
+  try {
+    const { notificationIds } = req.body;
+
+    await Notification.update(
+      {
+        isRead: true,
+        readAt: new Date()
+      },
+      {
+        where: {
+          id: { [Op.in]: notificationIds },
+          [Op.or]: [
+            { userId: req.user.id },
+            { isSystemWide: true }
+          ]
+        }
+      }
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Notifications marked as read'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete notification
+ * @route DELETE /api/notifications/:id
+ * @access Private
+ */
+exports.delete = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const notification = await Notification.findOne({
+      where: {
+        id,
+        [Op.or]: [
+          { userId: req.user.id },
+          { isSystemWide: true }
+        ]
+      }
+    });
+
+    if (!notification) {
+      return next(new AppError('Notification not found', 404));
+    }
+
+    await notification.destroy();
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get unread notification count
+ * @route GET /api/notifications/unread/count
+ * @access Private
+ */
+exports.getUnreadCount = async (req, res, next) => {
+  try {
+    const count = await Notification.count({
+      where: {
+        [Op.or]: [
+          { userId: req.user.id },
+          { isSystemWide: true }
+        ],
+        isRead: false,
+        [Op.or]: [
+          { validUntil: null },
+          { validUntil: { [Op.gt]: new Date() } }
+        ]
+      }
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: { count }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Track notification delivery status
+ * @route POST /api/notifications/:notificationId/track-delivery
+ * @access Private
+ */
+exports.trackDelivery = async (req, res, next) => {
+  try {
+    const { notificationId } = req.params;
+    const { status, deviceInfo, errorDetails } = req.body;
+
+    const tracking = await notificationTrackingService.trackDelivery(
+      notificationId,
+      req.user.id,
+      status,
+      deviceInfo,
+      errorDetails
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { tracking }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Track notification click
+ * @route POST /api/notifications/:notificationId/track-click
+ * @access Private
+ */
+exports.trackClick = async (req, res, next) => {
+  try {
+    const { notificationId } = req.params;
+    await notificationTrackingService.trackClick(notificationId, req.user.id);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Click tracked successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get delivery statistics
+ * @route GET /api/notifications/delivery-stats
+ * @access Private
+ */
+exports.getDeliveryStats = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const stats = await notificationTrackingService.getDeliveryStats(
+      startDate ? new Date(startDate) : null,
+      endDate ? new Date(endDate) : null
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { stats }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get user engagement metrics
+ * @route GET /api/notifications/:userId/engagement
+ * @access Private
+ */
+exports.getUserEngagement = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const metrics = await notificationTrackingService.getUserEngagementMetrics(
+      userId,
+      startDate ? new Date(startDate) : null,
+      endDate ? new Date(endDate) : null
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { metrics }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get notification performance by type
+ * @route GET /api/notifications/performance-by-type
+ * @access Private
+ */
+exports.getPerformanceByType = async (req, res, next) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const performance = await notificationTrackingService.getPerformanceByType(
+      startDate ? new Date(startDate) : null,
+      endDate ? new Date(endDate) : null
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: { performance }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get best performing time slots
+ * @route GET /api/notifications/best-performing-time-slots
+ * @access Private
+ */
+exports.getBestPerformingTimeSlots = async (req, res, next) => {
+  try {
+    const { days = 30 } = req.query;
+    const timeSlots = await notificationTrackingService.getBestPerformingTimeSlots(parseInt(days));
+
+    res.status(200).json({
+      status: 'success',
+      data: { timeSlots }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   subscribe,
   unsubscribe,
@@ -908,5 +1228,16 @@ module.exports = {
   sendMarketingNotification,
   createOrderStatusNotification,
   createDriverUpdateNotification,
-  createEtaUpdateNotification
+  createEtaUpdateNotification,
+  getUserNotifications,
+  create,
+  delete: deleteNotification,
+  getUnreadCount,
+  trackDelivery,
+  trackClick,
+  getDeliveryStats,
+  getUserEngagement,
+  getPerformanceByType,
+  getBestPerformingTimeSlots,
+  updateStatus
 };

@@ -334,20 +334,18 @@ const getDeliveryCoordinates = async (order) => {
  */
 const createStatusNotification = async (order, status) => {
   try {
-    // Get status message in Vietnamese
     const statusMessages = {
       'pending': 'Đơn hàng của bạn đã được đặt thành công',
-      'confirmed': 'Đơn hàng của bạn đã được xác nhận',
-      'preparing': 'Nhà hàng đang chuẩn bị đơn hàng của bạn',
-      'ready_for_pickup': 'Đơn hàng của bạn đã sẵn sàng để giao',
-      'out_for_delivery': 'Tài xế đang giao đơn hàng của bạn',
-      'delivered': 'Đơn hàng của bạn đã được giao thành công',
-      'cancelled': 'Đơn hàng của bạn đã bị hủy'
+      'confirmed': 'Nhà hàng đã xác nhận đơn hàng của bạn',
+      'preparing': 'Nhà hàng đang chuẩn bị món ăn của bạn',
+      'ready': 'Đơn hàng đã sẵn sàng để giao',
+      'out_for_delivery': 'Tài xế đang trên đường giao hàng',
+      'delivered': 'Đơn hàng đã được giao thành công',
+      'cancelled': 'Đơn hàng đã bị hủy'
     };
 
     const message = statusMessages[status] || `Trạng thái đơn hàng đã thay đổi thành ${status}`;
     
-    // Create notification
     await Notification.create({
       userId: order.userId,
       type: 'ORDER_STATUS',
@@ -366,6 +364,7 @@ const createStatusNotification = async (order, status) => {
       title: 'Cập nhật trạng thái đơn hàng',
       message,
       orderId: order.id,
+      status,
       timestamp: new Date()
     });
   } catch (error) {

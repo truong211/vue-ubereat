@@ -5,118 +5,59 @@ const { authMiddleware, restrictTo } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
-/**
- * @route GET /api/orders
- * @desc Get user orders
- * @access Private
- */
-router.get('/', orderController.getUserOrders);
+// Public routes
 
-/**
- * @route GET /api/orders/:id
- * @desc Get order details
- * @access Private
- */
+// Protected routes
+router.use(authMiddleware);
+
+// Customer routes
+router.get('/', orderController.getUserOrders);
 router.get('/:id', orderController.getOrderDetails);
 
-/**
- * @route POST /api/orders
- * @desc Create a new order
- * @access Private
- */
-router.post(
-  '/',
-  [
-    body('restaurantId')
-      .isInt()
-      .withMessage('Restaurant ID is required'),
-    body('items')
-      .isArray({ min: 1 })
-      .withMessage('At least one item is required'),
-    body('items.*.productId')
-      .isInt()
-      .withMessage('Product ID is required for each item'),
-    body('items.*.quantity')
-      .isInt({ min: 1 })
-      .withMessage('Quantity must be at least 1 for each item'),
-    body('deliveryAddress')
-      .notEmpty()
-      .withMessage('Delivery address is required'),
-    body('paymentMethod')
-      .isIn(['cash', 'credit_card', 'debit_card', 'e_wallet'])
-      .withMessage('Valid payment method is required')
-  ],
-  orderController.createOrder
-);
+router.post('/', [
+  body('paymentMethod')
+    .isIn(['cash', 'card', 'momo', 'zalopay'])
+    .withMessage('Phương thức thanh toán không hợp lệ'),
+  body('deliveryInstructions')
+    .optional()
+    .isString()
+    .withMessage('Ghi chú giao hàng không hợp lệ')
+], orderController.createOrder);
 
-/**
- * @route PUT /api/orders/:id/cancel
- * @desc Cancel an order
- * @access Private
- */
-router.put(
-  '/:id/cancel',
-  [
-    body('cancellationReason')
-      .notEmpty()
-      .withMessage('Cancellation reason is required')
-  ],
-  orderController.cancelOrder
-);
+router.patch('/:id/cancel', [
+  body('cancellationReason')
+    .notEmpty()
+    .withMessage('Vui lòng cung cấp lý do hủy đơn')
+], orderController.cancelOrder);
 
-/**
- * @route GET /api/orders/restaurant/:restaurantId
- * @desc Get restaurant orders (for restaurant owners/staff)
- * @access Private/Restaurant
- */
-router.get(
-  '/restaurant/:restaurantId',
-  restrictTo('admin', 'restaurant'),
+// Restaurant owner routes
+router.get('/restaurant/:restaurantId', 
+  restrictTo('restaurant', 'admin'),
   orderController.getRestaurantOrders
 );
 
-/**
- * @route PUT /api/orders/:id/status
- * @desc Update order status (for restaurant owners/staff)
- * @access Private/Restaurant
- */
-router.put(
-  '/:id/status',
-  restrictTo('admin', 'restaurant'),
+router.patch('/:id/status',
+  restrictTo('restaurant', 'admin'),
   [
     body('status')
-      .isIn(['confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'])
-      .withMessage('Valid status is required')
+      .isIn(['preparing', 'ready', 'completed', 'cancelled'])
+      .withMessage('Trạng thái đơn hàng không hợp lệ'),
+    body('note')
+      .optional()
+      .isString()
+      .withMessage('Ghi chú không hợp lệ')
   ],
   orderController.updateOrderStatus
 );
 
-/**
- * @route POST /api/orders/:id/rate
- * @desc Rate an order
- * @access Private
- */
-router.post(
-  '/:id/rate',
+router.patch('/:id/assign-driver',
+  restrictTo('restaurant', 'admin'),
   [
-    body('rating')
-      .isInt({ min: 1, max: 5 })
-      .withMessage('Rating must be between 1 and 5'),
-    body('comment')
-      .optional()
+    body('driverId')
+      .isInt()
+      .withMessage('ID tài xế không hợp lệ')
   ],
-  orderController.rateOrder
-);
-
-/**
- * @route GET /api/orders/dashboard/stats
- * @desc Get order statistics for dashboard
- * @access Private/Admin
- */
-router.get(
-  '/dashboard/stats',
-  restrictTo('admin'),
-  orderController.getOrderStats
+  orderController.assignDriver
 );
 
 module.exports = router;

@@ -1,310 +1,298 @@
 <template>
-  <div class="notification-center">
-    <v-menu
-      v-model="showMenu"
-      :close-on-content-click="false"
-      location="bottom end"
-      max-width="400"
-      offset="4"
-    >
-      <template v-slot:activator="{ props }">
-        <v-btn
-          v-bind="props"
-          icon
-          variant="text"
-          :color="unreadCount > 0 ? 'primary' : undefined"
+  <v-menu
+    v-model="showMenu"
+    :close-on-content-click="false"
+    location="bottom end"
+    offset="8"
+  >
+    <!-- Notification Bell Icon -->
+    <template v-slot:activator="{ props }">
+      <v-btn
+        icon
+        variant="text"
+        v-bind="props"
+      >
+        <v-badge
+          :content="unreadCount"
+          :model-value="unreadCount > 0"
+          color="error"
+          overlap
         >
-          <v-badge
-            :content="unreadCount"
-            :model-value="unreadCount > 0"
-            color="error"
-          >
-            <v-icon>mdi-bell-outline</v-icon>
-          </v-badge>
+          <v-icon>mdi-bell</v-icon>
+        </v-badge>
+      </v-btn>
+    </template>
+
+    <!-- Notification Panel -->
+    <v-card
+      min-width="360"
+      max-width="400"
+      class="notification-center"
+    >
+      <!-- Header -->
+      <v-card-title class="d-flex align-center py-3">
+        <span class="text-subtitle-1">Notifications</span>
+        <v-spacer></v-spacer>
+        <v-btn
+          v-if="hasUnread"
+          variant="text"
+          density="comfortable"
+          @click="markAllAsRead"
+        >
+          Mark all as read
         </v-btn>
-      </template>
+      </v-card-title>
 
-      <v-card elevation="4" class="notification-dropdown">
-        <v-card-title class="py-3 px-4 d-flex align-center bg-grey-lighten-4">
-          <span class="text-subtitle-1">Notifications</span>
-          <v-spacer></v-spacer>
-          <v-btn
-            variant="text"
-            size="small"
-            :disabled="!hasUnread"
-            @click="markAllAsRead"
-            class="text-caption"
-          >
-            Mark all as read
-          </v-btn>
-        </v-card-title>
+      <!-- Filter Tabs -->
+      <v-tabs
+        v-model="activeTab"
+        density="comfortable"
+        color="primary"
+      >
+        <v-tab value="all">All</v-tab>
+        <v-tab value="unread">Unread</v-tab>
+        <v-tab value="orders">Orders</v-tab>
+        <v-tab value="promotions">Promotions</v-tab>
+      </v-tabs>
 
-        <v-card-text class="pa-0">
-          <!-- Loading State -->
-          <div v-if="loading" class="pa-4 text-center">
-            <v-progress-circular indeterminate color="primary" size="24" class="mb-2"></v-progress-circular>
-            <div class="text-body-2">Loading notifications...</div>
-          </div>
-          
-          <!-- Empty State -->
-          <div v-else-if="!hasNotifications" class="pa-6 text-center">
-            <v-icon icon="mdi-bell-sleep-outline" size="36" color="grey-lighten-1" class="mb-2"></v-icon>
-            <div class="text-subtitle-1 font-weight-medium mb-1">No notifications</div>
-            <div class="text-body-2 text-medium-emphasis">
-              You don't have any notifications yet.
-            </div>
-          </div>
-          
-          <!-- Notification List -->
-          <v-list v-else density="compact" class="notification-list">
-            <template v-for="(notification, index) in recentNotifications" :key="notification.id">
-              <v-list-item
-                :class="{ 'unread': !notification.read }"
-                @click="openNotification(notification)"
-                :ripple="true"
-                class="notification-item py-2"
-              >
-                <template v-slot:prepend>
-                  <v-avatar :color="getNotificationColor(notification.type)" size="36" class="mr-3">
-                    <v-icon :icon="getNotificationIcon(notification.type)" color="white" size="small"></v-icon>
-                  </v-avatar>
-                </template>
-                
-                <v-list-item-title class="text-body-2 font-weight-medium mb-1">
-                  {{ notification.title }}
-                </v-list-item-title>
-                
-                <v-list-item-subtitle class="text-caption mb-1">
-                  {{ notification.message }}
-                </v-list-item-subtitle>
-                
-                <v-list-item-subtitle class="text-caption text-grey">
-                  {{ formatNotificationTime(notification.createdAt) }}
-                </v-list-item-subtitle>
-                
-                <template v-slot:append>
-                  <v-btn
-                    v-if="!notification.read"
-                    icon="mdi-email-open-outline"
-                    variant="text"
-                    size="x-small"
-                    color="primary"
-                    @click.stop="markAsRead(notification.id)"
-                    title="Mark as read"
-                  ></v-btn>
-                </template>
-              </v-list-item>
-              
-              <v-divider v-if="index < recentNotifications.length - 1"></v-divider>
-            </template>
-          </v-list>
-        </v-card-text>
-        
-        <v-divider v-if="hasNotifications"></v-divider>
-        
-        <v-card-actions v-if="hasNotifications" class="justify-center py-2 bg-grey-lighten-4">
-          <v-btn
-            variant="text"
-            color="primary"
-            to="/profile/notifications"
-            @click="showMenu = false"
-            size="small"
+      <!-- Notifications List -->
+      <v-card-text class="notifications-container pa-0">
+        <v-list v-if="filteredNotifications.length" lines="two">
+          <template
+            v-for="notification in filteredNotifications"
+            :key="notification.id"
           >
-            View All Notifications
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-menu>
-  </div>
+            <v-list-item
+              :value="notification"
+              :class="{ 'unread': !notification.read }"
+              @click="handleNotificationClick(notification)"
+            >
+              <!-- Icon -->
+              <template v-slot:prepend>
+                <v-icon :icon="getNotificationIcon(notification)" color="primary"></v-icon>
+              </template>
+
+              <!-- Content -->
+              <v-list-item-title>{{ notification.title }}</v-list-item-title>
+              <v-list-item-subtitle>{{ notification.message }}</v-list-item-subtitle>
+
+              <!-- Time -->
+              <v-list-item-subtitle class="text-caption text-right">
+                {{ formatTime(notification.timestamp) }}
+              </v-list-item-subtitle>
+
+              <!-- Actions -->
+              <template v-slot:append>
+                <v-menu location="bottom end">
+                  <template v-slot:activator="{ props }">
+                    <v-btn
+                      icon="mdi-dots-vertical"
+                      variant="text"
+                      density="comfortable"
+                      size="small"
+                      v-bind="props"
+                    ></v-btn>
+                  </template>
+
+                  <v-list density="compact">
+                    <v-list-item
+                      v-if="!notification.read"
+                      prepend-icon="mdi-check"
+                      title="Mark as read"
+                      @click="markAsRead(notification.id)"
+                    ></v-list-item>
+                    <v-list-item
+                      prepend-icon="mdi-delete"
+                      title="Remove"
+                      @click="removeNotification(notification.id)"
+                    ></v-list-item>
+                  </v-list>
+                </v-menu>
+              </template>
+            </v-list-item>
+
+            <v-divider></v-divider>
+          </template>
+        </v-list>
+
+        <!-- Empty State -->
+        <div
+          v-else
+          class="d-flex flex-column align-center justify-center pa-8"
+        >
+          <v-icon
+            icon="mdi-bell-off"
+            size="48"
+            color="grey-lighten-1"
+            class="mb-2"
+          ></v-icon>
+          <div class="text-grey">No notifications</div>
+        </div>
+      </v-card-text>
+
+      <!-- Footer -->
+      <v-card-actions class="justify-center pa-3">
+        <v-btn
+          variant="text"
+          prepend-icon="mdi-cog"
+          to="/settings/notifications"
+          @click="showMenu = false"
+        >
+          Notification Settings
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-menu>
 </template>
 
 <script>
-import { mapState, mapGetters, mapActions } from 'vuex';
+import { ref, computed } from 'vue'
+import { useStore } from 'vuex'
+import { useRouter } from 'vue-router'
+import { formatDistanceToNow } from 'date-fns'
 
 export default {
   name: 'NotificationCenter',
-  
-  data() {
-    return {
-      showMenu: false,
-      maxNotificationsToShow: 5
-    };
-  },
-  
-  computed: {
-    ...mapState('notifications', ['notifications', 'loading']),
-    ...mapGetters('notifications', ['unreadCount']),
-    
-    hasNotifications() {
-      return this.notifications && this.notifications.length > 0;
-    },
-    
-    hasUnread() {
-      return this.unreadCount > 0;
-    },
-    
-    recentNotifications() {
-      if (!this.notifications) return [];
-      return this.notifications.slice(0, this.maxNotificationsToShow);
-    }
-  },
-  
-  methods: {
-    ...mapActions('notifications', [
-      'fetchNotifications', 
-      'markAsRead', 
-      'markAllAsRead'
-    ]),
-    
-    openNotification(notification) {
-      // Mark as read
-      if (!notification.read) {
-        this.markAsRead(notification.id);
+
+  setup() {
+    const store = useStore()
+    const router = useRouter()
+    const showMenu = ref(false)
+    const activeTab = ref('all')
+
+    // Computed
+    const notifications = computed(() => store.state.notifications.notifications)
+    const unreadCount = computed(() => store.getters['notifications/unreadCount'])
+    const hasUnread = computed(() => unreadCount.value > 0)
+
+    const filteredNotifications = computed(() => {
+      let filtered = [...notifications.value]
+
+      switch (activeTab.value) {
+        case 'unread':
+          filtered = filtered.filter(n => !n.read)
+          break
+        case 'orders':
+          filtered = filtered.filter(n => n.type === 'order_status')
+          break
+        case 'promotions':
+          filtered = filtered.filter(n => n.type === 'promotion')
+          break
       }
-      
-      // Close the menu
-      this.showMenu = false;
-      
-      // Navigate based on notification type
-      if (!notification.data) return;
-      
+
+      return filtered
+    })
+
+    // Methods
+    const getNotificationIcon = (notification) => {
       switch (notification.type) {
         case 'order_status':
-          if (notification.data.orderId) {
-            this.$router.push(`/orders/${notification.data.orderId}`);
-          }
-          break;
-          
+          return 'mdi-food'
         case 'driver_location':
-          if (notification.data.orderId) {
-            this.$router.push(`/orders/${notification.data.orderId}/tracking`);
-          }
-          break;
-          
+          return 'mdi-map-marker'
+        case 'chat':
+          return 'mdi-message'
         case 'promotion':
-          if (notification.data.promotionId) {
-            this.$router.push(`/promotions/${notification.data.promotionId}`);
-          }
-          break;
-          
-        case 'marketing':
-          if (notification.data.url) {
-            if (notification.data.url.startsWith('http')) {
-              window.open(notification.data.url, '_blank');
-            } else {
-              this.$router.push(notification.data.url);
-            }
-          }
-          break;
-      }
-    },
-    
-    getNotificationIcon(type) {
-      switch (type) {
-        case 'order_status':
-          return 'mdi-food';
-        case 'driver_location':
-          return 'mdi-map-marker';
-        case 'promotion':
-          return 'mdi-tag-outline';
-        case 'marketing':
-          return 'mdi-bullhorn';
-        case 'system':
-          return 'mdi-information-outline';
+          return 'mdi-tag'
         default:
-          return 'mdi-bell-outline';
-      }
-    },
-    
-    getNotificationColor(type) {
-      switch (type) {
-        case 'order_status':
-          return 'success';
-        case 'driver_location':
-          return 'info';
-        case 'promotion':
-          return 'warning';
-        case 'marketing':
-          return 'purple';
-        case 'system':
-          return 'grey';
-        default:
-          return 'primary';
-      }
-    },
-    
-    formatNotificationTime(timestamp) {
-      if (!timestamp) return '';
-      
-      const now = new Date();
-      const notificationDate = new Date(timestamp);
-      const diffInMs = now - notificationDate;
-      const diffInMinutes = Math.floor(diffInMs / 60000);
-      const diffInHours = Math.floor(diffInMinutes / 60);
-      const diffInDays = Math.floor(diffInHours / 24);
-      
-      if (diffInMinutes < 1) {
-        return 'Just now';
-      } else if (diffInMinutes < 60) {
-        return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`;
-      } else if (diffInHours < 24) {
-        return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-      } else if (diffInDays < 7) {
-        return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
-      } else {
-        return notificationDate.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          year: notificationDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-        });
+          return 'mdi-bell'
       }
     }
-  },
-  
-  async mounted() {
-    // Load notifications when component mounts
-    if (!this.notifications || this.notifications.length === 0) {
-      await this.fetchNotifications({
-        page: 1,
-        limit: this.maxNotificationsToShow
-      });
+
+    const formatTime = (timestamp) => {
+      return formatDistanceToNow(new Date(timestamp), { addSuffix: true })
     }
-  },
-  
-  watch: {
-    // Fetch notifications when dropdown is opened
-    showMenu(isOpen) {
-      if (isOpen) {
-        this.fetchNotifications({
-          page: 1,
-          limit: this.maxNotificationsToShow
-        });
+
+    const handleNotificationClick = (notification) => {
+      // Mark as read
+      if (!notification.read) {
+        store.dispatch('notifications/markAsRead', notification.id)
       }
+
+      // Handle navigation based on notification type
+      switch (notification.type) {
+        case 'order_status':
+          router.push(`/orders/${notification.data.orderId}`)
+          break
+        case 'driver_location':
+          router.push(`/orders/${notification.data.orderId}/tracking`)
+          break
+        case 'chat':
+          if (notification.data.driverId) {
+            router.push(`/chat/driver/${notification.data.driverId}`)
+          } else {
+            router.push('/support')
+          }
+          break
+        case 'promotion':
+          router.push(`/promotions/${notification.data.id}`)
+          break
+      }
+
+      showMenu.value = false
+    }
+
+    const markAsRead = async (id) => {
+      await store.dispatch('notifications/markAsRead', id)
+    }
+
+    const markAllAsRead = async () => {
+      await store.dispatch('notifications/markAllAsRead')
+    }
+
+    const removeNotification = async (id) => {
+      await store.dispatch('notifications/removeNotification', id)
+    }
+
+    return {
+      showMenu,
+      activeTab,
+      notifications,
+      filteredNotifications,
+      unreadCount,
+      hasUnread,
+      getNotificationIcon,
+      formatTime,
+      handleNotificationClick,
+      markAsRead,
+      markAllAsRead,
+      removeNotification
     }
   }
-};
+}
 </script>
 
 <style scoped>
-.notification-dropdown {
+.notification-center {
   max-height: 80vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
-.notification-list {
+.notifications-container {
   max-height: 400px;
   overflow-y: auto;
 }
 
-.notification-item {
-  transition: background-color 0.2s ease;
+.unread {
+  background-color: rgb(var(--v-theme-primary), 0.05);
 }
 
-.notification-item:hover {
-  background-color: rgba(var(--v-theme-primary), 0.05);
+/* Custom scrollbar */
+.notifications-container::-webkit-scrollbar {
+  width: 6px;
 }
 
-.notification-item.unread {
-  background-color: rgba(var(--v-theme-primary), 0.08);
+.notifications-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notifications-container::-webkit-scrollbar-thumb {
+  background: #90a4ae;
+  border-radius: 3px;
+}
+
+.notifications-container::-webkit-scrollbar-thumb:hover {
+  background: #607d8b;
 }
 </style>

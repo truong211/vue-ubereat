@@ -104,6 +104,67 @@ class EmailService {
       `
     });
   }
+
+  /**
+   * Send welcome email
+   * @param {string} email - Recipient email
+   * @param {string} password - User password
+   * @param {string} fullName - Recipient full name
+   */
+  async sendWelcomeEmail(email, password, fullName) {
+    try {
+      const subject = 'Chào mừng đến với UberEat';
+      const html = `
+        <h1>Xin chào ${fullName},</h1>
+        <p>Tài khoản của bạn đã được tạo thành công bởi quản trị viên.</p>
+        <p>Thông tin đăng nhập của bạn:</p>
+        <ul>
+          <li>Email: ${email}</li>
+          <li>Mật khẩu: ${password}</li>
+        </ul>
+        <p>Vui lòng đăng nhập và đổi mật khẩu của bạn để đảm bảo an toàn.</p>
+        <p>Trân trọng,<br/>Đội ngũ UberEat</p>
+      `;
+
+      await this.transporter.sendMail({
+        from: this.from,
+        to: email,
+        subject,
+        html
+      });
+    } catch (error) {
+      console.error('Error sending welcome email:', error);
+      throw new Error('Failed to send welcome email');
+    }
+  }
+
+  /**
+   * Send account suspension email
+   * @param {string} email - Recipient email
+   * @param {string} reason - Suspension reason
+   */
+  async sendAccountSuspensionEmail(email, reason) {
+    try {
+      const subject = 'Tài khoản của bạn đã bị tạm khóa';
+      const html = `
+        <h1>Thông báo tạm khóa tài khoản</h1>
+        <p>Tài khoản của bạn đã bị tạm khóa vì lý do sau:</p>
+        <p>${reason}</p>
+        <p>Nếu bạn cho rằng đây là một sự nhầm lẫn, vui lòng liên hệ với bộ phận hỗ trợ của chúng tôi.</p>
+        <p>Trân trọng,<br/>Đội ngũ UberEat</p>
+      `;
+
+      await this.transporter.sendMail({
+        from: this.from,
+        to: email,
+        subject,
+        html
+      });
+    } catch (error) {
+      console.error('Error sending suspension email:', error);
+      throw new Error('Failed to send suspension email');
+    }
+  }
 }
 
 module.exports = new EmailService();

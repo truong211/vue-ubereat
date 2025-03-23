@@ -1539,3 +1539,62 @@ exports.getRestaurantReviews = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Update restaurant password
+ * @route PATCH /api/restaurants/:id/password
+ * @access Private (Restaurant Owner)
+ */
+exports.updatePassword = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { currentPassword, newPassword } = req.body;
+
+    // Find restaurant and verify ownership
+    const restaurant = await Restaurant.findOne({
+      where: {
+        id,
+        userId: req.user.id
+      },
+      include: [{
+        model: User,
+        as: 'owner',
+        attributes: ['id', 'password']
+      }]
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, restaurant.owner.password);
+    if (!isPasswordValid) {
+      return next(new AppError('Current password is incorrect', 401));
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await User.update(
+      { password: hashedPassword },
+      { where: { id: restaurant.userId } }
+    );
+
+    // Log password change
+    await ActivityLog.create({
+      userId: req.user.id,
+      action: 'password_change',
+      details: 'Password changed successfully',
+      ipAddress: req.ip
+    });
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Password updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};

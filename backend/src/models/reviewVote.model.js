@@ -1,9 +1,11 @@
-const { DataTypes } = require('sequelize');
+const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 const User = require('./user.model');
 const Review = require('./review.model');
 
-const ReviewVote = sequelize.define('ReviewVote', {
+class ReviewVote extends Model {}
+
+ReviewVote.init({
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -13,7 +15,7 @@ const ReviewVote = sequelize.define('ReviewVote', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: User,
+      model: 'Users',
       key: 'id'
     }
   },
@@ -21,7 +23,7 @@ const ReviewVote = sequelize.define('ReviewVote', {
     type: DataTypes.INTEGER,
     allowNull: false,
     references: {
-      model: Review,
+      model: 'Reviews',
       key: 'id'
     }
   },
@@ -30,8 +32,10 @@ const ReviewVote = sequelize.define('ReviewVote', {
     allowNull: false
   }
 }, {
+  sequelize,
+  modelName: 'ReviewVote',
+  tableName: 'ReviewVotes',
   timestamps: true,
-  tableName: 'review_votes',
   indexes: [
     {
       unique: true,

@@ -8,10 +8,13 @@ const session = require('express-session');
 const { initializeSocketIO } = require('./socket/handlers');
 const { setIO } = require('./socket/socketServer');
 const socketStateMonitor = require('./socket/stateMonitor');
+const PromotionNotifications = require('./socket/promotionNotifications');
+const PromotionMonitoringService = require('./services/promotionMonitoring.service');
 require('dotenv').config();
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 const userRoutes = require('./routes/user.routes');
 const restaurantRoutes = require('./routes/restaurant.routes');
 const restaurantSettingsRoutes = require('./routes/restaurantSettings.routes');
@@ -26,6 +29,9 @@ const staticPageRoutes = require('./routes/staticPage.routes');
 const siteConfigRoutes = require('./routes/siteConfig.routes');
 const trackingRoutes = require('./routes/tracking.routes');
 const notificationRoutes = require('./routes/notification.routes');
+const menuRoutes = require('./routes/menu.routes');
+const articleRoutes = require('./routes/article.routes');
+const bannerRoutes = require('./routes/banner.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -41,6 +47,14 @@ const server = http.createServer(app);
 // Initialize Socket.IO with our handlers
 const io = initializeSocketIO(server);
 setIO(io);
+
+// Initialize promotion services
+const promotionNotifications = new PromotionNotifications(io);
+const promotionMonitoring = new PromotionMonitoringService(promotionNotifications);
+
+// Start monitoring services
+promotionNotifications.initScheduledTasks();
+promotionMonitoring.startMonitoring();
 
 // Start socket state monitoring
 socketStateMonitor.start();
@@ -71,6 +85,7 @@ app.use('/uploads', express.static(path.join(__dirname, '..', process.env.UPLOAD
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api/users', authMiddleware, userRoutes);
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/restaurant-settings', restaurantSettingsRoutes);
@@ -85,6 +100,9 @@ app.use('/api/pages', staticPageRoutes);
 app.use('/api/config', siteConfigRoutes);
 app.use('/api/tracking', authMiddleware, trackingRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/menu', menuRoutes);
+app.use('/api/articles', articleRoutes);
+app.use('/api/banners', bannerRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

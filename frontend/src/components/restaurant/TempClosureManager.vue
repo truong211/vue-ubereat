@@ -1,235 +1,275 @@
-`<template>
-  <div>
-    <v-card>
-      <v-card-title>Temporary Closure Management</v-card-title>
-      <v-card-text>
-        <v-switch
-          v-model="localClosureSettings.isTemporarilyClosed"
-          label="Temporarily Close Restaurant"
-          @change="handleClosureToggle"
-        ></v-switch>
+<template>
+  <v-card>
+    <v-card-text>
+      <h2 class="text-h5 mb-6">Temporary Closure Management</h2>
+      
+      <v-switch
+        v-model="settings.isTemporarilyClosed"
+        :color="settings.isTemporarilyClosed ? 'error' : 'success'"
+        :label="settings.isTemporarilyClosed ? 'Restaurant is temporarily closed' : 'Restaurant is open'"
+        class="mb-4"
+      ></v-switch>
 
-        <v-row v-if="localClosureSettings.isTemporarilyClosed">
-          <v-col cols="12" md="6">
-            <v-menu
-              v-model="showDatePicker"
-              :close-on-content-click="false"
-              transition="scale-transition"
-              offset-y
-              min-width="auto"
-            >
-              <template v-slot:activator="{ on, attrs }">
-                <v-text-field
-                  v-model="formattedReopenDate"
-                  label="Reopen Date"
-                  readonly
-                  v-bind="attrs"
-                  v-on="on"
-                  prepend-icon="mdi-calendar"
-                  :rules="[v => !!v || 'Reopen date is required']"
-                ></v-text-field>
-              </template>
-              <v-date-picker
-                v-model="localClosureSettings.reopenDate"
-                :min="minDate"
-                @input="showDatePicker = false"
-              ></v-date-picker>
-            </v-menu>
-          </v-col>
+      <v-expand-transition>
+        <div v-if="settings.isTemporarilyClosed">
+          <v-alert
+            type="warning"
+            variant="tonal"
+            class="mb-4"
+          >
+            When the restaurant is temporarily closed, new orders will not be accepted.
+            Existing orders will be handled based on your settings below.
+          </v-alert>
 
-          <v-col cols="12" md="6">
-            <v-menu
-              ref="timeMenu"
-              v-model="showTimePicker"
-              :close-on-content-click="false"
-              transition="scale-transition"
-              offset-y
-              max-width="290px"
-              min-width="290px"
-            >
-              <template v-slot:activator="{ on, attrs }">
-                <v-text-field
-                  v-model="localClosureSettings.reopenTime"
-                  label="Reopen Time"
-                  readonly
-                  v-bind="attrs"
-                  v-on="on"
-                  prepend-icon="mdi-clock-outline"
-                  :rules="[v => !!v || 'Reopen time is required']"
-                ></v-text-field>
-              </template>
-              <v-time-picker
-                v-if="showTimePicker"
-                v-model="localClosureSettings.reopenTime"
-                full-width
-                format="24hr"
-                @click:minute="$refs.timeMenu.save(localClosureSettings.reopenTime)"
-              ></v-time-picker>
-            </v-menu>
-          </v-col>
+          <v-row>
+            <!-- Reopen Date -->
+            <v-col cols="12" md="6">
+              <v-text-field
+                v-model="settings.reopenDate"
+                type="datetime-local"
+                label="Planned Reopen Date/Time"
+                :min="minReopenDate"
+                :rules="[rules.required, rules.futureDate]"
+              ></v-text-field>
+            </v-col>
 
-          <v-col cols="12">
-            <v-textarea
-              v-model="localClosureSettings.closureReason"
-              label="Closure Reason"
-              rows="3"
-              :rules="[v => !!v || 'Please provide a reason for closure']"
-            ></v-textarea>
-          </v-col>
+            <!-- Closure Reason -->
+            <v-col cols="12">
+              <v-text-field
+                v-model="settings.closureReason"
+                label="Closure Reason"
+                :rules="[rules.required]"
+                hint="This will be shown to customers"
+                persistent-hint
+              ></v-text-field>
+            </v-col>
 
-          <v-col cols="12">
-            <v-switch
-              v-model="localClosureSettings.showReason"
-              label="Show closure reason to customers"
-            ></v-switch>
-          </v-col>
+            <!-- Show Reason Toggle -->
+            <v-col cols="12">
+              <v-switch
+                v-model="settings.showReason"
+                label="Show closure reason to customers"
+              ></v-switch>
+            </v-col>
 
-          <v-col cols="12">
-            <v-switch
-              v-model="localClosureSettings.acceptPreOrders"
-              label="Accept pre-orders for after reopening"
-            ></v-switch>
-          </v-col>
-        </v-row>
+            <!-- Pre-orders Toggle -->
+            <v-col cols="12">
+              <v-switch
+                v-model="settings.acceptPreOrders"
+                label="Accept pre-orders for after reopening"
+              ></v-switch>
+            </v-col>
 
-        <v-alert
-          v-if="localClosureSettings.isTemporarilyClosed"
-          type="warning"
-          class="mt-4"
-        >
-          When the restaurant is temporarily closed:
-          <ul class="mt-2">
-            <li>New orders will not be accepted until reopening</li>
-            <li v-if="!localClosureSettings.acceptPreOrders">Pre-orders will also be disabled</li>
-            <li v-if="localClosureSettings.acceptPreOrders">Pre-orders will be accepted for after {{ formattedReopenDate }}</li>
-            <li>Your listing will be marked as temporarily closed</li>
-          </ul>
-        </v-alert>
-      </v-card-text>
+            <!-- Existing Orders Alert -->
+            <v-col cols="12">
+              <v-alert
+                v-if="existingOrders.length > 0"
+                type="info"
+                variant="outlined"
+              >
+                <template v-slot:title>
+                  Existing Orders ({{ existingOrders.length }})
+                </template>
+                <p>You have {{ existingOrders.length }} pending orders. Please decide how to handle them:</p>
+                <v-radio-group v-model="existingOrdersHandling" class="mt-2">
+                  <v-radio
+                    label="Complete all existing orders"
+                    value="complete"
+                  ></v-radio>
+                  <v-radio
+                    label="Cancel all orders and notify customers"
+                    value="cancel"
+                  ></v-radio>
+                  <v-radio
+                    label="Handle orders individually"
+                    value="individual"
+                  ></v-radio>
+                </v-radio-group>
+
+                <v-expand-transition>
+                  <div v-if="existingOrdersHandling === 'individual'" class="mt-4">
+                    <v-list>
+                      <v-list-item
+                        v-for="order in existingOrders"
+                        :key="order.id"
+                        :subtitle="`Order #${order.id} - ${order.items.length} items - $${order.total}`"
+                      >
+                        <template v-slot:append>
+                          <v-btn-group>
+                            <v-btn
+                              color="success"
+                              size="small"
+                              @click="handleExistingOrder(order.id, 'complete')"
+                            >
+                              Complete
+                            </v-btn>
+                            <v-btn
+                              color="error"
+                              size="small"
+                              @click="handleExistingOrder(order.id, 'cancel')"
+                            >
+                              Cancel
+                            </v-btn>
+                          </v-btn-group>
+                        </template>
+                      </v-list-item>
+                    </v-list>
+                  </div>
+                </v-expand-transition>
+              </v-alert>
+            </v-col>
+          </v-row>
+        </div>
+      </v-expand-transition>
+
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn
           color="primary"
           :loading="saving"
-          @click="saveClosureSettings"
+          @click="saveSettings"
         >
           Save Changes
         </v-btn>
       </v-card-actions>
-    </v-card>
-  </div>
+    </v-card-text>
+  </v-card>
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex'
-import { format } from 'date-fns'
+import { ref, computed, onMounted } from 'vue'
+import { useStore } from 'vuex'
 
 export default {
   name: 'TempClosureManager',
 
-  data() {
-    return {
-      showDatePicker: false,
-      showTimePicker: false,
-      saving: false,
-      localClosureSettings: {
-        isTemporarilyClosed: false,
-        reopenDate: null,
-        reopenTime: null,
-        closureReason: null,
-        showReason: true,
-        acceptPreOrders: false
+  setup() {
+    const store = useStore()
+    const saving = ref(false)
+
+    // Settings state
+    const settings = ref({
+      isTemporarilyClosed: false,
+      reopenDate: null,
+      closureReason: '',
+      showReason: true,
+      acceptPreOrders: false
+    })
+
+    // Existing orders state
+    const existingOrders = ref([])
+    const existingOrdersHandling = ref('complete')
+
+    // Computed
+    const minReopenDate = computed(() => {
+      const now = new Date()
+      return now.toISOString().slice(0, 16)
+    })
+
+    // Validation rules
+    const rules = {
+      required: v => !!v || 'This field is required',
+      futureDate: v => {
+        if (!v) return true
+        const date = new Date(v)
+        const now = new Date()
+        return date > now || 'Reopen date must be in the future'
       }
     }
-  },
 
-  computed: {
-    ...mapState('restaurantAdmin', {
-      settings: state => state.settings
-    }),
-
-    minDate() {
-      return format(new Date(), 'yyyy-MM-dd')
-    },
-
-    formattedReopenDate() {
-      return this.localClosureSettings.reopenDate
-        ? format(new Date(this.localClosureSettings.reopenDate), 'MMM dd, yyyy')
-        : ''
-    }
-  },
-
-  watch: {
-    'settings.tempClosureSettings': {
-      handler(newVal) {
-        if (newVal) {
-          this.localClosureSettings = {
-            ...newVal,
-            reopenDate: newVal.reopenDate ? format(new Date(newVal.reopenDate), 'yyyy-MM-dd') : null
-          }
-        }
-      },
-      immediate: true
-    }
-  },
-
-  methods: {
-    ...mapActions('restaurantAdmin', ['updateTempClosure']),
-
-    handleClosureToggle(value) {
-      if (!value) {
-        // Reset settings when disabling temporary closure
-        this.localClosureSettings = {
+    // Methods
+    const loadSettings = async () => {
+      try {
+        const restaurantId = store.state.restaurantAdmin.restaurant.id
+        const response = await store.dispatch('restaurantAdmin/fetchRestaurantSettings', restaurantId)
+        settings.value = response.tempClosureSettings || {
           isTemporarilyClosed: false,
           reopenDate: null,
-          reopenTime: null,
-          closureReason: null,
+          closureReason: '',
           showReason: true,
           acceptPreOrders: false
         }
-        this.saveClosureSettings()
+      } catch (error) {
+        console.error('Failed to load temporary closure settings:', error)
       }
-    },
+    }
 
-    async saveClosureSettings() {
-      if (!this.localClosureSettings.isTemporarilyClosed ||
-          (this.localClosureSettings.reopenDate && 
-           this.localClosureSettings.reopenTime && 
-           this.localClosureSettings.closureReason)) {
-        this.saving = true
-        try {
-          const settings = {
-            ...this.localClosureSettings
-          }
-          if (settings.reopenDate && settings.reopenTime) {
-            // Combine date and time
-            const [hours, minutes] = settings.reopenTime.split(':')
-            const reopenDateTime = new Date(settings.reopenDate)
-            reopenDateTime.setHours(parseInt(hours), parseInt(minutes))
-            settings.reopenDate = reopenDateTime.toISOString()
-          }
-          
-          await this.updateTempClosure({
-            restaurantId: this.settings.restaurant.id,
-            settings
-          })
+    const loadExistingOrders = async () => {
+      try {
+        const response = await store.dispatch('restaurantAdmin/fetchOrders', {
+          status: 'pending'
+        })
+        existingOrders.value = response.orders || []
+      } catch (error) {
+        console.error('Failed to load existing orders:', error)
+      }
+    }
 
-          this.$emit('saved')
-          this.$store.dispatch('showSnackbar', {
-            text: 'Temporary closure settings updated successfully',
-            color: 'success'
-          })
-        } catch (error) {
-          console.error('Failed to update temporary closure settings:', error)
-          this.$store.dispatch('showSnackbar', {
-            text: 'Failed to update temporary closure settings',
-            color: 'error'
-          })
-        } finally {
-          this.saving = false
+    const saveSettings = async () => {
+      try {
+        saving.value = true
+        const restaurantId = store.state.restaurantAdmin.restaurant.id
+        await store.dispatch('restaurantAdmin/updateTempClosure', {
+          restaurantId,
+          settings: settings.value
+        })
+
+        // Handle existing orders if closing
+        if (settings.value.isTemporarilyClosed && existingOrders.value.length > 0) {
+          if (existingOrdersHandling.value === 'complete') {
+            await Promise.all(existingOrders.value.map(order => 
+              store.dispatch('restaurantAdmin/updateOrder', {
+                orderId: order.id,
+                status: 'preparing'
+              })
+            ))
+          } else if (existingOrdersHandling.value === 'cancel') {
+            await Promise.all(existingOrders.value.map(order =>
+              store.dispatch('restaurantAdmin/updateOrder', {
+                orderId: order.id,
+                status: 'cancelled',
+                reason: 'Restaurant temporarily closed'
+              })
+            ))
+          }
         }
+      } catch (error) {
+        console.error('Failed to save temporary closure settings:', error)
+      } finally {
+        saving.value = false
       }
+    }
+
+    const handleExistingOrder = async (orderId, action) => {
+      try {
+        await store.dispatch('restaurantAdmin/updateOrder', {
+          orderId,
+          status: action === 'complete' ? 'preparing' : 'cancelled',
+          reason: action === 'cancel' ? 'Restaurant temporarily closed' : undefined
+        })
+        // Remove from local list
+        existingOrders.value = existingOrders.value.filter(o => o.id !== orderId)
+      } catch (error) {
+        console.error(`Failed to ${action} order:`, error)
+      }
+    }
+
+    // Load initial data
+    onMounted(() => {
+      loadSettings()
+      loadExistingOrders()
+    })
+
+    return {
+      settings,
+      saving,
+      existingOrders,
+      existingOrdersHandling,
+      minReopenDate,
+      rules,
+      saveSettings,
+      handleExistingOrder
     }
   }
 }
-</script>`
+</script>

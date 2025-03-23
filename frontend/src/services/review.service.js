@@ -1,73 +1,90 @@
 import axios from 'axios';
+import { API_URL } from '@/config';
 
-class ReviewService {
-  async getRestaurantReviews(restaurantId, options = {}) {
-    const { page = 1, limit = 10, sort = 'recent' } = options;
-    const response = await axios.get(`/api/reviews/restaurant/${restaurantId}`, {
-      params: { page, limit, sort }
-    });
-    return response.data;
-  }
+const reviewService = {
+  /**
+   * Get reviews for a restaurant
+   * @param {number} restaurantId - Restaurant ID
+   * @param {Object} params - Query parameters (page, limit, sort, rating)
+   */
+  getRestaurantReviews(restaurantId, params = {}) {
+    return axios.get(`${API_URL}/reviews/restaurant/${restaurantId}`, { params });
+  },
 
-  async getProductReviews(productId, options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const response = await axios.get(`/api/reviews/product/${productId}`, {
-      params: { page, limit }
-    });
-    return response.data;
-  }
-
-  async getUserReviews(options = {}) {
-    const { page = 1, limit = 10 } = options;
-    const response = await axios.get('/api/reviews/user', {
-      params: { page, limit }
-    });
-    return response.data;
-  }
-
-  async createReview(reviewData) {
-    const response = await axios.post('/api/reviews', reviewData);
-    return response.data;
-  }
-
-  async updateReview(reviewId, updateData) {
-    const response = await axios.put(`/api/reviews/${reviewId}`, updateData);
-    return response.data;
-  }
-
-  async deleteReview(reviewId) {
-    const response = await axios.delete(`/api/reviews/${reviewId}`);
-    return response.data;
-  }
-
-  async respondToReview(reviewId, response) {
-    const result = await axios.post(`/api/reviews/${reviewId}/respond`, { response });
-    return result.data;
-  }
-
-  async getReviewStats() {
-    const response = await axios.get('/api/reviews/dashboard/stats');
-    return response.data;
-  }
-
-  // Add a photo to a review
-  async addReviewPhoto(reviewId, photoData) {
+  /**
+   * Create a new review
+   * @param {Object} review - Review data (restaurantId, rating, comment, images)
+   */
+  createReview(review) {
     const formData = new FormData();
-    formData.append('photo', photoData);
-    
-    const response = await axios.post(`/api/reviews/${reviewId}/photos`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
+    Object.keys(review).forEach(key => {
+      if (key === 'images') {
+        review[key].forEach(image => formData.append('images', image));
+      } else {
+        formData.append(key, review[key]);
       }
     });
-    return response.data;
-  }
+    return axios.post(`${API_URL}/reviews`, formData);
+  },
 
-  // Remove a photo from a review
-  async removeReviewPhoto(reviewId, photoId) {
-    const response = await axios.delete(`/api/reviews/${reviewId}/photos/${photoId}`);
-    return response.data;
-  }
-}
+  /**
+   * Update an existing review
+   * @param {number} reviewId - Review ID
+   * @param {Object} review - Updated review data
+   */
+  updateReview(reviewId, review) {
+    const formData = new FormData();
+    Object.keys(review).forEach(key => {
+      if (key === 'images') {
+        review[key].forEach(image => formData.append('images', image));
+      } else {
+        formData.append(key, review[key]);
+      }
+    });
+    return axios.put(`${API_URL}/reviews/${reviewId}`, formData);
+  },
 
-export default new ReviewService();
+  /**
+   * Delete a review
+   * @param {number} reviewId - Review ID
+   */
+  deleteReview(reviewId) {
+    return axios.delete(`${API_URL}/reviews/${reviewId}`);
+  },
+
+  /**
+   * Vote on a review (helpful/not helpful)
+   * @param {number} reviewId - Review ID
+   * @param {boolean} isHelpful - Whether the vote is helpful
+   */
+  voteReview(reviewId, isHelpful) {
+    return axios.post(`${API_URL}/reviews/${reviewId}/vote`, { isHelpful });
+  },
+
+  /**
+   * Get user's reviews
+   * @param {Object} params - Query parameters (page, limit)
+   */
+  getUserReviews(params = {}) {
+    return axios.get(`${API_URL}/reviews/user`, { params });
+  },
+
+  /**
+   * Check if user can review a restaurant
+   * @param {number} restaurantId - Restaurant ID
+   */
+  checkReviewEligibility(restaurantId) {
+    return axios.get(`${API_URL}/reviews/check-eligibility/${restaurantId}`);
+  },
+
+  /**
+   * Report a review
+   * @param {number} reviewId - Review ID
+   * @param {Object} report - Report data (reason, description)
+   */
+  reportReview(reviewId, report) {
+    return axios.post(`${API_URL}/reviews/${reviewId}/report`, report);
+  }
+};
+
+export default reviewService;

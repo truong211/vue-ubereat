@@ -25,6 +25,7 @@ self.addEventListener('install', (event) => {
       })
       .then(() => self.skipWaiting())
   );
+  self.skipWaiting();
 });
 
 // Activate event - clean up old caches
@@ -106,118 +107,74 @@ self.addEventListener('fetch', (event) => {
 });
 
 // Push event - handle incoming push notifications
-self.addEventListener('push', (event) => {
-  console.log('Push received:', event);
-
-  let notificationData = {};
-  
-  // Try to extract notification data from the push event
+self.addEventListener('push', function(event) {
   if (event.data) {
-    try {
-      notificationData = event.data.json();
-    } catch (e) {
-      // If parsing as JSON fails, use the text as the message
-      notificationData = {
-        title: 'New Notification',
-        body: event.data.text()
-      };
-    }
-  } else {
-    // Default notification if no data was received
-    notificationData = {
-      title: 'New Notification',
-      body: 'Something happened in the app'
-    };
-  }
-
-  // Extract notification details
-  const title = notificationData.title || 'New Notification';
-  const options = {
-    body: notificationData.body || '',
-    icon: notificationData.icon || '/img/icons/android-chrome-192x192.png',
-    badge: notificationData.badge || '/img/icons/badge-128x128.png',
-    tag: notificationData.tag || 'default',
-    data: notificationData.data || {}, // Additional data for click handler
-    actions: notificationData.actions || [],
-    vibrate: notificationData.vibrate || [100, 50, 100],
-    timestamp: notificationData.timestamp || Date.now()
-  };
-
-  // Send message to all clients about the notification
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    .then((clientList) => {
-      if (clientList.length > 0) {
-        clientList.forEach((client) => {
-          client.postMessage({
-            type: 'PUSH_RECEIVED',
-            notification: { ...notificationData }
-          });
+    const data = event.data.json();
+    
+    // Send to all window clients
+    self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    }).then(function(clients) {
+      clients.forEach(function(client) {
+        client.postMessage({
+          type: 'PUSH_RECEIVED',
+          notification: data
         });
-      }
+      });
     });
 
-  // Show the notification
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+    // Show notification
+    event.waitUntil(
+      self.registration.showNotification(data.title, {
+        body: data.message,
+        icon: '/img/icons/android-chrome-192x192.png',
+        badge: '/img/icons/badge-icon.png',
+        tag: data.id || 'default',
+        data: data,
+        actions: [
+          {
+            action: 'view',
+            title: 'Xem chi tiết'
+          }
+        ]
+      })
+    );
+  }
 });
 
 // Notification click event - handle user clicking on the notification
-self.addEventListener('notificationclick', (event) => {
-  console.log('Notification click:', event);
-  
-  // Close the notification
+self.addEventListener('notificationclick', function(event) {
   event.notification.close();
 
-  // Handle actions if they exist
-  if (event.action) {
-    // Handle specific actions
-    switch (event.action) {
-      case 'view':
-        // Handle view action
-        break;
-      case 'dismiss':
-        // Just close the notification (already done)
-        return;
-      default:
-        // Unknown action
-        console.log(`Unknown action: ${event.action}`);
-    }
-  }
-
-  // Get the notification data
-  const notificationData = event.notification.data || {};
-  const urlToOpen = notificationData.url || '/notifications';
-
-  // Inform clients about the notification click
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    .then((clientList) => {
-      if (clientList.length > 0) {
-        // If a window is already open, focus it and send a message
-        clientList.forEach((client) => {
-          client.postMessage({
-            type: 'NOTIFICATION_CLICKED',
-            notification: {
-              id: notificationData.id,
-              url: urlToOpen,
-              ...notificationData
-            }
-          });
-        });
-
-        // Focus an existing window if we have one
-        for (const client of clientList) {
-          if ('focus' in client) {
-            return client.focus();
+  const notification = event.notification.data;
+  
+  // Handle notification click
+  if (notification.orderId) {
+    // Open order tracking page
+    event.waitUntil(
+      self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true
+      }).then(function(clientList) {
+        // If there's an existing window, focus it and navigate
+        for (let client of clientList) {
+          if (client.url && 'focus' in client) {
+            client.focus();
+            client.postMessage({
+              type: 'NOTIFICATION_CLICKED',
+              notification: notification
+            });
+            return;
           }
         }
-      }
-      
-      // If no window is open, open a new one
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
-    });
+        // If no window exists, open a new one
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(`/orders/${notification.orderId}/tracking`);
+        }
+      })
+    );
+  }
 });
 
 // Notification close event - handle user dismissing the notification

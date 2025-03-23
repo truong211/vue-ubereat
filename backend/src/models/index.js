@@ -18,13 +18,26 @@ const SiteConfig = require('./siteConfig.model');
 const UserActivityLog = require('./userActivityLog.model');
 const ApiPerformanceLog = require('./apiPerformanceLog.model');
 const MarketingContent = require('./marketingContent.model');
+const FAQ = require('./faq.model');
+const Notification = require('./notification.model');
+const NotificationTracking = require('./notificationTracking.model');
 
-// Define additional relationships
+// Define relationships
 User.hasMany(UserActivityLog, { foreignKey: 'userId' });
 UserActivityLog.belongsTo(User, { foreignKey: 'userId' });
 
 User.hasMany(MarketingContent, { foreignKey: 'createdBy', as: 'createdContent' });
 MarketingContent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+// Add notification relationships
+User.hasMany(Notification, { foreignKey: 'userId' });
+Notification.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(NotificationTracking, { foreignKey: 'userId' });
+NotificationTracking.belongsTo(User, { foreignKey: 'userId' });
+
+Notification.hasMany(NotificationTracking, { foreignKey: 'notificationId' });
+NotificationTracking.belongsTo(Notification, { foreignKey: 'notificationId' });
 
 module.exports = {
   User,
@@ -46,5 +59,8 @@ module.exports = {
   SiteConfig,
   UserActivityLog,
   ApiPerformanceLog,
-  MarketingContent
+  MarketingContent,
+  FAQ,
+  Notification,
+  NotificationTracking
 };

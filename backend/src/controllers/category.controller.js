@@ -1,6 +1,6 @@
-const { validationResult } = require('express-validator');
 const { Category, Restaurant, Product } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
+const { validationResult } = require('express-validator');
 
 /**
  * Get all categories
@@ -30,7 +30,6 @@ exports.getAllCategories = async (req, res, next) => {
 
     res.status(200).json({
       status: 'success',
-      results: categories.length,
       data: {
         categories
       }
@@ -87,7 +86,6 @@ exports.getCategoryById = async (req, res, next) => {
  */
 exports.createCategory = async (req, res, next) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -101,18 +99,20 @@ exports.createCategory = async (req, res, next) => {
       return next(new AppError('Restaurant not found', 404));
     }
 
-    // Check if user is the restaurant owner
     if (restaurant.userId !== req.user.id && req.user.role !== 'admin') {
       return next(new AppError('You are not authorized to create categories for this restaurant', 403));
     }
 
-    // Create category
+    // Handle image upload
+    const image = req.file ? `/uploads/categories/${req.file.filename}` : null;
+
     const category = await Category.create({
       name,
       description,
       displayOrder: displayOrder || 0,
       restaurantId,
-      image: req.file ? req.file.filename : null
+      image,
+      isActive: true
     });
 
     res.status(201).json({
@@ -133,16 +133,9 @@ exports.createCategory = async (req, res, next) => {
  */
 exports.updateCategory = async (req, res, next) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { id } = req.params;
     const { name, description, displayOrder, isActive } = req.body;
 
-    // Find category
     const category = await Category.findByPk(id, {
       include: [
         {
@@ -156,21 +149,19 @@ exports.updateCategory = async (req, res, next) => {
       return next(new AppError('Category not found', 404));
     }
 
-    // Check if user is the restaurant owner
     if (category.restaurant.userId !== req.user.id && req.user.role !== 'admin') {
       return next(new AppError('You are not authorized to update this category', 403));
     }
 
-    // Update category
+    // Update image if provided
+    if (req.file) {
+      category.image = `/uploads/categories/${req.file.filename}`;
+    }
+
     category.name = name || category.name;
     category.description = description !== undefined ? description : category.description;
     category.displayOrder = displayOrder !== undefined ? displayOrder : category.displayOrder;
     category.isActive = isActive !== undefined ? isActive : category.isActive;
-
-    // Update image if provided
-    if (req.file) {
-      category.image = req.file.filename;
-    }
 
     await category.save();
 
@@ -194,7 +185,6 @@ exports.deleteCategory = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Find category
     const category = await Category.findByPk(id, {
       include: [
         {
@@ -208,12 +198,10 @@ exports.deleteCategory = async (req, res, next) => {
       return next(new AppError('Category not found', 404));
     }
 
-    // Check if user is the restaurant owner
     if (category.restaurant.userId !== req.user.id && req.user.role !== 'admin') {
       return next(new AppError('You are not authorized to delete this category', 403));
     }
 
-    // Delete category
     await category.destroy();
 
     res.status(204).json({
@@ -223,4 +211,4 @@ exports.deleteCategory = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-}; 
+};

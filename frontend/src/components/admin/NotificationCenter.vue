@@ -1,248 +1,282 @@
-<!-- Admin notification center -->
 <template>
-  <v-menu
-    v-model="menu"
-    :close-on-content-click="false"
-    :nudge-width="300"
-    offset-y
-    left
-  >
-    <template v-slot:activator="{ on, attrs }">
-      <v-btn
-        icon
-        v-bind="attrs"
-        v-on="on"
-        :class="{ 'has-notifications': unreadCount > 0 }"
-      >
-        <v-badge
-          :content="unreadCount"
-          :value="unreadCount"
-          color="error"
-          overlap
-        >
-          <v-icon>mdi-bell</v-icon>
-        </v-badge>
-      </v-btn>
-    </template>
-
-    <v-card min-width="300" max-width="400">
-      <v-card-title class="d-flex justify-space-between align-center">
-        Notifications
+  <div class="notification-center">
+    <v-menu
+      v-model="menu"
+      :close-on-content-click="false"
+      location="bottom end"
+      max-width="400"
+    >
+      <template v-slot:activator="{ props }">
         <v-btn
-          small
-          text
-          color="primary"
-          @click="markAllAsRead"
-          :disabled="!hasUnread"
+          icon
+          v-bind="props"
+          :color="hasUnread ? 'error' : undefined"
         >
-          Mark all read
+          <v-badge
+            :content="unreadCount"
+            :model-value="unreadCount > 0"
+            color="error"
+          >
+            <v-icon>mdi-bell</v-icon>
+          </v-badge>
         </v-btn>
-      </v-card-title>
+      </template>
 
-      <v-divider></v-divider>
+      <v-card>
+        <v-card-title class="d-flex justify-space-between align-center pa-4">
+          <span>Notifications</span>
+          <v-btn
+            v-if="hasUnread"
+            variant="text"
+            density="comfortable"
+            @click="markAllRead"
+          >
+            Mark all read
+          </v-btn>
+        </v-card-title>
 
-      <v-card-text class="pa-0">
-        <v-list two-line dense>
-          <template v-if="notifications.length > 0">
-            <template v-for="(notification, index) in notifications">
+        <v-card-text class="pa-0">
+          <v-list lines="three">
+            <template v-if="notifications.length">
               <v-list-item
+                v-for="notification in notifications"
                 :key="notification.id"
                 :class="{ 'unread': !notification.read }"
                 @click="handleNotificationClick(notification)"
               >
-                <v-list-item-avatar>
-                  <v-icon :color="getNotificationColor(notification.type)">
-                    {{ getNotificationIcon(notification.type) }}
+                <template v-slot:prepend>
+                  <v-icon :color="getNotificationColor(notification)">
+                    {{ getNotificationIcon(notification) }}
                   </v-icon>
-                </v-list-item-avatar>
+                </template>
 
-                <v-list-item-content>
-                  <v-list-item-title>{{ notification.title }}</v-list-item-title>
-                  <v-list-item-subtitle>{{ notification.message }}</v-list-item-subtitle>
-                  <v-list-item-subtitle class="text-caption">
-                    {{ formatTimestamp(notification.timestamp) }}
-                  </v-list-item-subtitle>
-                </v-list-item-content>
+                <v-list-item-title>{{ notification.title }}</v-list-item-title>
+                <v-list-item-subtitle>{{ notification.message }}</v-list-item-subtitle>
+                <v-list-item-subtitle class="text-caption">
+                  {{ formatDate(notification.timestamp) }}
+                </v-list-item-subtitle>
 
-                <v-list-item-action>
+                <template v-slot:append>
                   <v-btn
-                    icon
-                    x-small
-                    @click.stop="markAsRead(notification.id)"
                     v-if="!notification.read"
-                  >
-                    <v-icon small>mdi-check</v-icon>
-                  </v-btn>
-                </v-list-item-action>
+                    icon="mdi-check"
+                    variant="text"
+                    size="small"
+                    @click.stop="markAsRead(notification.id)"
+                  ></v-btn>
+                </template>
               </v-list-item>
-
-              <v-divider
-                v-if="index < notifications.length - 1"
-                :key="'div-' + notification.id"
-              ></v-divider>
             </template>
-          </template>
-          
-          <v-list-item v-else>
-            <v-list-item-content>
-              <v-list-item-title class="text-center grey--text">
+            <v-list-item v-else>
+              <v-list-item-title class="text-center text-medium-emphasis">
                 No notifications
               </v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-        </v-list>
-      </v-card-text>
-
-      <v-card-actions class="justify-center">
-        <v-btn
-          text
-          small
-          color="primary"
-          :loading="loading"
-          @click="loadMore"
-          v-if="hasMoreNotifications"
-        >
-          Load more
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-menu>
+            </v-list-item>
+          </v-list>
+        </v-card-text>
+      </v-card>
+    </v-menu>
+  </div>
 </template>
 
 <script>
-import { mapState, mapGetters, mapActions } from 'vuex';
-import { formatDistanceToNow } from 'date-fns';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
+import { format } from 'date-fns';
+import { useToast } from 'vue-toastification';
 
 export default {
   name: 'NotificationCenter',
 
-  data() {
-    return {
-      menu: false,
-      loading: false,
-      page: 1,
-      limit: 10,
-      hasMoreNotifications: true
-    };
-  },
+  setup() {
+    const router = useRouter();
+    const toast = useToast();
+    const menu = ref(false);
+    const notifications = ref([]);
+    const socket = ref(null);
 
-  computed: {
-    ...mapState('admin', ['notifications']),
-    ...mapGetters('admin', ['unreadNotifications']),
-    
-    unreadCount() {
-      return this.unreadNotifications.length;
-    },
-    
-    hasUnread() {
-      return this.unreadCount > 0;
-    }
-  },
+    const unreadCount = computed(() => 
+      notifications.value.filter(n => !n.read).length
+    );
 
-  methods: {
-    ...mapActions('admin', [
-      'markNotificationAsRead',
-      'markAllNotificationsAsRead',
-      'fetchNotifications'
-    ]),
+    const hasUnread = computed(() => unreadCount.value > 0);
 
-    getNotificationColor(type) {
-      const colors = {
-        RESTAURANT_APPLICATION: 'primary',
-        RESTAURANT_STATUS: 'info',
-        USER_REPORT: 'warning',
-        ORDER_ISSUE: 'error',
-        DELIVERY_ISSUE: 'orange',
-        SYSTEM_ALERT: 'deep-purple'
-      };
-      return colors[type] || 'grey';
-    },
+    const addNotification = (notification) => {
+      notifications.value.unshift({
+        id: Date.now(),
+        read: false,
+        timestamp: new Date(),
+        ...notification
+      });
 
-    getNotificationIcon(type) {
-      const icons = {
-        RESTAURANT_APPLICATION: 'mdi-store-plus',
-        RESTAURANT_STATUS: 'mdi-store',
-        USER_REPORT: 'mdi-account-alert',
-        ORDER_ISSUE: 'mdi-alert-circle',
-        DELIVERY_ISSUE: 'mdi-truck-alert',
-        SYSTEM_ALERT: 'mdi-server-alert'
-      };
-      return icons[type] || 'mdi-bell';
-    },
-
-    formatTimestamp(timestamp) {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-    },
-
-    async markAsRead(notificationId) {
-      await this.markNotificationAsRead(notificationId);
-    },
-
-    async markAllAsRead() {
-      await this.markAllNotificationsAsRead();
-    },
-
-    handleNotificationClick(notification) {
-      // Mark as read
-      if (!notification.read) {
-        this.markAsRead(notification.id);
-      }
-
-      // Handle navigation based on notification type
-      switch (notification.type) {
-        case 'RESTAURANT_APPLICATION':
-          this.$router.push(`/admin/restaurants/${notification.data.restaurantId}`);
-          break;
-
-        case 'USER_REPORT':
-          this.$router.push(`/admin/users/${notification.data.reportedUserId}`);
-          break;
-
-        case 'ORDER_ISSUE':
-        case 'DELIVERY_ISSUE':
-          this.$router.push(`/admin/orders/${notification.data.orderId}`);
-          break;
-
-        case 'SYSTEM_ALERT':
-          this.$router.push('/admin/system');
-          break;
-      }
-
-      this.menu = false;
-    },
-
-    async loadMore() {
-      this.loading = true;
-      try {
-        const { notifications, hasMore } = await this.fetchNotifications({
-          page: this.page + 1,
-          limit: this.limit
+      // Show toast for important notifications
+      if (notification.priority === 'high') {
+        toast.info(notification.message, {
+          timeout: 5000
         });
-        this.page++;
-        this.hasMoreNotifications = hasMore;
-      } catch (error) {
-        console.error('Error loading more notifications:', error);
-      } finally {
-        this.loading = false;
       }
-    }
+    };
+
+    const handleSocketMessage = (event, data) => {
+      let notification = {
+        timestamp: new Date(),
+        read: false
+      };
+
+      switch (event) {
+        case 'promotion_alert':
+          notification = {
+            ...notification,
+            type: 'promotion',
+            title: 'Promotion Alert',
+            message: data.message,
+            icon: 'mdi-tag-alert',
+            color: 'warning',
+            priority: data.type === 'usage_limit' ? 'high' : 'normal',
+            data: {
+              promotionId: data.promotionId,
+              code: data.code
+            }
+          };
+          break;
+
+        case 'campaign_alert':
+          notification = {
+            ...notification,
+            type: 'campaign',
+            title: 'Campaign Alert',
+            message: data.message,
+            icon: 'mdi-calendar-alert',
+            color: data.type === 'budget_limit' ? 'error' : 'warning',
+            priority: data.type === 'budget_limit' ? 'high' : 'normal',
+            data: {
+              campaignId: data.campaignId,
+              name: data.name
+            }
+          };
+          break;
+
+        // ... handle other notification types ...
+      }
+
+      if (notification.type) {
+        addNotification(notification);
+      }
+    };
+
+    const handleNotificationClick = (notification) => {
+      // Mark as read
+      markAsRead(notification.id);
+
+      // Navigate based on notification type
+      switch (notification.type) {
+        case 'promotion':
+          router.push({
+            name: 'admin-promotions',
+            query: { highlight: notification.data.promotionId }
+          });
+          break;
+
+        case 'campaign':
+          router.push({
+            name: 'admin-promotion-campaigns',
+            query: { highlight: notification.data.campaignId }
+          });
+          break;
+      }
+
+      menu.value = false;
+    };
+
+    const markAsRead = async (id) => {
+      const notification = notifications.value.find(n => n.id === id);
+      if (notification) {
+        notification.read = true;
+      }
+    };
+
+    const markAllRead = () => {
+      notifications.value.forEach(notification => {
+        notification.read = true;
+      });
+    };
+
+    const getNotificationIcon = (notification) => {
+      return notification.icon || 'mdi-bell';
+    };
+
+    const getNotificationColor = (notification) => {
+      return notification.color || 'primary';
+    };
+
+    const formatDate = (date) => {
+      return format(new Date(date), 'MMM d, h:mm a');
+    };
+
+    // Socket connection
+    onMounted(() => {
+      // Connect to WebSocket
+      socket.value = new WebSocket(process.env.VUE_APP_WS_URL);
+      
+      socket.value.onmessage = (event) => {
+        const { type, data } = JSON.parse(event.data);
+        handleSocketMessage(type, data);
+      };
+
+      // Load initial notifications
+      loadNotifications();
+    });
+
+    onBeforeUnmount(() => {
+      if (socket.value) {
+        socket.value.close();
+      }
+    });
+
+    const loadNotifications = async () => {
+      try {
+        const response = await fetch('/api/admin/notifications');
+        const data = await response.json();
+        notifications.value = data.notifications.map(n => ({
+          ...n,
+          timestamp: new Date(n.timestamp)
+        }));
+      } catch (error) {
+        console.error('Failed to load notifications:', error);
+      }
+    };
+
+    return {
+      menu,
+      notifications,
+      unreadCount,
+      hasUnread,
+      handleNotificationClick,
+      markAsRead,
+      markAllRead,
+      getNotificationIcon,
+      getNotificationColor,
+      formatDate
+    };
   }
 };
 </script>
 
 <style scoped>
-.has-notifications {
-  animation: shake 0.82s cubic-bezier(.36,.07,.19,.97) both;
+.notification-center {
+  position: relative;
 }
 
 .unread {
-  background-color: var(--v-primary-lighten5);
+  background-color: var(--v-primary-lighten-5);
 }
 
-@keyframes shake {
-  10%, 90% { transform: translate3d(-1px, 0, 0); }
-  20%, 80% { transform: translate3d(2px, 0, 0); }
-  30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
-  40%, 60% { transform: translate3d(4px, 0, 0); }
+.v-list-item.unread:hover {
+  background-color: var(--v-primary-lighten-4);
+}
+
+.v-list {
+  max-height: 400px;
+  overflow-y: auto;
 }
 </style>

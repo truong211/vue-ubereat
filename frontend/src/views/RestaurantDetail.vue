@@ -156,210 +156,7 @@
                 <!-- Reviews Tab -->
                 <v-window-item value="reviews">
                   <v-card-text>
-                    <!-- Rating overview -->
-                    <div class="rating-overview pa-4 mb-6 rounded bg-grey-lighten-4">
-                      <v-row align="center">
-                        <v-col cols="12" sm="4" class="text-center">
-                          <div class="text-h2 font-weight-bold">{{ restaurant.rating }}</div>
-                          <v-rating
-                            :model-value="restaurant.rating"
-                            color="amber"
-                            half-increments
-                            readonly
-                          ></v-rating>
-                          <div class="text-subtitle-1">{{ restaurant.reviewCount }} reviews</div>
-                        </v-col>
-                        
-                        <v-divider vertical class="d-none d-sm-flex"></v-divider>
-                        
-                        <v-col cols="12" sm="8">
-                          <div v-for="n in 5" :key="n" class="d-flex align-center mb-2">
-                            <div class="text-body-2 mr-4" style="width: 20px">{{ 6-n }}</div>
-                            <v-progress-linear
-                              :model-value="getRatingPercentage(6-n)"
-                              color="amber"
-                              height="8"
-                              class="flex-grow-1 mr-4"
-                              rounded
-                            ></v-progress-linear>
-                            <div class="text-body-2" style="width: 40px">{{ getRatingCount(6-n) }}</div>
-                          </div>
-                        </v-col>
-                      </v-row>
-                    </div>
-                    
-                    <!-- Write a review section -->
-                    <div v-if="canReview" class="write-review mb-8">
-                      <h3 class="text-h6 mb-4">Write a Review</h3>
-                      <v-form ref="reviewForm" v-model="isReviewFormValid">
-                        <v-card variant="outlined" class="pa-4">
-                          <div class="mb-4">
-                            <div class="text-subtitle-1 mb-2">Your Rating</div>
-                            <v-rating
-                              v-model="userReview.rating"
-                              color="amber"
-                              hover
-                              half-increments
-                              size="large"
-                            ></v-rating>
-                          </div>
-                          
-                          <v-textarea
-                            v-model="userReview.comment"
-                            label="Your Review"
-                            placeholder="Share your experience with this restaurant"
-                            variant="outlined"
-                            rows="4"
-                            counter="500"
-                            :rules="reviewRules"
-                          ></v-textarea>
-                          
-                          <div class="d-flex justify-end mt-4">
-                            <v-btn
-                              color="primary"
-                              :loading="isSubmittingReview"
-                              :disabled="!isReviewFormValid || isSubmittingReview"
-                              @click="submitReview"
-                            >
-                              Submit Review
-                            </v-btn>
-                          </div>
-                        </v-card>
-                      </v-form>
-                    </div>
-                    
-                    <!-- Review filters -->
-                    <div class="review-filters d-flex align-center mb-4 flex-wrap">
-                      <v-select
-                        v-model="reviewFilters.sort"
-                        :items="sortOptions"
-                        label="Sort by"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                        class="mr-4 mb-2"
-                        style="width: 150px"
-                      ></v-select>
-                      
-                      <v-btn-toggle
-                        v-model="reviewFilters.rating"
-                        mandatory
-                        color="primary"
-                        class="mb-2"
-                      >
-                        <v-btn value="all">All</v-btn>
-                        <v-btn value="positive">Positive</v-btn>
-                        <v-btn value="critical">Critical</v-btn>
-                      </v-btn-toggle>
-                      
-                      <v-spacer></v-spacer>
-                      
-                      <v-text-field
-                        v-model="reviewFilters.search"
-                        placeholder="Search reviews"
-                        prepend-inner-icon="mdi-magnify"
-                        variant="outlined"
-                        density="compact"
-                        hide-details
-                        clearable
-                        class="mb-2"
-                        style="max-width: 250px"
-                      ></v-text-field>
-                    </div>
-                    
-                    <!-- Reviews list -->
-                    <v-card v-if="filteredReviews.length > 0" variant="outlined" class="mb-4">
-                      <v-list>
-                        <div v-for="(review, index) in filteredReviews" :key="review.id">
-                          <v-list-item>
-                            <template v-slot:prepend>
-                              <v-avatar size="48" class="mr-3">
-                                <v-img
-                                  v-if="review.userAvatar"
-                                  :src="review.userAvatar"
-                                  alt="User avatar"
-                                ></v-img>
-                                <v-icon v-else size="32" color="primary">mdi-account</v-icon>
-                              </v-avatar>
-                            </template>
-                            
-                            <v-list-item-title class="d-flex align-start">
-                              <div>
-                                <div class="d-flex align-center">
-                                  <span class="text-subtitle-1 font-weight-medium">{{ review.userName }}</span>
-                                  <v-chip
-                                    v-if="review.isVerified"
-                                    size="x-small"
-                                    color="success"
-                                    class="ml-2"
-                                  >
-                                    Verified Order
-                                  </v-chip>
-                                </div>
-                                
-                                <div class="my-2">
-                                  <v-rating
-                                    :model-value="review.rating"
-                                    color="amber"
-                                    density="compact"
-                                    half-increments
-                                    readonly
-                                    size="small"
-                                  ></v-rating>
-                                  <span class="text-caption text-grey ml-2">{{ formatDate(review.date) }}</span>
-                                </div>
-                                
-                                <p class="text-body-1 mt-2">{{ review.comment }}</p>
-                                
-                                <div class="d-flex align-center mt-3">
-                                  <v-btn
-                                    variant="text"
-                                    size="small"
-                                    density="compact"
-                                    prepend-icon="mdi-thumb-up"
-                                    class="mr-2"
-                                    @click="likeReview(review)"
-                                    :color="review.userLiked ? 'primary' : ''"
-                                  >
-                                    {{ review.likes || 0 }}
-                                  </v-btn>
-                                  
-                                  <v-btn
-                                    variant="text"
-                                    size="small"
-                                    density="compact"
-                                    prepend-icon="mdi-thumb-down"
-                                    @click="dislikeReview(review)"
-                                    :color="review.userDisliked ? 'error' : ''"
-                                  >
-                                    {{ review.dislikes || 0 }}
-                                  </v-btn>
-                                </div>
-                              </div>
-                            </v-list-item-title>
-                          </v-list-item>
-                          
-                          <v-divider v-if="index < filteredReviews.length - 1"></v-divider>
-                        </div>
-                      </v-list>
-                      
-                      <v-card-actions>
-                        <v-spacer></v-spacer>
-                        <v-pagination
-                          v-model="reviewPage"
-                          :length="Math.ceil(filteredReviews.length / reviewsPerPage)"
-                          :total-visible="5"
-                        ></v-pagination>
-                        <v-spacer></v-spacer>
-                      </v-card-actions>
-                    </v-card>
-                    
-                    <!-- No reviews message -->
-                    <v-card v-else class="text-center py-8">
-                      <v-icon size="64" color="grey">mdi-message-text-outline</v-icon>
-                      <h3 class="text-h6 mt-4 mb-2">No Reviews Yet</h3>
-                      <p class="text-body-2">Be the first to review this restaurant</p>
-                    </v-card>
+                    <RestaurantReviews :id="restaurantId" />
                   </v-card-text>
                 </v-window-item>
                 
@@ -548,9 +345,14 @@
 import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
+import RestaurantReviews from '@/views/restaurant/Reviews.vue';
 
 export default {
   name: 'RestaurantDetail',
+  
+  components: {
+    RestaurantReviews
+  },
   
   setup() {
     const store = useStore();

@@ -132,6 +132,26 @@ router.patch(
   restaurantController.updateSpecialHolidays
 );
 
+// Password update route
+router.patch(
+  '/:id/password',
+  authMiddleware,
+  verifyRestaurantOwner,
+  [
+    body('currentPassword')
+      .notEmpty()
+      .withMessage('Current password is required'),
+    body('newPassword')
+      .notEmpty()
+      .withMessage('New password is required')
+      .isLength({ min: 8 })
+      .withMessage('Password must be at least 8 characters long')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+      .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
+  ],
+  restaurantController.updatePassword
+);
+
 // Protected routes for restaurant owners
 router.use(authMiddleware);
 router.post(

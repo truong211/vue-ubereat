@@ -3,20 +3,23 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface, Sequelize) {
-    await queryInterface.createTable('notifications', {
+    await queryInterface.createTable('Notifications', {
       id: {
-        type: Sequelize.INTEGER,
-        primaryKey: true,
-        autoIncrement: true
+        type: Sequelize.UUID,
+        defaultValue: Sequelize.UUIDV4,
+        primaryKey: true
       },
       userId: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
+        type: Sequelize.UUID,
+        allowNull: true,
         references: {
-          model: 'users',
+          model: 'Users',
           key: 'id'
-        },
-        onDelete: 'CASCADE'
+        }
+      },
+      type: {
+        type: Sequelize.STRING,
+        allowNull: false
       },
       title: {
         type: Sequelize.STRING,
@@ -26,41 +29,29 @@ module.exports = {
         type: Sequelize.TEXT,
         allowNull: false
       },
-      type: {
-        type: Sequelize.STRING,
-        allowNull: false,
-        defaultValue: 'general'
-      },
       data: {
         type: Sequelize.JSONB,
+        defaultValue: {}
+      },
+      priority: {
+        type: Sequelize.ENUM('low', 'medium', 'high'),
+        defaultValue: 'low'
+      },
+      isSystemWide: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false
+      },
+      validUntil: {
+        type: Sequelize.DATE,
         allowNull: true
       },
-      read: {
+      isRead: {
         type: Sequelize.BOOLEAN,
-        allowNull: false,
         defaultValue: false
       },
       readAt: {
         type: Sequelize.DATE,
         allowNull: true
-      },
-      endpoint: {
-        type: Sequelize.STRING,
-        allowNull: true,
-        unique: true
-      },
-      subscription: {
-        type: Sequelize.TEXT,
-        allowNull: true
-      },
-      userAgent: {
-        type: Sequelize.STRING,
-        allowNull: true
-      },
-      active: {
-        type: Sequelize.BOOLEAN,
-        allowNull: true,
-        defaultValue: true
       },
       createdAt: {
         type: Sequelize.DATE,
@@ -74,40 +65,15 @@ module.exports = {
       }
     });
 
-    // Create indexes
-    await queryInterface.addIndex('notifications', ['userId'], {
-      name: 'idx_notifications_user_id'
-    });
-    
-    await queryInterface.addIndex('notifications', ['read'], {
-      name: 'idx_notifications_read'
-    });
-    
-    await queryInterface.addIndex('notifications', ['type'], {
-      name: 'idx_notifications_type'
-    });
-    
-    // Add notification preferences to users table
-    await queryInterface.addColumn('users', 'notificationPreferences', {
-      type: Sequelize.JSONB,
-      allowNull: true,
-      defaultValue: {
-        orderUpdates: true,
-        promotions: true,
-        driverLocation: true,
-        marketing: false,
-        email: true,
-        push: true,
-        sms: false
-      }
-    });
+    // Add indexes
+    await queryInterface.addIndex('Notifications', ['userId']);
+    await queryInterface.addIndex('Notifications', ['type']);
+    await queryInterface.addIndex('Notifications', ['isSystemWide']);
+    await queryInterface.addIndex('Notifications', ['isRead']);
+    await queryInterface.addIndex('Notifications', ['validUntil']);
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.removeColumn('users', 'notificationPreferences');
-    await queryInterface.removeIndex('notifications', 'idx_notifications_type');
-    await queryInterface.removeIndex('notifications', 'idx_notifications_read');
-    await queryInterface.removeIndex('notifications', 'idx_notifications_user_id');
-    await queryInterface.dropTable('notifications');
+    await queryInterface.dropTable('Notifications');
   }
 };

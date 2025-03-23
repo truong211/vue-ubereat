@@ -132,6 +132,70 @@ module.exports = {
     await queryInterface.addIndex('payment_histories', ['transaction_ref'], { unique: true });
     await queryInterface.addIndex('payment_histories', ['status']);
     await queryInterface.addIndex('payment_histories', ['created_at']);
+
+    await queryInterface.createTable('Categories', {
+      id: {
+        type: Sequelize.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      name: {
+        type: Sequelize.STRING(50),
+        allowNull: false
+      },
+      description: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      image: {
+        type: Sequelize.STRING,
+        allowNull: true
+      },
+      displayOrder: {
+        type: Sequelize.INTEGER,
+        defaultValue: 0
+      },
+      restaurantId: {
+        type: Sequelize.INTEGER,
+        references: {
+          model: 'Restaurants',
+          key: 'id'
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE',
+        allowNull: false
+      },
+      isActive: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: true
+      },
+      requiresModeration: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false
+      },
+      moderationStatus: {
+        type: Sequelize.ENUM('pending', 'approved', 'rejected'),
+        defaultValue: 'approved'
+      },
+      moderationNote: {
+        type: Sequelize.TEXT,
+        allowNull: true
+      },
+      createdAt: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
+      },
+      updatedAt: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
+      }
+    });
+
+    await queryInterface.addIndex('Categories', ['restaurantId']);
+    await queryInterface.addIndex('Categories', ['isActive']);
+    await queryInterface.addIndex('Categories', ['displayOrder']);
   },
 
   async down(queryInterface, Sequelize) {
@@ -140,5 +204,6 @@ module.exports = {
     await queryInterface.removeColumn('restaurants', 'deliverySettings');
     await queryInterface.removeColumn('restaurants', 'notificationPreferences');
     await queryInterface.dropTable('payment_histories');
+    await queryInterface.dropTable('Categories');
   }
 };

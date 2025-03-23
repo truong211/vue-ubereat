@@ -1,719 +1,373 @@
 <template>
-  <div>
-    <div class="d-flex align-center mb-6">
-      <h1 class="text-h4">User Management</h1>
-      <v-spacer></v-spacer>
-      <v-btn-group>
-        <v-btn
-          v-for="type in userTypes"
-          :key="type.value"
-          :color="activeType === type.value ? 'primary' : undefined"
-          variant="tonal"
-          @click="activeType = type.value"
-        >
-          {{ type.title }}
-          <v-badge
-            v-if="type.count"
-            :content="type.count.toString()"
-            :color="type.color"
-            class="ml-2"
-            floating
-          ></v-badge>
-        </v-btn>
-      </v-btn-group>
-    </div>
+  <v-container>
+    <h1 class="text-h4 mb-4">Quản Lý Người Dùng</h1>
 
     <!-- Search and Filters -->
-    <v-card class="mb-6">
+    <v-card class="mb-4">
       <v-card-text>
-        <v-row align="center">
+        <v-row>
           <v-col cols="12" sm="4">
             <v-text-field
-              v-model="filters.search"
-              label="Search users"
+              v-model="searchQuery"
+              label="Tìm kiếm"
               prepend-inner-icon="mdi-magnify"
-              variant="outlined"
-              density="comfortable"
-              hide-details
+              clearable
+              @input="handleSearch"
             ></v-text-field>
           </v-col>
-
-          <v-col cols="12" sm="3">
+          <v-col cols="12" sm="4">
             <v-select
-              v-model="filters.status"
+              v-model="roleFilter"
+              :items="roleOptions"
+              label="Vai trò"
+              clearable
+              @update:model-value="fetchUsers"
+            ></v-select>
+          </v-col>
+          <v-col cols="12" sm="4">
+            <v-select
+              v-model="statusFilter"
               :items="statusOptions"
-              label="Status"
-              variant="outlined"
-              density="comfortable"
-              hide-details
+              label="Trạng thái"
+              clearable
+              @update:model-value="fetchUsers"
             ></v-select>
-          </v-col>
-
-          <v-col cols="12" sm="3">
-            <v-select
-              v-model="filters.sortBy"
-              :items="sortOptions"
-              label="Sort By"
-              variant="outlined"
-              density="comfortable"
-              hide-details
-            ></v-select>
-          </v-col>
-
-          <v-col cols="12" sm="2">
-            <v-btn
-              color="primary"
-              block
-              prepend-icon="mdi-filter"
-              @click="applyFilters"
-            >
-              Filter
-            </v-btn>
           </v-col>
         </v-row>
       </v-card-text>
     </v-card>
 
     <!-- Users Table -->
-    <v-data-table-server
-      v-model:items-per-page="itemsPerPage"
-      :headers="getHeaders"
-      :items="users"
-      :loading="loading"
-      :items-length="totalUsers"
-      @update:options="loadUsers"
-    >
-      <!-- Avatar -->
-      <template v-slot:item.avatar="{ item }">
-        <v-avatar size="40">
-          <v-img
-            v-if="item.avatar"
-            :src="item.avatar"
-            :alt="item.name"
-          ></v-img>
-          <span v-else class="text-h6">
-            {{ item.name.charAt(0) }}
-          </span>
-        </v-avatar>
-      </template>
-
-      <!-- Status -->
-      <template v-slot:item.status="{ item }">
-        <v-chip
-          :color="getStatusColor(item.status)"
-          size="small"
-        >
-          {{ formatStatus(item.status) }}
-        </v-chip>
-      </template>
-
-      <!-- Role Specific Info -->
-      <template v-slot:item.roleInfo="{ item }">
-        <template v-if="item.role === 'driver'">
-          <div class="d-flex align-center">
-            <v-icon
-              :color="item.online ? 'success' : 'grey'"
-              size="small"
-              class="mr-2"
-            >
-              mdi-circle-small
-            </v-icon>
-            {{ item.online ? 'Online' : 'Offline' }}
-            <v-chip
-              v-if="item.currentOrder"
-              color="info"
-              size="x-small"
-              class="ml-2"
-            >
-              On Delivery
-            </v-chip>
-          </div>
-        </template>
-        <template v-else-if="item.role === 'restaurant'">
-          <v-chip
-            :color="item.restaurant?.isOpen ? 'success' : 'error'"
-            size="x-small"
+    <v-card>
+      <v-data-table
+        :headers="headers"
+        :items="users"
+        :loading="loading"
+        :items-per-page="itemsPerPage"
+        :page="page"
+        :server-items-length="totalUsers"
+        @update:page="handlePageChange"
+      >
+        <template v-slot:item.actions="{ item }">
+          <v-btn
+            icon
+            variant="text"
+            size="small"
+            color="primary"
+            @click="openUserDialog(item)"
           >
-            {{ item.restaurant?.isOpen ? 'Open' : 'Closed' }}
-          </v-chip>
+            <v-icon>mdi-pencil</v-icon>
+          </v-btn>
+          <v-btn
+            icon
+            variant="text"
+            size="small"
+            :color="item.status === 'active' ? 'error' : 'success'"
+            @click="openActionDialog(item, item.status === 'active' ? 'suspend' : 'reactivate')"
+          >
+            <v-icon>{{ item.status === 'active' ? 'mdi-lock' : 'mdi-lock-open' }}</v-icon>
+          </v-btn>
         </template>
-        <template v-else>
-          {{ item.orderCount }} orders
-        </template>
-      </template>
 
-      <!-- Actions -->
-      <template v-slot:item.actions="{ item }">
-        <v-btn-group density="comfortable">
-          <v-btn
-            icon="mdi-eye"
-            variant="text"
-            @click="viewUser(item)"
-          ></v-btn>
-
-          <v-btn
-            v-if="item.status === 'active'"
-            icon="mdi-block-helper"
-            variant="text"
-            color="warning"
-            @click="suspendUser(item)"
-          ></v-btn>
-
-          <v-btn
-            v-if="item.status === 'suspended'"
-            icon="mdi-account-reactivate"
-            variant="text"
-            color="success"
-            @click="reactivateUser(item)"
-          ></v-btn>
-
-          <v-btn
-            icon="mdi-delete"
-            variant="text"
-            color="error"
-            @click="deleteUser(item)"
-          ></v-btn>
-        </v-btn-group>
-      </template>
-    </v-data-table-server>
-
-    <!-- User Details Dialog -->
-    <v-dialog
-      v-model="detailsDialog.show"
-      max-width="800"
-    >
-      <v-card v-if="detailsDialog.user">
-        <v-card-title class="d-flex align-center">
-          User Details
+        <template v-slot:item.status="{ item }">
           <v-chip
-            :color="getStatusColor(detailsDialog.user.status)"
-            class="ml-4"
+            :color="getStatusColor(item.status)"
             size="small"
           >
-            {{ formatStatus(detailsDialog.user.status) }}
+            {{ formatStatus(item.status) }}
           </v-chip>
-          <v-spacer></v-spacer>
-          <v-btn
-            icon="mdi-close"
-            variant="text"
-            @click="detailsDialog.show = false"
-          ></v-btn>
+        </template>
+
+        <template v-slot:item.createdAt="{ item }">
+          {{ formatDate(item.createdAt) }}
+        </template>
+      </v-data-table>
+    </v-card>
+
+    <!-- User Edit Dialog -->
+    <v-dialog v-model="userDialog.show" max-width="600">
+      <v-card>
+        <v-card-title>
+          <span class="text-h5">{{ userDialog.isEdit ? 'Chỉnh sửa người dùng' : 'Thêm người dùng mới' }}</span>
         </v-card-title>
 
         <v-card-text>
-          <v-row>
-            <v-col cols="12" md="6">
-              <div class="d-flex align-center mb-4">
-                <v-avatar size="64" color="primary" class="mr-4">
-                  <v-img
-                    v-if="detailsDialog.user.avatar"
-                    :src="detailsDialog.user.avatar"
-                    alt="User avatar"
-                  ></v-img>
-                  <span v-else class="text-h4 white--text">
-                    {{ detailsDialog.user.name.charAt(0) }}
-                  </span>
-                </v-avatar>
-                <div>
-                  <h3 class="text-h6 mb-1">{{ detailsDialog.user.name }}</h3>
-                  <div class="text-subtitle-2 text-medium-emphasis">
-                    {{ formatRole(detailsDialog.user.role) }}
-                  </div>
-                </div>
-              </div>
-
-              <v-list density="comfortable">
-                <v-list-item prepend-icon="mdi-email">
-                  {{ detailsDialog.user.email }}
-                </v-list-item>
-                <v-list-item prepend-icon="mdi-phone">
-                  {{ detailsDialog.user.phone }}
-                </v-list-item>
-                <v-list-item prepend-icon="mdi-map-marker">
-                  {{ detailsDialog.user.address }}
-                </v-list-item>
-                <v-list-item prepend-icon="mdi-calendar">
-                  Joined {{ formatDate(detailsDialog.user.createdAt) }}
-                </v-list-item>
-              </v-list>
-            </v-col>
-
-            <v-col cols="12" md="6">
-              <!-- Role-specific information -->
-              <template v-if="detailsDialog.user.role === 'customer'">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Order History</div>
-                <div class="d-flex mb-4">
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ detailsDialog.user.orderCount }}</div>
-                    <div class="text-caption">Total Orders</div>
-                  </div>
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ formatPrice(detailsDialog.user.totalSpent) }}</div>
-                    <div class="text-caption">Total Spent</div>
-                  </div>
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ detailsDialog.user.favoriteRestaurants }}</div>
-                    <div class="text-caption">Favorite Restaurants</div>
-                  </div>
-                </div>
-              </template>
-
-              <template v-if="detailsDialog.user.role === 'driver'">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Delivery Stats</div>
-                <div class="d-flex mb-4">
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ detailsDialog.user.deliveryCount }}</div>
-                    <div class="text-caption">Deliveries</div>
-                  </div>
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ detailsDialog.user.rating.toFixed(1) }}</div>
-                    <div class="text-caption">Rating</div>
-                  </div>
-                  <div class="flex-grow-1">
-                    <div class="text-h6">{{ formatPrice(detailsDialog.user.earnings) }}</div>
-                    <div class="text-caption">Total Earnings</div>
-                  </div>
-                </div>
-              </template>
-
-              <template v-if="detailsDialog.user.role === 'restaurant'">
-                <div class="text-subtitle-1 font-weight-bold mb-2">Restaurant Info</div>
-                <v-list density="comfortable">
-                  <v-list-item>
-                    <div class="text-subtitle-2">Restaurant Name</div>
-                    <div>{{ detailsDialog.user.restaurant?.name }}</div>
-                  </v-list-item>
-                  <v-list-item>
-                    <div class="text-subtitle-2">Status</div>
-                    <div>
-                      <v-chip
-                        :color="detailsDialog.user.restaurant?.isOpen ? 'success' : 'error'"
-                        size="small"
-                      >
-                        {{ detailsDialog.user.restaurant?.isOpen ? 'Open' : 'Closed' }}
-                      </v-chip>
-                    </div>
-                  </v-list-item>
-                  <v-list-item>
-                    <div class="text-subtitle-2">Rating</div>
-                    <div class="d-flex align-center">
-                      <v-rating
-                        :model-value="detailsDialog.user.restaurant?.rating"
-                        color="amber"
-                        density="compact"
-                        half-increments
-                        readonly
-                        size="small"
-                      ></v-rating>
-                      <span class="text-body-2 ml-2">
-                        ({{ detailsDialog.user.restaurant?.reviewCount }} reviews)
-                      </span>
-                    </div>
-                  </v-list-item>
-                </v-list>
-              </template>
-            </v-col>
-          </v-row>
-
-          <v-divider class="my-4"></v-divider>
-
-          <!-- Recent Activity -->
-          <div class="text-subtitle-1 font-weight-bold mb-2">Recent Activity</div>
-          <v-timeline density="compact" truncate>
-            <v-timeline-item
-              v-for="activity in detailsDialog.user.recentActivity"
-              :key="activity.id"
-              :dot-color="getActivityColor(activity.type)"
-              size="small"
-            >
-              <div class="text-caption">{{ formatDate(activity.timestamp) }}</div>
-              <div>{{ activity.description }}</div>
-            </v-timeline-item>
-          </v-timeline>
+          <v-form ref="userForm">
+            <v-text-field
+              v-model="userDialog.user.fullName"
+              label="Họ tên"
+              required
+            ></v-text-field>
+            <v-text-field
+              v-model="userDialog.user.email"
+              label="Email"
+              type="email"
+              required
+            ></v-text-field>
+            <v-text-field
+              v-model="userDialog.user.phone"
+              label="Số điện thoại"
+            ></v-text-field>
+            <v-select
+              v-model="userDialog.user.role"
+              :items="roleOptions"
+              label="Vai trò"
+              required
+            ></v-select>
+          </v-form>
         </v-card-text>
 
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn
+            color="grey-darken-1"
             variant="text"
-            @click="detailsDialog.show = false"
+            @click="userDialog.show = false"
           >
-            Close
+            Hủy
           </v-btn>
           <v-btn
-            color="error"
+            color="primary"
             variant="text"
-            @click="deleteUser(detailsDialog.user)"
+            @click="saveUser"
+            :loading="userDialog.loading"
           >
-            Delete User
+            Lưu
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
 
-    <!-- Action Dialog -->
+    <!-- Action Confirmation Dialog -->
     <v-dialog v-model="actionDialog.show" max-width="500">
       <v-card>
-        <v-card-title>{{ actionDialog.title }}</v-card-title>
+        <v-card-title>{{ getActionTitle }}</v-card-title>
         <v-card-text>
           <v-textarea
+            v-if="actionDialog.action === 'suspend'"
             v-model="actionDialog.reason"
-            :label="actionDialog.reasonLabel"
-            :rules="[v => !!v || 'Reason is required']"
-            variant="outlined"
+            label="Lý do"
             rows="3"
+            required
           ></v-textarea>
+          <p v-else>
+            Bạn có chắc chắn muốn {{ actionDialog.action === 'suspend' ? 'khóa' : 'mở khóa' }} tài khoản này?
+          </p>
         </v-card-text>
         <v-card-actions>
           <v-spacer></v-spacer>
           <v-btn
+            color="grey-darken-1"
             variant="text"
             @click="actionDialog.show = false"
           >
-            Cancel
+            Hủy
           </v-btn>
           <v-btn
-            :color="actionDialog.color"
-            @click="confirmAction"
-          >
-            {{ actionDialog.confirmText }}
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- Delete Confirmation Dialog -->
-    <v-dialog v-model="deleteDialog.show" max-width="400">
-      <v-card>
-        <v-card-title>Delete User Account</v-card-title>
-        <v-card-text>
-          Are you sure you want to permanently delete this user account?
-          This action cannot be undone.
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
+            :color="actionDialog.action === 'suspend' ? 'error' : 'success'"
             variant="text"
-            @click="deleteDialog.show = false"
+            @click="confirmAction"
+            :loading="actionDialog.loading"
           >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="error"
-            @click="confirmDelete"
-          >
-            Delete
+            Xác nhận
           </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
-  </div>
+  </v-container>
 </template>
 
-<script>
-import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
-import { adminAPI } from '@/services/api.service'
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { format } from 'date-fns'
+import { vi } from 'date-fns/locale'
 import { useToast } from 'vue-toastification'
+import { useStore } from 'vuex';
 
-export default {
-  name: 'AdminUsers',
+const toast = useToast()
+const store = useStore();
 
-  setup() {
-    const store = useStore()
+// Table configuration
+const headers = [
+  { title: 'Họ tên', key: 'fullName' },
+  { title: 'Email', key: 'email' },
+  { title: 'SĐT', key: 'phone' },
+  { title: 'Vai trò', key: 'role' },
+  { title: 'Trạng thái', key: 'status' },
+  { title: 'Ngày tạo', key: 'createdAt' },
+  { title: 'Thao tác', key: 'actions', sortable: false }
+]
 
-    // Table state
-    const loading = ref(false)
-    const itemsPerPage = ref(10)
-    const totalUsers = ref(0)
+// State
+const loading = ref(false)
+const users = ref([])
+const totalUsers = ref(0)
+const page = ref(1)
+const itemsPerPage = ref(10)
+const searchQuery = ref('')
+const roleFilter = ref(null)
+const statusFilter = ref(null)
 
-    // Active user type filter
-    const activeType = ref('all')
-    const userTypes = [
-      { title: 'All Users', value: 'all', count: 0, color: 'primary' },
-      { title: 'Customers', value: 'customer', count: 0, color: 'primary' },
-      { title: 'Restaurants', value: 'restaurant', count: 0, color: 'green' },
-      { title: 'Drivers', value: 'driver', count: 0, color: 'blue' },
-      { title: 'Admins', value: 'admin', count: 0, color: 'purple' }
-    ]
+const roleOptions = [
+  { title: 'Khách hàng', value: 'customer' },
+  { title: 'Nhà hàng', value: 'restaurant' },
+  { title: 'Tài xế', value: 'driver' },
+  { title: 'Quản trị viên', value: 'admin' }
+]
 
-    // Table headers
-    const getHeaders = computed(() => [
-      { title: '', key: 'avatar', sortable: false, width: '60px' },
-      { title: 'Name', key: 'name', sortable: true },
-      { title: 'Email', key: 'email', sortable: true },
-      { title: 'Phone', key: 'phone', sortable: true },
-      { title: 'Role', key: 'role', sortable: true },
-      { title: 'Status', key: 'status', sortable: true },
-      { title: 'Joined', key: 'createdAt', sortable: true }
-    ])
+const statusOptions = [
+  { title: 'Đang hoạt động', value: 'active' },
+  { title: 'Đã khóa', value: 'suspended' }
+]
 
-    // Filters
-    const filters = ref({
-      search: '',
-      status: 'all',
-      sortBy: 'createdAt_desc'
-    })
+// Dialog states
+const userDialog = ref({
+  show: false,
+  isEdit: false,
+  loading: false,
+  user: {}
+})
 
-    const statusOptions = [
-      { title: 'All Statuses', value: 'all' },
-      { title: 'Active', value: 'active' },
-      { title: 'Suspended', value: 'suspended' },
-      { title: 'Pending', value: 'pending' }
-    ]
+const actionDialog = ref({
+  show: false,
+  action: null,
+  user: null,
+  reason: '',
+  loading: false
+})
 
-    const sortOptions = [
-      { title: 'Newest First', value: 'createdAt_desc' },
-      { title: 'Oldest First', value: 'createdAt_asc' },
-      { title: 'Name A-Z', value: 'name_asc' },
-      { title: 'Name Z-A', value: 'name_desc' },
-      { title: 'Most Orders', value: 'orderCount_desc' },
-      { title: 'Highest Rated', value: 'rating_desc' }
-    ]
+// Computed
+const getActionTitle = computed(() => {
+  if (actionDialog.value.action === 'suspend') {
+    return 'Khóa tài khoản'
+  }
+  return 'Mở khóa tài khoản'
+})
 
-    // Users data
-    const users = computed(() => store.state.admin.users)
+// Methods
+const fetchUsers = async () => {
+  try {
+    loading.value = true;
+    await store.dispatch('users/fetchUsers', {
+      page: page.value,
+      limit: itemsPerPage.value
+    });
+  } catch (error) {
+    toast.error('Không thể tải danh sách người dùng');
+    console.error('Failed to fetch users:', error);
+  } finally {
+    loading.value = false;
+  }
+};
 
-    // Dialogs
-    const detailsDialog = ref({
-      show: false,
-      user: null
-    })
+const handlePageChange = (newPage) => {
+  page.value = newPage;
+  store.dispatch('users/fetchUsers', {
+    page: newPage,
+    limit: itemsPerPage.value
+  });
+};
 
-    const actionDialog = ref({
-      show: false,
-      title: '',
-      reason: '',
-      reasonLabel: '',
-      color: '',
-      confirmText: '',
-      action: null,
-      user: null
-    })
+const handleSearch = () => {
+  store.dispatch('users/setFilters', {
+    search: searchQuery.value,
+    role: roleFilter.value,
+    status: statusFilter.value
+  });
+};
 
-    const deleteDialog = ref({
-      show: false,
-      user: null
-    })
-
-    // Methods
-    const loadUsers = async (options = {}) => {
-      loading.value = true
-      try {
-        const params = {
-          page: options.page || 1,
-          limit: options.itemsPerPage || itemsPerPage.value,
-          role: activeType.value !== 'all' ? activeType.value : undefined,
-          status: filters.value.status !== 'all' ? filters.value.status : undefined,
-          search: filters.value.search || undefined,
-          sort: filters.value.sortBy || 'createdAt_desc'
-        }
-        
-        const response = await adminAPI.getUsers(params)
-        totalUsers.value = response.data.total
-        store.dispatch('admin/fetchUsers', {
-          page: params.page,
-          itemsPerPage: params.limit,
-          sortBy: params.sort.split('_')[0],
-          sortDesc: params.sort.split('_')[1] === 'desc',
-          role: params.role,
-          ...filters.value
-        })
-      } catch (error) {
-        useToast().error('Failed to load users: ' + (error.response?.data?.message || error.message))
-      } finally {
-        loading.value = false
-      }
-    }
-
-    const applyFilters = async () => {
-      try {
-        await loadUsers()
-      } catch (error) {
-        console.error('Failed to apply filters:', error)
-      }
-    }
-
-    const viewUser = (user) => {
-      detailsDialog.value = {
-        show: true,
-        user
-      }
-    }
-
-    const suspendUser = (user) => {
-      actionDialog.value = {
-        show: true,
-        title: 'Suspend User',
-        reasonLabel: 'Suspension Reason',
-        reason: '',
-        color: 'warning',
-        confirmText: 'Suspend',
-        action: 'suspend',
-        user
-      }
-    }
-
-    const reactivateUser = (user) => {
-      actionDialog.value = {
-        show: true,
-        title: 'Reactivate User',
-        reasonLabel: 'Reactivation Reason (Optional)',
-        reason: '',
-        color: 'success',
-        confirmText: 'Reactivate',
-        action: 'reactivate',
-        user
-      }
-    }
-
-    const deleteUser = (user) => {
-      deleteDialog.value = {
-        show: true,
-        user
-      }
-    }
-
-    const confirmAction = async () => {
-      try {
-        const toast = useToast()
-        
-        if (actionDialog.value.action === 'suspend') {
-          await adminAPI.updateUser(actionDialog.value.user.id, { 
-            status: 'suspended',
-            suspensionReason: actionDialog.value.reason 
-          })
-          toast.success('User has been suspended')
-        } else if (actionDialog.value.action === 'reactivate') {
-          await adminAPI.updateUser(actionDialog.value.user.id, { 
-            status: 'active',
-            reactivationReason: actionDialog.value.reason 
-          })
-          toast.success('User has been reactivated')
-        } else if (actionDialog.value.action === 'role') {
-          await adminAPI.updateUser(actionDialog.value.user.id, { 
-            role: actionDialog.value.newRole 
-          })
-          toast.success('User role has been updated')
-        }
-        
-        await loadUsers()
-        await loadUserCounts()
-        actionDialog.value.show = false
-      } catch (error) {
-        useToast().error('Action failed: ' + (error.response?.data?.message || error.message))
-      }
-    }
-
-    const confirmDelete = async () => {
-      try {
-        await adminAPI.deleteUser(deleteDialog.value.user.id)
-        deleteDialog.value.show = false
-        if (detailsDialog.value.show) {
-          detailsDialog.value.show = false
-        }
-        await loadUsers()
-      } catch (error) {
-        console.error('Failed to delete user:', error)
-      }
-    }
-
-    // Load user counts for each user type
-    const loadUserCounts = async () => {
-      try {
-        const response = await adminAPI.getUserCounts()
-        const counts = response.data
-        
-        userTypes.forEach(type => {
-          if (type.value in counts) {
-            type.count = counts[type.value]
-          }
-        })
-      } catch (error) {
-        console.error('Failed to load user counts:', error)
-      }
-    }
-    
-    // Initial data loading
-    loadUsers()
-    loadUserCounts()
-
-    // Utility functions
-    const getStatusColor = (status) => {
-      switch (status) {
-        case 'active': return 'success'
-        case 'suspended': return 'error'
-        case 'pending': return 'warning'
-        default: return 'grey'
-      }
-    }
-
-    const formatStatus = (status) => {
-      return status.charAt(0).toUpperCase() + status.slice(1)
-    }
-
-    const formatRole = (role) => {
-      switch (role) {
-        case 'customer': return 'Customer'
-        case 'restaurant': return 'Restaurant Owner'
-        case 'driver': return 'Delivery Driver'
-        case 'admin': return 'Admin'
-        default: return role
-      }
-    }
-
-    const formatDate = (dateString) => {
-      const date = new Date(dateString)
-      return new Intl.DateTimeFormat('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      }).format(date)
-    }
-
-    const formatPrice = (price) => {
-      return `$${Number(price).toFixed(2)}`
-    }
-
-    const getActivityColor = (type) => {
-      switch (type) {
-        case 'order': return 'success'
-        case 'login': return 'info'
-        case 'update': return 'primary'
-        case 'error': return 'error'
-        default: return 'grey'
-      }
-    }
-
-    return {
-      loading,
-      itemsPerPage,
-      totalUsers,
-      activeType,
-      userTypes,
-      getHeaders,
-      filters,
-      statusOptions,
-      sortOptions,
-      users,
-      detailsDialog,
-      actionDialog,
-      deleteDialog,
-      loadUsers,
-      applyFilters,
-      viewUser,
-      suspendUser,
-      reactivateUser,
-      deleteUser,
-      confirmAction,
-      confirmDelete,
-      getStatusColor,
-      formatStatus,
-      formatRole,
-      formatDate,
-      formatPrice,
-      getActivityColor
+const openUserDialog = (user = null) => {
+  userDialog.value = {
+    show: true,
+    isEdit: !!user,
+    loading: false,
+    user: user ? { ...user } : {
+      fullName: '',
+      email: '',
+      phone: '',
+      role: 'customer'
     }
   }
 }
+
+const saveUser = async () => {
+  try {
+    userDialog.value.loading = true;
+    const userData = userDialog.value.user;
+    
+    if (userDialog.value.isEdit) {
+      await store.dispatch('users/updateUser', {
+        id: userData.id,
+        userData
+      });
+      toast.success('Cập nhật thành công');
+    } else {
+      await store.dispatch('users/createUser', userData);
+      toast.success('Thêm mới thành công');
+    }
+    
+    userDialog.value.show = false;
+    fetchUsers();
+  } catch (error) {
+    toast.error('Không thể lưu thông tin người dùng');
+    console.error('Failed to save user:', error);
+  } finally {
+    userDialog.value.loading = false;
+  }
+};
+
+const openActionDialog = (user, action) => {
+  actionDialog.value = {
+    show: true,
+    action,
+    user,
+    reason: '',
+    loading: false
+  }
+}
+
+const confirmAction = async () => {
+  try {
+    actionDialog.value.loading = true;
+    await store.dispatch('users/updateUserStatus', {
+      id: actionDialog.value.user.id,
+      status: actionDialog.value.action === 'suspend' ? 'suspended' : 'active',
+      reason: actionDialog.value.reason
+    });
+    
+    toast.success(
+      actionDialog.value.action === 'suspend'
+        ? 'Đã khóa tài khoản'
+        : 'Đã mở khóa tài khoản'
+    );
+    actionDialog.value.show = false;
+    fetchUsers();
+  } catch (error) {
+    toast.error('Không thể thực hiện thao tác');
+    console.error('Failed to perform action:', error);
+  } finally {
+    actionDialog.value.loading = false;
+  }
+};
+
+const getStatusColor = (status) => {
+  return status === 'active' ? 'success' : 'error'
+}
+
+const formatStatus = (status) => {
+  const statusMap = {
+    active: 'Đang hoạt động',
+    suspended: 'Đã khóa'
+  }
+  return statusMap[status] || status
+}
+
+const formatDate = (date) => {
+  return format(new Date(date), 'HH:mm - dd/MM/yyyy', { locale: vi })
+}
+
+// Lifecycle
+onMounted(() => {
+  fetchUsers()
+})
 </script>

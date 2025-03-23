@@ -157,6 +157,36 @@ export default {
     },
     UPDATE_TEMP_CLOSURE(state, settings) {
       state.settings.tempClosureSettings = settings;
+    },
+    SET_MENU_CATEGORIES(state, categories) {
+      state.categories = categories;
+    },
+    ADD_MENU_CATEGORY(state, category) {
+      state.categories.push(category);
+    },
+    UPDATE_MENU_CATEGORY(state, updatedCategory) {
+      const index = state.categories.findIndex(c => c.id === updatedCategory.id);
+      if (index !== -1) {
+        state.categories.splice(index, 1, updatedCategory);
+      }
+    },
+    REMOVE_MENU_CATEGORY(state, categoryId) {
+      state.categories = state.categories.filter(c => c.id !== categoryId);
+    },
+    SET_MENU_ITEMS(state, items) {
+      state.menuItems = items;
+    },
+    ADD_MENU_ITEM(state, item) {
+      state.menuItems.push(item);
+    },
+    UPDATE_MENU_ITEM(state, updatedItem) {
+      const index = state.menuItems.findIndex(item => item.id === updatedItem.id);
+      if (index !== -1) {
+        state.menuItems.splice(index, 1, updatedItem);
+      }
+    },
+    REMOVE_MENU_ITEM(state, itemId) {
+      state.menuItems = state.menuItems.filter(item => item.id !== itemId);
     }
   },
 
@@ -510,6 +540,168 @@ export default {
         console.error('Error updating temporary closure settings:', error);
         throw error;
       }
+    },
+
+    async updateHours({ commit }, { regularHours, specialHours }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${state.restaurant.id}/settings`, {
+          openingHours: regularHours,
+          specialHolidays: specialHours
+        });
+        
+        commit('UPDATE_OPENING_HOURS', regularHours);
+        commit('UPDATE_SPECIAL_HOLIDAYS', specialHours);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating business hours:', error);
+        throw error;
+      }
+    },
+
+    async updatePassword({ commit }, { currentPassword, newPassword }) {
+      try {
+        const response = await axios.patch(`/api/restaurants/${state.restaurant.id}/password`, {
+          currentPassword,
+          newPassword
+        });
+        return response.data;
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || 'Failed to update password';
+        commit('setError', errorMsg);
+        throw error;
+      }
+    },
+
+    async fetchMenuCategories({ commit, state }) {
+      try {
+        const response = await axios.get('/api/menu/categories', {
+          params: { restaurantId: state.restaurant.id }
+        });
+        commit('SET_MENU_CATEGORIES', response.data.data.categories);
+        return response.data.data.categories;
+      } catch (error) {
+        console.error('Error fetching menu categories:', error);
+        throw error;
+      }
+    },
+
+    async createMenuCategory({ commit, state }, categoryData) {
+      try {
+        const response = await axios.post('/api/menu/categories', {
+          ...categoryData,
+          restaurantId: state.restaurant.id
+        });
+        commit('ADD_MENU_CATEGORY', response.data.data.category);
+        return response.data.data.category;
+      } catch (error) {
+        console.error('Error creating menu category:', error);
+        throw error;
+      }
+    },
+
+    async updateMenuCategory({ commit }, { id, ...categoryData }) {
+      try {
+        const response = await axios.patch(`/api/menu/categories/${id}`, categoryData);
+        commit('UPDATE_MENU_CATEGORY', response.data.data.category);
+        return response.data.data.category;
+      } catch (error) {
+        console.error('Error updating menu category:', error);
+        throw error;
+      }
+    },
+
+    async deleteMenuCategory({ commit }, categoryId) {
+      try {
+        await axios.delete(`/api/menu/categories/${categoryId}`);
+        commit('REMOVE_MENU_CATEGORY', categoryId);
+      } catch (error) {
+        console.error('Error deleting menu category:', error);
+        throw error;
+      }
+    },
+
+    async fetchMenuItems({ commit, state }, categoryId = null) {
+      try {
+        const params = { restaurantId: state.restaurant.id };
+        if (categoryId) {
+          params.categoryId = categoryId;
+        }
+        const response = await axios.get('/api/menu/items', { params });
+        commit('SET_MENU_ITEMS', response.data.data.items);
+        return response.data.data.items;
+      } catch (error) {
+        console.error('Error fetching menu items:', error);
+        throw error;
+      }
+    },
+
+    async createMenuItem({ commit, state }, itemData) {
+      try {
+        const formData = new FormData();
+        Object.keys(itemData).forEach(key => {
+          if (key === 'image' && itemData[key] instanceof File) {
+            formData.append('image', itemData[key]);
+          } else if (key === 'sizes' || key === 'toppings') {
+            formData.append(key, JSON.stringify(itemData[key]));
+          } else {
+            formData.append(key, itemData[key]);
+          }
+        });
+
+        const response = await axios.post('/api/menu/items', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        commit('ADD_MENU_ITEM', response.data.data.item);
+        return response.data.data.item;
+      } catch (error) {
+        console.error('Error creating menu item:', error);
+        throw error;
+      }
+    },
+
+    async updateMenuItem({ commit }, { id, ...itemData }) {
+      try {
+        const formData = new FormData();
+        Object.keys(itemData).forEach(key => {
+          if (key === 'image' && itemData[key] instanceof File) {
+            formData.append('image', itemData[key]);
+          } else if (key === 'sizes' || key === 'toppings') {
+            formData.append(key, JSON.stringify(itemData[key]));
+          } else {
+            formData.append(key, itemData[key]);
+          }
+        });
+
+        const response = await axios.patch(`/api/menu/items/${id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        commit('UPDATE_MENU_ITEM', response.data.data.item);
+        return response.data.data.item;
+      } catch (error) {
+        console.error('Error updating menu item:', error);
+        throw error;
+      }
+    },
+
+    async deleteMenuItem({ commit }, itemId) {
+      try {
+        await axios.delete(`/api/menu/items/${itemId}`);
+        commit('REMOVE_MENU_ITEM', itemId);
+      } catch (error) {
+        console.error('Error deleting menu item:', error);
+        throw error;
+      }
+    },
+
+    async toggleMenuItemAvailability({ commit }, { id, available }) {
+      try {
+        const response = await axios.patch(`/api/menu/items/${id}/availability`, { available });
+        commit('UPDATE_MENU_ITEM', response.data.data.item);
+        return response.data.data.item;
+      } catch (error) {
+        console.error('Error toggling menu item availability:', error);
+        throw error;
+      }
     }
   },
 
@@ -548,6 +740,14 @@ export default {
         acc[item.category].push(item)
         return acc
       }, {})
+    },
+    getMenuCategories: state => state.categories,
+    getMenuItems: state => categoryId => {
+      if (!categoryId) return state.menuItems;
+      return state.menuItems.filter(item => item.categoryId === categoryId);
+    },
+    getMenuItemById: state => id => {
+      return state.menuItems.find(item => item.id === id);
     }
   }
 }

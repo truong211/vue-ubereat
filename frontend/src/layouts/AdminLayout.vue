@@ -38,153 +38,65 @@
       clipped
     >
       <v-list>
-        <!-- Dashboard -->
         <v-list-item
-          :to="{ name: 'AdminDashboard' }"
+          v-for="(item, index) in menuItems"
+          :key="index"
+          :to="item.to"
           exact
         >
           <v-list-item-icon>
-            <v-icon>mdi-view-dashboard</v-icon>
+            <v-icon>{{ item.icon }}</v-icon>
           </v-list-item-icon>
           <v-list-item-content>
-            <v-list-item-title>Dashboard</v-list-item-title>
+            <v-list-item-title>{{ item.title }}</v-list-item-title>
           </v-list-item-content>
         </v-list-item>
 
-        <!-- System Monitoring -->
-        <v-list-item
-          :to="{ name: 'SystemMonitoring' }"
-          exact
-        >
-          <v-list-item-icon>
-            <v-icon>mdi-monitor-dashboard</v-icon>
-          </v-list-item-icon>
-          <v-list-item-content>
-            <v-list-item-title>System Monitoring</v-list-item-title>
-          </v-list-item-content>
-        </v-list-item>
-
-        <!-- Restaurants -->
         <v-list-group
-          prepend-icon="mdi-store"
+          v-for="(group, index) in menuItems.filter(item => item.items)"
+          :key="index"
+          :prepend-icon="group.icon"
           :value="false"
         >
           <template v-slot:activator>
-            <v-list-item-title>Restaurants</v-list-item-title>
+            <v-list-item-title>{{ group.title }}</v-list-item-title>
           </template>
 
-          <v-list-item :to="{ name: 'RestaurantList' }">
+          <v-list-item
+            v-for="(subItem, subIndex) in group.items"
+            :key="subIndex"
+            :to="subItem.to"
+          >
             <v-list-item-icon>
-              <v-icon>mdi-format-list-bulleted</v-icon>
+              <v-icon>{{ subItem.icon }}</v-icon>
             </v-list-item-icon>
             <v-list-item-content>
-              <v-list-item-title>All Restaurants</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-
-          <v-list-item :to="{ name: 'PendingRestaurants' }">
-            <v-list-item-icon>
-              <v-icon>mdi-clock-outline</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>Pending Approval</v-list-item-title>
+              <v-list-item-title>{{ subItem.title }}</v-list-item-title>
             </v-list-item-content>
           </v-list-item>
         </v-list-group>
 
-        <!-- Users -->
-        <v-list-group
-          prepend-icon="mdi-account-group"
-          :value="false"
-        >
-          <template v-slot:activator>
-            <v-list-item-title>Users</v-list-item-title>
+        <v-list-group value="promotions">
+          <template v-slot:activator="{ props }">
+            <v-list-item
+              v-bind="props"
+              prepend-icon="mdi-tag-multiple"
+              title="Promotions"
+            ></v-list-item>
           </template>
 
-          <v-list-item :to="{ name: 'UserList' }">
-            <v-list-item-icon>
-              <v-icon>mdi-account-multiple</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>All Users</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
+          <v-list-item
+            to="/admin/promotions"
+            prepend-icon="mdi-ticket-percent"
+            title="Manage Promotions"
+          ></v-list-item>
 
-          <v-list-item :to="{ name: 'ReportedUsers' }">
-            <v-list-item-icon>
-              <v-icon>mdi-alert-circle</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>Reported Users</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
+          <v-list-item
+            to="/admin/promotion-campaigns"
+            prepend-icon="mdi-calendar-star"
+            title="Campaigns"
+          ></v-list-item>
         </v-list-group>
-
-        <!-- Orders -->
-        <v-list-group
-          prepend-icon="mdi-cart"
-          :value="false"
-        >
-          <template v-slot:activator>
-            <v-list-item-title>Orders</v-list-item-title>
-          </template>
-
-          <v-list-item :to="{ name: 'OrderList' }">
-            <v-list-item-icon>
-              <v-icon>mdi-format-list-bulleted</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>All Orders</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-
-          <v-list-item :to="{ name: 'DisputedOrders' }">
-            <v-list-item-icon>
-              <v-icon>mdi-alert</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>Disputed Orders</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-        </v-list-group>
-
-        <!-- Content -->
-        <v-list-group
-          prepend-icon="mdi-text-box"
-          :value="false"
-        >
-          <template v-slot:activator>
-            <v-list-item-title>Content</v-list-item-title>
-          </template>
-
-          <v-list-item :to="{ name: 'Banners' }">
-            <v-list-item-icon>
-              <v-icon>mdi-image</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>Banners</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-
-          <v-list-item :to="{ name: 'StaticPages' }">
-            <v-list-item-icon>
-              <v-icon>mdi-file-document</v-icon>
-            </v-list-item-icon>
-            <v-list-item-content>
-              <v-list-item-title>Static Pages</v-list-item-title>
-            </v-list-item-content>
-          </v-list-item>
-        </v-list-group>
-
-        <!-- Settings -->
-        <v-list-item :to="{ name: 'Settings' }">
-          <v-list-item-icon>
-            <v-icon>mdi-cog</v-icon>
-          </v-list-item-icon>
-          <v-list-item-content>
-            <v-list-item-title>Settings</v-list-item-title>
-          </v-list-item-content>
-        </v-list-item>
       </v-list>
     </v-navigation-drawer>
 
@@ -217,6 +129,47 @@
 import { mapState } from 'vuex';
 import NotificationCenter from '@/components/admin/NotificationCenter.vue';
 
+const menuItems = [
+  {
+    title: 'Dashboard',
+    icon: 'mdi-view-dashboard',
+    to: '/admin/dashboard'
+  },
+  {
+    title: 'User Management',
+    icon: 'mdi-account-group',
+    items: [
+      {
+        title: 'All Users',
+        to: '/admin/users',
+        icon: 'mdi-account-multiple'
+      },
+      {
+        title: 'Restaurants',
+        to: '/admin/users?role=restaurant',
+        icon: 'mdi-store'
+      },
+      {
+        title: 'Drivers',
+        to: '/admin/users?role=driver',
+        icon: 'mdi-truck-delivery'
+      },
+      {
+        title: 'Customers',
+        to: '/admin/users?role=customer',
+        icon: 'mdi-account'
+      }
+    ]
+  },
+  {
+    title: 'Analytics',
+    icon: 'mdi-chart-bar',
+    to: '/admin/analytics',
+    exact: true
+  },
+  // ...other menu items...
+]
+
 export default {
   name: 'AdminLayout',
 
@@ -226,7 +179,8 @@ export default {
 
   data() {
     return {
-      drawer: true
+      drawer: true,
+      menuItems
     };
   },
 

@@ -1,45 +1,71 @@
 <template>
-  <main-layout>
-    <router-view v-slot="{ Component }">
-      <transition name="fade" mode="out-in">
-        <component :is="Component" />
-      </transition>
-    </router-view>
-    
-    <!-- Toast Notifications -->
-    <v-snackbar
-      v-model="toast.show"
-      :color="toast.color"
-      :timeout="toast.timeout"
-      location="top"
-    >
-      {{ toast.text }}
+  <v-app>
+    <v-app-bar>
+      <!-- Existing app bar content -->
+      <v-spacer></v-spacer>
       
-      <template v-slot:actions>
-        <v-btn
-          variant="text"
-          icon="mdi-close"
-          @click="toast.show = false"
-        ></v-btn>
-      </template>
-    </v-snackbar>
-    
-    <!-- Order Chat Dialog -->
-    <order-chat-dialog
-      v-if="isChatOpen"
-      :order-id="activeChatOrderId"
-      :driver-id="activeChatDriverId"
-      :driver-name="activeChatDriverName"
-      :is-open="isChatOpen"
-      @close="closeChat"
-    />
-  </main-layout>
+      <!-- Add NotificationCenter to the app bar -->
+      <notification-center></notification-center>
+    </v-app-bar>
+
+    <!-- Main content -->
+    <v-main>
+      <main-layout>
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+        
+        <!-- Toast Notifications -->
+        <v-snackbar
+          v-model="toast.show"
+          :color="toast.color"
+          :timeout="toast.timeout"
+          location="top"
+        >
+          {{ toast.text }}
+          
+          <template v-slot:actions>
+            <v-btn
+              variant="text"
+              icon="mdi-close"
+              @click="toast.show = false"
+            ></v-btn>
+          </template>
+        </v-snackbar>
+        
+        <!-- Order Chat Dialog -->
+        <order-chat-dialog
+          v-if="isChatOpen"
+          :order-id="activeChatOrderId"
+          :driver-id="activeChatDriverId"
+          :driver-name="activeChatDriverName"
+          :is-open="isChatOpen"
+          @close="closeChat"
+        />
+      </main-layout>
+    </v-main>
+
+    <!-- Support Chat -->
+    <support-chat></support-chat>
+
+    <!-- Toast Notifications -->
+    <notification-toast
+      v-model="showNotification"
+      :notification="currentNotification"
+      v-if="currentNotification"
+    ></notification-toast>
+  </v-app>
 </template>
 
 <script>
 import MainLayout from '@/components/layout/MainLayout.vue';
 import OrderChatDialog from '@/components/order/OrderChatDialog.vue';
-import { computed } from 'vue';
+import NotificationCenter from '@/components/notifications/NotificationCenter.vue'
+import NotificationToast from '@/components/notifications/NotificationToast.vue'
+import SupportChat from '@/components/support/SupportChat.vue'
+import { computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
@@ -47,7 +73,10 @@ export default {
   
   components: {
     MainLayout,
-    OrderChatDialog
+    OrderChatDialog,
+    NotificationCenter,
+    NotificationToast,
+    SupportChat
   },
   
   data() {
@@ -87,13 +116,28 @@ export default {
     const closeChat = () => {
       store.dispatch('chat/closeChatDialog');
     };
+
+    // Initialize notifications system
+    onMounted(async () => {
+      await store.dispatch('notifications/init')
+    })
+
+    // Computed properties for toast notifications
+    const showNotification = computed({
+      get: () => store.state.notifications.showNotification,
+      set: (value) => store.commit('notifications/SET_SHOW_NOTIFICATION', value)
+    })
+
+    const currentNotification = computed(() => store.state.notifications.currentNotification)
     
     return {
       isChatOpen,
       activeChatOrderId,
       activeChatDriverId,
       activeChatDriverName,
-      closeChat
+      closeChat,
+      showNotification,
+      currentNotification
     };
   },
   

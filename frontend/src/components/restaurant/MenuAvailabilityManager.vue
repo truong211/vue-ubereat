@@ -1,282 +1,272 @@
-`<template>
-  <div>
-    <v-card>
-      <v-card-title>Menu Availability Settings</v-card-title>
-      <v-card-text>
-        <v-switch
-          v-model="localScheduleEnabled"
-          label="Enable Schedule-based Menu Availability"
-          @change="handleScheduleToggle"
-        ></v-switch>
+<template>
+  <v-card>
+    <v-card-text>
+      <h2 class="text-h5 mb-6">Menu Availability Settings</h2>
 
-        <v-switch
-          v-model="localDefaultAvailability"
-          label="Default Menu Availability"
-          :disabled="!localScheduleEnabled"
-        ></v-switch>
+      <v-switch
+        v-model="settings.scheduleEnabled"
+        label="Enable menu scheduling"
+        class="mb-4"
+      ></v-switch>
 
-        <v-divider class="my-4"></v-divider>
+      <v-alert
+        v-if="settings.scheduleEnabled"
+        type="info"
+        variant="tonal"
+        class="mb-4"
+      >
+        When menu scheduling is enabled, you can set specific times when menu items or categories are available.
+      </v-alert>
 
-        <div v-if="localScheduleEnabled">
+      <v-switch
+        v-model="settings.defaultAvailability"
+        :disabled="!settings.scheduleEnabled"
+        label="Items are available by default"
+        class="mb-6"
+      ></v-switch>
+
+      <!-- Menu Schedules -->
+      <div v-if="settings.scheduleEnabled">
+        <div class="d-flex justify-space-between align-center mb-4">
+          <h3 class="text-h6">Menu Schedules</h3>
           <v-btn
             color="primary"
-            class="mb-4"
-            @click="showAddScheduleDialog = true"
+            prepend-icon="mdi-plus"
+            @click="addSchedule"
           >
             Add Schedule
           </v-btn>
-
-          <v-list>
-            <v-list-item
-              v-for="schedule in localSchedules"
-              :key="schedule.id"
-              class="mb-2"
-            >
-              <v-list-item-content>
-                <v-list-item-title>
-                  {{ formatScheduleTitle(schedule) }}
-                </v-list-item-title>
-                <v-list-item-subtitle>
-                  {{ formatScheduleTimes(schedule) }}
-                </v-list-item-subtitle>
-                <v-list-item-subtitle>
-                  {{ formatScheduleDays(schedule) }}
-                </v-list-item-subtitle>
-              </v-list-item-content>
-
-              <v-list-item-action>
-                <v-btn
-                  icon
-                  small
-                  color="error"
-                  @click="removeSchedule(schedule)"
-                >
-                  <v-icon>mdi-delete</v-icon>
-                </v-btn>
-              </v-list-item-action>
-            </v-list-item>
-          </v-list>
         </div>
-      </v-card-text>
-    </v-card>
 
-    <!-- Add Schedule Dialog -->
-    <v-dialog v-model="showAddScheduleDialog" max-width="600px">
-      <v-card>
-        <v-card-title>Add Schedule</v-card-title>
-        <v-card-text>
-          <v-form ref="scheduleForm" v-model="validScheduleForm">
-            <v-select
-              v-model="newSchedule.type"
-              :items="scheduleTypes"
-              label="Schedule Type"
-              required
-              :rules="[v => !!v || 'Schedule type is required']"
-            ></v-select>
-
-            <v-select
-              v-if="newSchedule.type === 'category'"
-              v-model="newSchedule.categoryId"
-              :items="categories"
-              item-text="name"
-              item-value="id"
-              label="Category"
-              required
-              :rules="[v => !!v || 'Category is required']"
-            ></v-select>
-
-            <v-select
-              v-if="newSchedule.type === 'item'"
-              v-model="newSchedule.itemId"
-              :items="menuItems"
-              item-text="name"
-              item-value="id"
-              label="Menu Item"
-              required
-              :rules="[v => !!v || 'Menu item is required']"
-            ></v-select>
-
-            <v-switch
-              v-model="newSchedule.availability"
-              label="Available during scheduled time"
-            ></v-switch>
-
-            <v-text-field
-              v-model="newSchedule.startTime"
-              type="time"
-              label="Start Time"
-              required
-              :rules="[v => !!v || 'Start time is required']"
-            ></v-text-field>
-
-            <v-text-field
-              v-model="newSchedule.endTime"
-              type="time"
-              label="End Time"
-              required
-              :rules="[v => !!v || 'End time is required']"
-            ></v-text-field>
-
-            <v-select
-              v-model="newSchedule.days"
-              :items="daysOfWeek"
-              label="Days"
-              multiple
-              chips
-              required
-              :rules="[v => v.length > 0 || 'At least one day must be selected']"
-            ></v-select>
-          </v-form>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn
-            text
-            @click="showAddScheduleDialog = false"
+        <v-expansion-panels>
+          <v-expansion-panel
+            v-for="(schedule, index) in settings.schedules"
+            :key="index"
           >
-            Cancel
-          </v-btn>
-          <v-btn
-            color="primary"
-            :disabled="!validScheduleForm"
-            @click="addSchedule"
-          >
-            Add
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-  </div>
+            <v-expansion-panel-title>
+              <div class="d-flex align-center">
+                <span class="text-subtitle-1">{{ getScheduleTitle(schedule) }}</span>
+                <v-chip
+                  size="small"
+                  :color="schedule.availability ? 'success' : 'error'"
+                  class="ml-2"
+                >
+                  {{ schedule.availability ? 'Available' : 'Unavailable' }}
+                </v-chip>
+              </div>
+            </v-expansion-panel-title>
+
+            <v-expansion-panel-text>
+              <v-row>
+                <!-- Time Range -->
+                <v-col cols="12" md="6">
+                  <div class="d-flex align-center">
+                    <v-text-field
+                      v-model="schedule.startTime"
+                      type="time"
+                      label="Start Time"
+                      class="me-2"
+                    ></v-text-field>
+                    <span class="mx-2">to</span>
+                    <v-text-field
+                      v-model="schedule.endTime"
+                      type="time"
+                      label="End Time"
+                    ></v-text-field>
+                  </div>
+                </v-col>
+
+                <!-- Days Selection -->
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="schedule.days"
+                    :items="daysOfWeek"
+                    label="Days"
+                    multiple
+                    chips
+                  ></v-select>
+                </v-col>
+
+                <!-- Category/Item Selection -->
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-model="schedule.type"
+                    :items="[
+                      { title: 'Entire Menu', value: 'menu' },
+                      { title: 'Category', value: 'category' },
+                      { title: 'Individual Item', value: 'item' }
+                    ]"
+                    label="Apply to"
+                  ></v-select>
+                </v-col>
+
+                <v-col cols="12" md="6">
+                  <v-select
+                    v-if="schedule.type === 'category'"
+                    v-model="schedule.categoryId"
+                    :items="categories"
+                    item-title="name"
+                    item-value="id"
+                    label="Select Category"
+                  ></v-select>
+
+                  <v-select
+                    v-if="schedule.type === 'item'"
+                    v-model="schedule.itemId"
+                    :items="menuItems"
+                    item-title="name"
+                    item-value="id"
+                    label="Select Item"
+                  ></v-select>
+                </v-col>
+
+                <!-- Availability Toggle -->
+                <v-col cols="12">
+                  <v-switch
+                    v-model="schedule.availability"
+                    :label="schedule.availability ? 'Available during this time' : 'Unavailable during this time'"
+                  ></v-switch>
+                </v-col>
+
+                <!-- Delete Button -->
+                <v-col cols="12" class="text-right">
+                  <v-btn
+                    color="error"
+                    variant="text"
+                    @click="removeSchedule(index)"
+                  >
+                    Delete Schedule
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
+      </div>
+
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+          color="primary"
+          :loading="saving"
+          @click="saveSettings"
+        >
+          Save Changes
+        </v-btn>
+      </v-card-actions>
+    </v-card-text>
+  </v-card>
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex'
-import { format } from 'date-fns'
+import { ref, computed, onMounted } from 'vue'
+import { useStore } from 'vuex'
 
 export default {
   name: 'MenuAvailabilityManager',
 
-  data() {
-    return {
-      localScheduleEnabled: false,
-      localDefaultAvailability: true,
-      localSchedules: [],
-      showAddScheduleDialog: false,
-      validScheduleForm: false,
-      newSchedule: this.getDefaultSchedule(),
-      scheduleTypes: [
-        { text: 'Entire Menu', value: 'all' },
-        { text: 'Category', value: 'category' },
-        { text: 'Individual Item', value: 'item' }
-      ],
-      daysOfWeek: [
-        { text: 'Monday', value: 'Monday' },
-        { text: 'Tuesday', value: 'Tuesday' },
-        { text: 'Wednesday', value: 'Wednesday' },
-        { text: 'Thursday', value: 'Thursday' },
-        { text: 'Friday', value: 'Friday' },
-        { text: 'Saturday', value: 'Saturday' },
-        { text: 'Sunday', value: 'Sunday' }
-      ]
-    }
-  },
+  setup() {
+    const store = useStore()
+    const saving = ref(false)
 
-  computed: {
-    ...mapState('restaurantAdmin', {
-      settings: state => state.settings,
-      categories: state => state.categories,
-      menuItems: state => state.menuItems
+    // Settings state
+    const settings = ref({
+      scheduleEnabled: false,
+      defaultAvailability: true,
+      schedules: []
     })
-  },
 
-  watch: {
-    'settings.menuAvailability': {
-      handler(newVal) {
-        if (newVal) {
-          this.localScheduleEnabled = newVal.scheduleEnabled
-          this.localDefaultAvailability = newVal.defaultAvailability
-          this.localSchedules = [...newVal.schedules]
-        }
-      },
-      immediate: true
-    }
-  },
+    // Helper data
+    const daysOfWeek = [
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday'
+    ]
 
-  methods: {
-    ...mapActions('restaurantAdmin', ['updateMenuAvailability']),
+    // Computed
+    const categories = computed(() => store.state.restaurantAdmin.categories)
+    const menuItems = computed(() => store.state.restaurantAdmin.menuItems)
 
-    getDefaultSchedule() {
-      return {
-        type: 'all',
-        categoryId: null,
-        itemId: null,
-        availability: true,
-        startTime: '',
-        endTime: '',
-        days: []
-      }
-    },
-
-    handleScheduleToggle(value) {
-      this.updateSettings()
-    },
-
-    async updateSettings() {
+    // Methods
+    const loadSettings = async () => {
       try {
-        await this.updateMenuAvailability({
-          restaurantId: this.settings.restaurant.id,
-          settings: {
-            scheduleEnabled: this.localScheduleEnabled,
-            defaultAvailability: this.localDefaultAvailability,
-            schedules: this.localSchedules
-          }
+        const restaurantId = store.state.restaurantAdmin.restaurant.id
+        const response = await store.dispatch('restaurantAdmin/fetchRestaurantSettings', restaurantId)
+        settings.value = response.menuAvailability || {
+          scheduleEnabled: false,
+          defaultAvailability: true,
+          schedules: []
+        }
+      } catch (error) {
+        console.error('Failed to load menu availability settings:', error)
+      }
+    }
+
+    const saveSettings = async () => {
+      try {
+        saving.value = true
+        const restaurantId = store.state.restaurantAdmin.restaurant.id
+        await store.dispatch('restaurantAdmin/updateMenuAvailability', {
+          restaurantId,
+          settings: settings.value
         })
       } catch (error) {
-        console.error('Failed to update menu availability settings:', error)
+        console.error('Failed to save menu availability settings:', error)
+      } finally {
+        saving.value = false
       }
-    },
+    }
 
-    async addSchedule() {
-      if (this.$refs.scheduleForm.validate()) {
-        const schedule = {
-          ...this.newSchedule,
-          id: Date.now() // Simple temporary ID
-        }
-        this.localSchedules.push(schedule)
-        await this.updateSettings()
-        this.showAddScheduleDialog = false
-        this.newSchedule = this.getDefaultSchedule()
-      }
-    },
+    const addSchedule = () => {
+      settings.value.schedules.push({
+        type: 'menu',
+        startTime: '00:00',
+        endTime: '23:59',
+        days: [],
+        availability: true,
+        categoryId: null,
+        itemId: null
+      })
+    }
 
-    async removeSchedule(schedule) {
-      const index = this.localSchedules.findIndex(s => s.id === schedule.id)
-      if (index !== -1) {
-        this.localSchedules.splice(index, 1)
-        await this.updateSettings()
-      }
-    },
+    const removeSchedule = (index) => {
+      settings.value.schedules.splice(index, 1)
+    }
 
-    formatScheduleTitle(schedule) {
-      if (schedule.type === 'all') return 'Entire Menu'
+    const getScheduleTitle = (schedule) => {
+      let target = 'Entire Menu'
       if (schedule.type === 'category') {
-        const category = this.categories.find(c => c.id === schedule.categoryId)
-        return `Category: ${category?.name || 'Unknown'}`
+        const category = categories.value.find(c => c.id === schedule.categoryId)
+        target = category ? `Category: ${category.name}` : 'Category'
+      } else if (schedule.type === 'item') {
+        const item = menuItems.value.find(i => i.id === schedule.itemId)
+        target = item ? `Item: ${item.name}` : 'Item'
       }
-      if (schedule.type === 'item') {
-        const item = this.menuItems.find(i => i.id === schedule.itemId)
-        return `Item: ${item?.name || 'Unknown'}`
-      }
-      return 'Unknown Schedule Type'
-    },
 
-    formatScheduleTimes(schedule) {
-      return `${schedule.startTime} - ${schedule.endTime}`
-    },
+      const days = schedule.days.length > 0 
+        ? schedule.days.join(', ')
+        : 'No days selected'
 
-    formatScheduleDays(schedule) {
-      return schedule.days.join(', ')
+      return `${target} - ${days}`
+    }
+
+    // Load initial data
+    onMounted(() => {
+      loadSettings()
+      store.dispatch('restaurantAdmin/fetchCategories')
+      store.dispatch('restaurantAdmin/fetchMenuItems')
+    })
+
+    return {
+      settings,
+      saving,
+      daysOfWeek,
+      categories,
+      menuItems,
+      saveSettings,
+      addSchedule,
+      removeSchedule,
+      getScheduleTitle
     }
   }
 }
-</script>`
+</script>

@@ -7,7 +7,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     userId: {
       type: DataTypes.UUID,
-      allowNull: false,
+      allowNull: true, // Allow null for system-wide notifications
       references: {
         model: 'Users',
         key: 'id'
@@ -16,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
     type: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: 'Type of notification (ORDER_STATUS, DRIVER_LOCATION, ETA_UPDATE, etc.)'
+      comment: 'Type of notification (ORDER_STATUS, DRIVER_LOCATION, SYSTEM, PROMOTION, etc.)'
     },
     title: {
       type: DataTypes.STRING,
@@ -30,9 +30,27 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.JSONB,
       defaultValue: {}
     },
+    priority: {
+      type: DataTypes.ENUM('low', 'medium', 'high'),
+      defaultValue: 'low'
+    },
+    isSystemWide: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      comment: 'If true, notification is visible to all users'
+    },
+    validUntil: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Optional expiry date for the notification'
+    },
     isRead: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    readAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -44,7 +62,21 @@ module.exports = (sequelize, DataTypes) => {
     }
   }, {
     tableName: 'Notifications',
-    timestamps: true
+    timestamps: true,
+    indexes: [
+      {
+        fields: ['userId']
+      },
+      {
+        fields: ['type']
+      },
+      {
+        fields: ['isSystemWide']
+      },
+      {
+        fields: ['validUntil']
+      }
+    ]
   });
 
   Notification.associate = function(models) {

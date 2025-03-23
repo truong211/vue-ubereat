@@ -18,17 +18,57 @@ exports.validateOperatingHours = [
     .withMessage('Opening hours are required')
     .isObject()
     .withMessage('Opening hours must be an object'),
+  body('openingHours.*')
+    .isObject()
+    .withMessage('Each day must be an object'),
   body('openingHours.*.enabled')
     .isBoolean()
     .withMessage('Enabled status must be a boolean'),
   body('openingHours.*.open')
-    .optional({ nullable: true })
-    .isString()
-    .withMessage('Open time must be a string in format HH:MM'),
+    .if(body('openingHours.*.enabled').equals(true))
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Open time must be in HH:MM format'),
   body('openingHours.*.close')
-    .optional({ nullable: true })
-    .isString()
-    .withMessage('Close time must be a string in format HH:MM'),
+    .if(body('openingHours.*.enabled').equals(true))
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Close time must be in HH:MM format')
+    .custom((value, { req, path }) => {
+      // Extract day from path (e.g., 'openingHours.Monday.close' -> 'Monday')
+      const day = path.split('.')[1];
+      const openTime = req.body.openingHours[day].open;
+      if (openTime && value <= openTime) {
+        throw new Error('Closing time must be after opening time');
+      }
+      return true;
+    }),
+  body('specialHolidays')
+    .optional()
+    .isArray()
+    .withMessage('Special holidays must be an array'),
+  body('specialHolidays.*.date')
+    .optional()
+    .isISO8601()
+    .withMessage('Holiday date must be a valid date'),
+  body('specialHolidays.*.isOpen')
+    .optional()
+    .isBoolean()
+    .withMessage('Holiday open status must be a boolean'),
+  body('specialHolidays.*.openTime')
+    .if(body('specialHolidays.*.isOpen').equals(true))
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Holiday open time must be in HH:MM format'),
+  body('specialHolidays.*.closeTime')
+    .if(body('specialHolidays.*.isOpen').equals(true))
+    .matches(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/)
+    .withMessage('Holiday close time must be in HH:MM format')
+    .custom((value, { req, path }) => {
+      const index = parseInt(path.split('.')[1]);
+      const openTime = req.body.specialHolidays[index].openTime;
+      if (openTime && value <= openTime) {
+        throw new Error('Holiday closing time must be after opening time');
+      }
+      return true;
+    }),
   handleValidationErrors
 ];
 

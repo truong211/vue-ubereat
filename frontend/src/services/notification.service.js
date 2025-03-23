@@ -2,6 +2,7 @@ import socketService from './socket.service'
 import { useNotification } from '@kyvg/vue3-notification'
 import axios from 'axios';
 import { store } from '@/store';
+import api from './api';
 
 class NotificationService {
   constructor() {
@@ -312,6 +313,94 @@ class NotificationService {
       ...options,
       group: 'order-updates'
     })
+  }
+
+  /**
+   * Get current user's notifications
+   * @param {Object} params - Query parameters including page, limit, read status
+   * @returns {Promise} - API response
+   */
+  getUserNotifications(params = {}) {
+    return api.get('/notifications/user', { params });
+  }
+
+  /**
+   * Get all notifications (admin only)
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - API response
+   */
+  getAllNotifications(params = {}) {
+    return api.get('/notifications', { params });
+  }
+
+  /**
+   * Create a notification for a specific user
+   * @param {Object} data - Notification data
+   * @returns {Promise} - API response
+   */
+  createNotification(data) {
+    return api.post('/notifications', data);
+  }
+
+  /**
+   * Create notifications for multiple users
+   * @param {Object} data - Notification data including userIds array
+   * @returns {Promise} - API response
+   */
+  createBulkNotifications(data) {
+    return api.post('/notifications/bulk', data);
+  }
+
+  /**
+   * Create a notification for all users
+   * @param {Object} data - Notification data
+   * @returns {Promise} - API response
+   */
+  createNotificationForAllUsers(data) {
+    return api.post('/notifications/all', data);
+  }
+
+  /**
+   * Mark a notification as read
+   * @param {number} id - Notification ID
+   * @returns {Promise} - API response
+   */
+  markAsRead(id) {
+    return api.put(`/notifications/${id}/read`);
+  }
+
+  /**
+   * Mark all notifications as read for current user
+   * @returns {Promise} - API response
+   */
+  markAllAsRead() {
+    return api.put('/notifications/read-all');
+  }
+
+  /**
+   * Delete a notification
+   * @param {number} id - Notification ID
+   * @returns {Promise} - API response
+   */
+  deleteNotification(id) {
+    return api.delete(`/notifications/${id}`);
+  }
+
+  /**
+   * Update user notification preferences
+   * @param {Object} preferences - User notification preferences
+   * @returns {Promise} - API response
+   */
+  updatePreferences(preferences) {
+    return api.put('/notifications/preferences', preferences);
+  }
+
+  /**
+   * Get user notification preferences
+   * @returns {Promise} - API response
+   */
+  getPreferences() {
+    return api.get('/notifications/preferences');
   }
 }
 
