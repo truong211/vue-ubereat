@@ -2,6 +2,52 @@
   <v-container>
     <h1 class="text-h4 mb-4">Quản Lý Đơn Hàng</h1>
 
+    <!-- Restaurant Status Panel -->
+    <v-card class="mb-4">
+      <v-card-text>
+        <v-row align="center">
+          <v-col cols="12" sm="4">
+            <div class="d-flex align-center">
+              <v-avatar color="primary" class="mr-3">
+                <v-icon>{{ restaurantStatus.isOpen ? 'mdi-door-open' : 'mdi-door-closed' }}</v-icon>
+              </v-avatar>
+              <div>
+                <div class="text-subtitle-1">Trạng thái nhà hàng</div>
+                <v-chip
+                  :color="getStatusColor(restaurantStatus.status)"
+                  class="mt-1"
+                >
+                  {{ formatRestaurantStatus(restaurantStatus.status) }}
+                </v-chip>
+              </div>
+            </div>
+          </v-col>
+          
+          <v-col cols="12" sm="4">
+            <v-select
+              v-model="restaurantStatus.status"
+              :items="restaurantStatusOptions"
+              item-title="title"
+              item-value="value"
+              label="Thay đổi trạng thái"
+              @update:model-value="updateRestaurantStatus"
+              density="comfortable"
+            ></v-select>
+          </v-col>
+          
+          <v-col cols="12" sm="4">
+            <v-text-field
+              v-model.number="restaurantStatus.estimatedPrepTime"
+              type="number"
+              label="Thời gian chuẩn bị (phút)"
+              density="comfortable"
+              @update:model-value="updatePrepTime"
+            ></v-text-field>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
     <!-- Order Status Tabs -->
     <v-card class="mb-6">
       <v-tabs v-model="activeTab" grow>
@@ -55,6 +101,10 @@
                     Khách hàng: {{ order.customer.name }} • 
                     SĐT: {{ order.customer.phone }}
                   </div>
+                  <div v-if="order.prepTime" class="text-caption">
+                    <v-icon size="small" color="info">mdi-clock-outline</v-icon>
+                    Thời gian chuẩn bị: {{ order.prepTime }} phút
+                  </div>
                 </v-list-item-subtitle>
 
                 <template v-slot:append>
@@ -88,6 +138,18 @@
                       >
                         <v-icon>mdi-food</v-icon>
                         Đã Chuẩn Bị Xong
+                      </v-btn>
+                    </template>
+                    
+                    <template v-if="order.status === 'ready' || order.status === 'completed'">
+                      <v-btn
+                        color="primary"
+                        variant="text"
+                        class="mr-2"
+                        @click="printInvoice(order)"
+                      >
+                        <v-icon>mdi-printer</v-icon>
+                        In Hóa Đơn
                       </v-btn>
                     </template>
 
@@ -140,6 +202,30 @@
                 Ghi chú: {{ orderDialog.order.deliveryNotes }}
               </div>
             </v-col>
+            
+            <!-- Preparation Time -->
+            <v-col cols="12">
+              <h3 class="text-subtitle-1 mb-2">Thời Gian Chuẩn Bị</h3>
+              <v-row align="center">
+                <v-col cols="6">
+                  <v-text-field
+                    v-model.number="orderPrepTime"
+                    label="Thời gian chuẩn bị (phút)"
+                    type="number"
+                    :disabled="orderDialog.order.status !== 'pending' && orderDialog.order.status !== 'preparing'"
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="6">
+                  <v-btn
+                    color="primary"
+                    :disabled="orderDialog.order.status !== 'pending' && orderDialog.order.status !== 'preparing'"
+                    @click="updateOrderPrepTime"
+                  >
+                    Cập nhật
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </v-col>
 
             <!-- Order Items -->
             <v-col cols="12">
@@ -153,8 +239,12 @@
                     <span>{{ item.quantity }}x {{ item.name }}</span>
                     <span>{{ formatPrice(item.price * item.quantity) }}</span>
                   </v-list-item-title>
-                  <v-list-item-subtitle v-if="item.notes">
-                    Ghi chú: {{ item.notes }}
+                  <v-list-item-subtitle class="d-flex justify-space-between">
+                    <span v-if="item.notes">Ghi chú: {{ item.notes }}</span>
+                    <span v-if="item.prepTime" class="text-caption">
+                      <v-icon size="small" color="info">mdi-clock-outline</v-icon>
+                      {{ item.prepTime }} phút
+                    </span>
                   </v-list-item-subtitle>
                 </v-list-item>
 
@@ -192,6 +282,17 @@
           >
             Đóng
           </v-btn>
+          
+          <v-btn
+            color="primary"
+            variant="text"
+            @click="printInvoice(orderDialog.order)"
+            :disabled="orderDialog.order.status !== 'ready' && orderDialog.order.status !== 'completed'"
+          >
+            <v-icon>mdi-printer</v-icon>
+            In Hóa Đơn
+          </v-btn>
+          
           <template v-if="orderDialog.order.status === 'pending'">
             <v-btn
               color="success"
@@ -206,6 +307,7 @@
               Từ Chối Đơn
             </v-btn>
           </template>
+          
           <v-btn
             v-if="orderDialog.order.status === 'preparing'"
             color="success"
@@ -252,6 +354,102 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+    
+    <!-- Invoice Preview Dialog -->
+    <v-dialog v-model="invoiceDialog.show" max-width="800">
+      <v-card v-if="invoiceDialog.order">
+        <v-card-title class="d-flex justify-space-between align-center">
+          <span>Hóa Đơn #{{ invoiceDialog.order.orderNumber }}</span>
+          <v-btn
+            icon="mdi-printer"
+            @click="actuallyPrintInvoice"
+          ></v-btn>
+        </v-card-title>
+        
+        <v-card-text>
+          <div id="invoice-content" class="invoice-preview pa-4">
+            <!-- Restaurant Info -->
+            <div class="text-center mb-6">
+              <h2 class="text-h5">Nhà Hàng XYZ</h2>
+              <p>123 Đường ABC, Quận 1, TP HCM</p>
+              <p>SĐT: 028-1234-5678</p>
+              <p>MST: 0123456789</p>
+            </div>
+            
+            <div class="text-center mb-4">
+              <h1 class="text-h5">HÓA ĐƠN BÁN HÀNG</h1>
+              <p>Số: {{ invoiceDialog.order.orderNumber }}</p>
+              <p>Ngày: {{ formatDate(invoiceDialog.order.createdAt) }}</p>
+            </div>
+            
+            <!-- Customer Info -->
+            <div class="mb-4">
+              <p><strong>Khách hàng:</strong> {{ invoiceDialog.order.customer.name }}</p>
+              <p><strong>Địa chỉ:</strong> {{ invoiceDialog.order.deliveryAddress }}</p>
+              <p><strong>SĐT:</strong> {{ invoiceDialog.order.customer.phone }}</p>
+            </div>
+            
+            <!-- Items Table -->
+            <table class="invoice-table mb-4">
+              <thead>
+                <tr>
+                  <th>STT</th>
+                  <th>Tên món</th>
+                  <th>Đơn giá</th>
+                  <th>Số lượng</th>
+                  <th>Thành tiền</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in invoiceDialog.order.items" :key="item.id">
+                  <td>{{ index + 1 }}</td>
+                  <td>{{ item.name }}</td>
+                  <td>{{ formatPrice(item.price) }}</td>
+                  <td>{{ item.quantity }}</td>
+                  <td>{{ formatPrice(item.price * item.quantity) }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4" class="text-right"><strong>Tạm tính:</strong></td>
+                  <td>{{ formatPrice(invoiceDialog.order.subtotal) }}</td>
+                </tr>
+                <tr>
+                  <td colspan="4" class="text-right"><strong>Phí giao hàng:</strong></td>
+                  <td>{{ formatPrice(invoiceDialog.order.deliveryFee) }}</td>
+                </tr>
+                <tr>
+                  <td colspan="4" class="text-right"><strong>Tổng cộng:</strong></td>
+                  <td>{{ formatPrice(invoiceDialog.order.total) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+            
+            <!-- Footer -->
+            <div class="text-center">
+              <p><strong>Cảm ơn quý khách đã sử dụng dịch vụ!</strong></p>
+              <p>Vui lòng giữ hóa đơn để đối chiếu khi cần thiết</p>
+            </div>
+          </div>
+        </v-card-text>
+        
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn
+            variant="text"
+            @click="invoiceDialog.show = false"
+          >
+            Đóng
+          </v-btn>
+          <v-btn
+            color="primary"
+            @click="actuallyPrintInvoice"
+          >
+            In Hóa Đơn
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -266,6 +464,21 @@ const store = useStore()
 // State
 const activeTab = ref('new')
 const wsConnection = ref(null)
+const orderPrepTime = ref(15) // Default preparation time
+
+// Restaurant status
+const restaurantStatus = ref({
+  isOpen: true,
+  status: 'online', // online, busy, offline, temporarily_closed
+  estimatedPrepTime: 15 // minutes
+})
+
+const restaurantStatusOptions = [
+  { title: 'Đang mở cửa', value: 'online' },
+  { title: 'Đang bận', value: 'busy' },
+  { title: 'Tạm ngưng nhận đơn', value: 'offline' },
+  { title: 'Đóng cửa', value: 'temporarily_closed' }
+]
 
 // Dialogs
 const orderDialog = ref({
@@ -279,6 +492,11 @@ const rejectDialog = ref({
   reason: '',
   note: '',
   loading: false
+})
+
+const invoiceDialog = ref({
+  show: false,
+  order: null
 })
 
 // Options
@@ -312,7 +530,11 @@ const getStatusColor = (status) => {
     preparing: 'info',
     ready: 'success',
     completed: 'grey',
-    cancelled: 'error'
+    cancelled: 'error',
+    online: 'success',
+    busy: 'warning',
+    offline: 'grey',
+    temporarily_closed: 'error'
   }
   return colors[status] || 'grey'
 }
@@ -328,8 +550,22 @@ const formatStatus = (status) => {
   return statusMap[status] || status
 }
 
+const formatRestaurantStatus = (status) => {
+  const statusMap = {
+    online: 'Đang mở cửa',
+    busy: 'Đang bận',
+    offline: 'Tạm ngưng nhận đơn',
+    temporarily_closed: 'Đóng cửa'
+  }
+  return statusMap[status] || status
+}
+
 const formatDateTime = (dateStr) => {
   return format(new Date(dateStr), 'HH:mm - dd/MM/yyyy', { locale: vi })
+}
+
+const formatDate = (dateStr) => {
+  return format(new Date(dateStr), 'dd/MM/yyyy', { locale: vi })
 }
 
 const formatPrice = (amount) => {
@@ -340,6 +576,7 @@ const formatPrice = (amount) => {
 }
 
 const viewOrderDetails = (order) => {
+  orderPrepTime.value = order.prepTime || 15
   orderDialog.value = {
     show: true,
     order
@@ -350,7 +587,8 @@ const acceptOrder = async (order) => {
   try {
     await store.dispatch('restaurantAdmin/updateOrderStatus', {
       orderId: order.id,
-      status: 'preparing'
+      status: 'preparing',
+      prepTime: orderPrepTime.value
     })
     if (orderDialog.value.show) {
       orderDialog.value.show = false
@@ -406,6 +644,91 @@ const markAsReady = async (order) => {
   }
 }
 
+const updateOrderPrepTime = async () => {
+  if (!orderDialog.value.order) return
+  
+  try {
+    await store.dispatch('restaurantAdmin/updateOrderPrepTime', {
+      orderId: orderDialog.value.order.id,
+      prepTime: orderPrepTime.value
+    })
+    // Update local order data
+    orderDialog.value.order.prepTime = orderPrepTime.value
+  } catch (error) {
+    console.error('Failed to update preparation time:', error)
+  }
+}
+
+const updateRestaurantStatus = async () => {
+  try {
+    await store.dispatch('restaurantAdmin/updateRestaurantStatus', {
+      status: restaurantStatus.value.status,
+      isOpen: restaurantStatus.value.status === 'online' || restaurantStatus.value.status === 'busy'
+    })
+  } catch (error) {
+    console.error('Failed to update restaurant status:', error)
+  }
+}
+
+const updatePrepTime = async () => {
+  try {
+    await store.dispatch('restaurantAdmin/updateRestaurantPrepTime', {
+      estimatedPrepTime: restaurantStatus.value.estimatedPrepTime
+    })
+  } catch (error) {
+    console.error('Failed to update estimated preparation time:', error)
+  }
+}
+
+const printInvoice = (order) => {
+  invoiceDialog.value = {
+    show: true,
+    order
+  }
+}
+
+const actuallyPrintInvoice = () => {
+  const invoiceContent = document.getElementById('invoice-content')
+  if (!invoiceContent) return
+  
+  // Create a new window for printing
+  const printWindow = window.open('', '_blank')
+  const invoiceHtml = `
+    <html>
+      <head>
+        <title>Hóa đơn #${invoiceDialog.value.order.orderNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          .invoice-preview { max-width: 800px; margin: 0 auto; }
+          .invoice-table { width: 100%; border-collapse: collapse; }
+          .invoice-table th, .invoice-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+          .invoice-table th { background-color: #f2f2f2; }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; }
+          .mb-4 { margin-bottom: 20px; }
+          .mb-6 { margin-bottom: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-preview">
+          ${invoiceContent.innerHTML}
+        </div>
+      </body>
+    </html>
+  `
+  
+  printWindow.document.open()
+  printWindow.document.write(invoiceHtml)
+  printWindow.document.close()
+  
+  // Wait for the content to load then print
+  setTimeout(() => {
+    printWindow.print()
+    // Close window after printing (browser dependent)
+    // printWindow.close()
+  }, 500)
+}
+
 // WebSocket connection for real-time updates
 const connectWebSocket = () => {
   wsConnection.value = new WebSocket('ws://api.example.com/restaurant/orders')
@@ -418,6 +741,19 @@ const connectWebSocket = () => {
 
 // Lifecycle hooks
 onMounted(async () => {
+  // Load restaurant status
+  try {
+    const status = await store.dispatch('restaurantAdmin/fetchRestaurantStatus')
+    restaurantStatus.value = {
+      isOpen: status.isOpen,
+      status: status.status,
+      estimatedPrepTime: status.estimatedPrepTime || 15
+    }
+  } catch (error) {
+    console.error('Failed to fetch restaurant status:', error)
+  }
+  
+  // Load orders
   await store.dispatch('restaurantAdmin/fetchOrders')
   connectWebSocket()
 })
@@ -434,5 +770,30 @@ onUnmounted(() => {
   border: 1px solid #eee;
   border-radius: 8px;
   margin-bottom: 8px;
+}
+
+/* Invoice styles */
+.invoice-preview {
+  background-color: white;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invoice-table th, 
+.invoice-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.invoice-table th {
+  background-color: #f2f2f2;
+}
+
+.text-right {
+  text-align: right;
 }
 </style>

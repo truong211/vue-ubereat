@@ -93,7 +93,9 @@ export const signInWithGoogle = () => {
                 idToken: tokenResponse.access_token,
                 email: userInfo.email,
                 name: userInfo.name,
-                picture: userInfo.picture
+                picture: userInfo.picture,
+                providerId: 'google',
+                providerUserId: userInfo.sub
               });
             })
             .catch(reject);
@@ -129,7 +131,9 @@ export const signInWithFacebook = () => {
               userId: userID,
               email: userInfo.email,
               name: userInfo.name,
-              picture: userInfo.picture?.data?.url
+              picture: userInfo.picture?.data?.url,
+              providerId: 'facebook',
+              providerUserId: userID
             });
           });
         } else {
@@ -155,8 +159,8 @@ export const authenticateWithBackend = async (provider, data) => {
       : '/api/auth/login/facebook';
     
     const payload = provider === 'google'
-      ? { idToken: data.idToken }
-      : { accessToken: data.accessToken };
+      ? { idToken: data.idToken, email: data.email, providerUserId: data.providerUserId }
+      : { accessToken: data.accessToken, email: data.email, providerUserId: data.providerUserId };
       
     const response = await axios.post(endpoint, payload);
     return response.data;
@@ -225,12 +229,62 @@ export const linkSocialAccount = async (provider) => {
     
     const response = await axios.post(`/api/auth/link/${provider}`, {
       idToken: socialData.idToken || null,
-      accessToken: socialData.accessToken || null
+      accessToken: socialData.accessToken || null,
+      email: socialData.email,
+      providerUserId: socialData.providerUserId || socialData.userId
     });
     
     return response.data;
   } catch (error) {
     console.error(`Error linking ${provider} account:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Check if account is linkable with social provider
+ * @param {string} provider - 'google' or 'facebook'
+ * @param {string} email - Email address
+ * @returns {Promise<boolean>} True if linkable, false otherwise
+ */
+export const isAccountLinkable = async (provider, email) => {
+  try {
+    const response = await axios.post(`/api/auth/check-linkable`, {
+      provider,
+      email
+    });
+    return response.data.linkable;
+  } catch (error) {
+    console.error('Error checking account linkability:', error);
+    return false;
+  }
+};
+
+/**
+ * Unlink social provider from account
+ * @param {string} provider - 'google' or 'facebook'
+ * @returns {Promise<Object>} Unlink result
+ */
+export const unlinkSocialAccount = async (provider) => {
+  try {
+    const response = await axios.post(`/api/auth/unlink/${provider}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error unlinking ${provider} account:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Get all linked social accounts for current user
+ * @returns {Promise<Array>} List of linked accounts
+ */
+export const getLinkedAccounts = async () => {
+  try {
+    const response = await axios.get('/api/auth/linked-accounts');
+    return response.data.linkedAccounts;
+  } catch (error) {
+    console.error('Error getting linked accounts:', error);
     throw error;
   }
 };
@@ -242,5 +296,8 @@ export default {
   authenticateWithBackend,
   loginWithSocial,
   handleSocialCallback,
-  linkSocialAccount
+  linkSocialAccount,
+  isAccountLinkable,
+  unlinkSocialAccount,
+  getLinkedAccounts
 };

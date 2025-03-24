@@ -36,6 +36,14 @@ const Address = sequelize.define('Address', {
     type: DataTypes.STRING(100),
     allowNull: false
   },
+  district: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  ward: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
   state: {
     type: DataTypes.STRING(100),
     allowNull: false
@@ -72,10 +80,55 @@ const Address = sequelize.define('Address', {
   longitude: {
     type: DataTypes.DECIMAL(11, 8),
     allowNull: true
+  },
+  placeId: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    comment: 'Google Maps or other map provider place ID'
+  },
+  formattedAddress: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'Fully formatted address from map provider'
+  },
+  hasElevator: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  floor: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  apartmentNumber: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
+  deliveryNotes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: 'Additional notes for delivery, e.g., doorbell not working'
+  },
+  contactName: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  contactPhone: {
+    type: DataTypes.STRING(15),
+    allowNull: true
   }
 }, {
   timestamps: true,
-  tableName: 'addresses'
+  tableName: 'addresses',
+  indexes: [
+    {
+      fields: ['userId'],
+      name: 'idx_address_user'
+    },
+    {
+      fields: ['latitude', 'longitude'],
+      name: 'idx_address_location'
+    }
+  ]
 });
 
 // Define associations

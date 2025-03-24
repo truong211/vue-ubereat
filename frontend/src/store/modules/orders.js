@@ -78,6 +78,27 @@ const actions = {
       commit('SET_ERROR', error.message);
       throw error;
     }
+  },
+
+  /**
+   * Submit a comprehensive review including item ratings and images
+   */
+  async submitReview({ commit }, formData) {
+    try {
+      commit('SET_LOADING', true);
+      const response = await axios.post(`${API_ENDPOINT}/reviews`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return response.data;
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Failed to submit review';
+      commit('SET_ERROR', errorMessage);
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
   }
 };
 

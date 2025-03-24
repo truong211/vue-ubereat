@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import store from '@/store'
+import HomeView from '../views/HomeView.vue'
+import SearchPage from '../views/SearchPage.vue'
 
 // Auth routes
 const Login = () => import('@/views/auth/Login.vue')
@@ -63,7 +65,8 @@ const routes = [
       {
         path: '',
         name: 'Profile',
-        component: () => import('@/views/profile/Profile.vue')
+        component: () => import('@/views/user/Profile.vue'),
+        meta: { requiresAuth: true }
       },
       {
         path: 'settings',
@@ -73,12 +76,37 @@ const routes = [
       {
         path: 'payment-methods',
         name: 'PaymentMethods',
-        component: PaymentMethods
+        component: () => import('@/views/payment/PaymentMethods.vue'),
+        meta: { requiresAuth: true }
       },
       {
         path: 'reviews',
         name: 'UserReviews',
         component: () => import('@/views/profile/Reviews.vue')
+      },
+      {
+        path: 'favorites',
+        name: 'UserFavorites',
+        component: () => import('@/views/user/Favorites.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'account-settings',
+        name: 'AccountSettings',
+        component: () => import('@/views/user/AccountSettings.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'addresses',
+        name: 'Addresses',
+        component: () => import('@/views/user/Addresses.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'vouchers',
+        name: 'Vouchers',
+        component: () => import('@/views/user/Vouchers.vue'),
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -180,8 +208,16 @@ const routes = [
   // Other routes...
   {
     path: '/',
-    name: 'Home',
-    component: () => import('@/views/Home.vue')
+    name: 'home',
+    component: HomeView
+  },
+  {
+    path: '/search',
+    name: 'search',
+    component: SearchPage,
+    meta: {
+      title: 'Tìm kiếm nhà hàng'
+    }
   },
   
   // 404 Not Found

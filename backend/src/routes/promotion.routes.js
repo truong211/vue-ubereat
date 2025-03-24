@@ -1,9 +1,13 @@
+'use strict';
+
 const express = require('express');
 const { body } = require('express-validator');
 const { authMiddleware, restrictTo } = require('../middleware/auth.middleware');
 const { promotionErrorHandler } = require('../middleware/promotionError.middleware');
 const promotionController = require('../controllers/promotion.controller');
 const promotionCampaignController = require('../controllers/promotionCampaign.controller');
+const auth = require('../middleware/auth');
+const { checkRole } = require('../middleware/role');
 
 const router = express.Router();
 
@@ -96,5 +100,45 @@ router.get(
 
 // Apply error handling middleware
 router.use(promotionErrorHandler);
+
+// Create a new promotion - Admin/Owner only
+router.post('/', 
+  auth, 
+  checkRole(['admin', 'owner']), 
+  promotionController.createPromotion
+);
+
+// Get a promotion by ID
+router.get('/:id', 
+  promotionController.getPromotionById
+);
+
+// Update promotion status - Admin/Owner only
+router.patch('/:id/status', 
+  auth, 
+  checkRole(['admin', 'owner']), 
+  promotionController.updatePromotionStatus
+);
+
+// Get promotion analytics - Admin/Owner only
+router.get('/analytics/summary', 
+  auth, 
+  checkRole(['admin', 'owner']), 
+  promotionController.getPromotionAnalytics
+);
+
+// Get promotion performance - Admin/Owner only
+router.get('/analytics/performance', 
+  auth, 
+  checkRole(['admin', 'owner']), 
+  promotionController.getPromotionPerformance
+);
+
+// Get promotion stats - Admin/Owner only
+router.get('/:id/stats', 
+  auth, 
+  checkRole(['admin', 'owner']), 
+  promotionController.getPromotionStats
+);
 
 module.exports = router;

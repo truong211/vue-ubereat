@@ -115,6 +115,61 @@
                             @update:model-value="updateItemRating(item.id, $event)"
                           ></v-rating>
                           
+                          <v-textarea
+                            v-model="getItemComment(item.id)"
+                            label="Comment about this item (optional)"
+                            placeholder="Share your thoughts about this specific dish"
+                            variant="outlined"
+                            rows="2"
+                            class="mb-2"
+                            @update:model-value="updateItemComment(item.id, $event)"
+                          ></v-textarea>
+                          
+                          <!-- Image Upload for Item -->
+                          <div class="mb-2">
+                            <div class="d-flex align-center mb-2">
+                              <span class="text-subtitle-2">Upload photos of this dish</span>
+                              <v-tooltip location="top" text="Help other customers see what the dish looks like">
+                                <template v-slot:activator="{ props }">
+                                  <v-icon size="small" class="ms-1" v-bind="props">mdi-information-outline</v-icon>
+                                </template>
+                              </v-tooltip>
+                            </div>
+                            
+                            <v-file-input
+                              v-model="getItemImages(item.id)"
+                              accept="image/*"
+                              placeholder="Add photos"
+                              prepend-icon="mdi-camera"
+                              label="Food photos"
+                              multiple
+                              chips
+                              :show-size="true"
+                              @update:model-value="updateItemImages(item.id, $event)"
+                            ></v-file-input>
+                            
+                            <!-- Preview Images -->
+                            <div v-if="getItemImagePreviews(item.id).length > 0" class="d-flex flex-wrap gap-2 mt-2">
+                              <div v-for="(preview, i) in getItemImagePreviews(item.id)" :key="i" class="image-preview-container">
+                                <v-img
+                                  :src="preview"
+                                  width="80"
+                                  height="80"
+                                  class="rounded"
+                                  cover
+                                ></v-img>
+                                <v-btn
+                                  icon="mdi-close"
+                                  size="x-small"
+                                  color="error"
+                                  variant="flat"
+                                  class="image-remove-btn"
+                                  @click="removeItemImage(item.id, i)"
+                                ></v-btn>
+                              </div>
+                            </div>
+                          </div>
+                          
                           <v-chip-group
                             v-model="getItemTags(item.id).positive"
                             multiple
@@ -589,7 +644,9 @@ export default {
       deliveryRating: 0,
       deliveryComment: '',
       deliveryTags: [],
-      itemRatings: []
+      itemRatings: [],
+      itemComments: [],
+      itemImages: []
     });
     const hasReviewed = ref(false);
     const submittingReview = ref(false);
@@ -614,6 +671,21 @@ export default {
       return item ? item.tags : { positive: [], negative: [] };
     };
 
+    const getItemComment = (itemId) => {
+      const item = review.value.itemComments.find(i => i.itemId === itemId);
+      return item ? item.comment : '';
+    };
+
+    const getItemImages = (itemId) => {
+      const item = review.value.itemImages.find(i => i.itemId === itemId);
+      return item ? item.images : [];
+    };
+
+    const getItemImagePreviews = (itemId) => {
+      const images = getItemImages(itemId);
+      return images.map(image => URL.createObjectURL(image));
+    };
+
     const updateItemRating = (itemId, rating) => {
       const existingIndex = review.value.itemRatings.findIndex(i => i.itemId === itemId);
       
@@ -628,6 +700,38 @@ export default {
       }
     };
 
+    const updateItemComment = (itemId, comment) => {
+      const existingIndex = review.value.itemComments.findIndex(i => i.itemId === itemId);
+      
+      if (existingIndex >= 0) {
+        review.value.itemComments[existingIndex].comment = comment;
+      } else {
+        review.value.itemComments.push({
+          itemId,
+          comment
+        });
+      }
+    };
+
+    const updateItemImages = (itemId, images) => {
+      const existingIndex = review.value.itemImages.findIndex(i => i.itemId === itemId);
+      
+      if (existingIndex >= 0) {
+        review.value.itemImages[existingIndex].images = images;
+      } else {
+        review.value.itemImages.push({
+          itemId,
+          images
+        });
+      }
+    };
+
+    const removeItemImage = (itemId, index) => {
+      const images = getItemImages(itemId);
+      images.splice(index, 1);
+      updateItemImages(itemId, images);
+    };
+
     // Submit review to backend
     const submitReview = async () => {
       if (!isReviewValid.value) return;
@@ -635,50 +739,87 @@ export default {
       submittingReview.value = true;
       
       try {
-        // Submit restaurant review
-        await store.dispatch('reviews/createReview', {
+        // Prepare item ratings data
+        const itemRatingsData = await Promise.all(review.value.itemRatings.map(async (item) => {
+          const itemId = item.itemId;
+          const comment = getItemComment(itemId);
+          
+          // Process images for this item
+          const images = getItemImages(itemId);
+          
+          return {
+            itemId,
+            rating: item.rating,
+            comment,
+            aspects: item.tags?.positive || [],
+            images // Will be handled by FormData in the API service
+          };
+        }));
+
+        // Create the review request data
+        const reviewData = {
           orderId: props.order.id,
           restaurantId: props.order.restaurant.id,
           rating: review.value.restaurantRating,
-          comment: review.value.comment
+          comment: review.value.comment,
+          deliveryRating: review.value.deliveryRating,
+          deliveryComment: review.value.deliveryComment,
+          deliveryTags: review.value.deliveryTags,
+          itemRatings: itemRatingsData
+        };
+        
+        // Create a FormData instance for handling file uploads
+        const formData = new FormData();
+        
+        // Append basic review data
+        Object.keys(reviewData).forEach(key => {
+          if (key !== 'itemRatings') {
+            formData.append(key, 
+              typeof reviewData[key] === 'object' 
+                ? JSON.stringify(reviewData[key]) 
+                : reviewData[key]
+            );
+          }
         });
         
-        // Submit individual item reviews if any
-        for (const itemRating of review.value.itemRatings) {
-          if (itemRating.rating > 0) {
-            await store.dispatch('reviews/createReview', {
-              orderId: props.order.id,
-              restaurantId: props.order.restaurant.id,
-              productId: itemRating.itemId,
-              rating: itemRating.rating,
-              tags: itemRating.tags
+        // Append item ratings data
+        formData.append('itemRatings', JSON.stringify(reviewData.itemRatings));
+        
+        // Append item images
+        review.value.itemImages.forEach(item => {
+          if (item.images && item.images.length) {
+            item.images.forEach((file, index) => {
+              formData.append(`item_${item.itemId}_images`, file);
             });
           }
-        }
+        });
+
+        // Submit the review
+        await store.dispatch('orders/submitReview', formData);
         
-        // Submit delivery review if rated
-        if (review.value.deliveryRating > 0) {
-          await store.dispatch('reviews/createDriverReview', {
-            orderId: props.order.id,
-            driverId: props.order.driver?.id,
-            rating: review.value.deliveryRating,
-            comment: review.value.deliveryComment,
-            tags: review.value.deliveryTags
-          });
-        }
-        
-        // Mark as reviewed
-        hasReviewed.value = true;
+        // Show success message
         store.dispatch('notifications/show', {
           type: 'success',
           message: 'Thank you for your review!'
         });
 
-        // Show promotions after review is submitted
-        loadPromotions();
+        // Update state to show promotions
+        hasReviewed.value = true;
+        showPromotions.value = true;
         
+        // Reset review form
+        review.value = {
+          restaurantRating: 0,
+          comment: '',
+          deliveryRating: 0,
+          deliveryComment: '',
+          deliveryTags: [],
+          itemRatings: [],
+          itemComments: [],
+          itemImages: []
+        };
       } catch (error) {
-        console.error('Failed to submit review:', error);
+        console.error('Error submitting review:', error);
         store.dispatch('notifications/show', {
           type: 'error',
           message: 'Failed to submit your review. Please try again.'
@@ -691,8 +832,7 @@ export default {
     // Skip review
     const skipReview = () => {
       hasReviewed.value = true;
-      // Still show promotions even if review is skipped
-      loadPromotions();
+      showPromotions.value = true;
     };
 
     // Computed properties
@@ -1266,7 +1406,13 @@ export default {
       commentRules,
       getItemRating,
       getItemTags,
+      getItemComment,
+      getItemImages,
+      getItemImagePreviews,
       updateItemRating,
+      updateItemComment,
+      updateItemImages,
+      removeItemImage,
       submitReview,
       skipReview,
       isReviewValid,
@@ -1287,6 +1433,64 @@ export default {
 </script>
 
 <style scoped>
+.order-tracking {
+  position: relative;
+}
+
+.map-container {
+  height: 300px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.message-bubble {
+  max-width: 80%;
+  border-radius: 12px;
+  position: relative;
+}
+
+.message-sent {
+  background-color: #e3f2fd;
+  margin-left: auto;
+  border-top-right-radius: 4px;
+}
+
+.message-received {
+  background-color: #f5f5f5;
+  margin-right: auto;
+  border-top-left-radius: 4px;
+}
+
+.restaurant-promo-img {
+  position: relative;
+}
+
+.promo-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  text-align: center;
+}
+
+/* Image preview styles */
+.image-preview-container {
+  position: relative;
+  display: inline-block;
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+.image-remove-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 1;
+}
+
 .tracking-map {
   border-radius: 8px;
   overflow: hidden;
@@ -1313,25 +1517,6 @@ export default {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
-}
-
-.message-bubble {
-  max-width: 80%;
-  border-radius: 8px;
-  padding: 8px 12px;
-  margin-bottom: 8px;
-}
-
-.message-sent {
-  background-color: #e3f2fd;
-  margin-left: auto;
-  border-bottom-right-radius: 0;
-}
-
-.message-received {
-  background-color: #f5f5f5;
-  margin-right: auto;
-  border-bottom-left-radius: 0;
 }
 
 .chat-input {

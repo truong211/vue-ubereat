@@ -1,0 +1,76 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const DeliveryConfig = require('./deliveryConfig.model');
+
+/**
+ * DeliveryFeeTier Model
+ * Manages tiered delivery fees based on distance ranges
+ */
+const DeliveryFeeTier = sequelize.define('DeliveryFeeTier', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  deliveryConfigId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: DeliveryConfig,
+      key: 'id'
+    }
+  },
+  // Distance range for this tier
+  minDistance: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false,
+    comment: 'Minimum distance in kilometers for this tier (inclusive)'
+  },
+  maxDistance: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false,
+    comment: 'Maximum distance in kilometers for this tier (inclusive)'
+  },
+  // Fixed fee for this distance range
+  fee: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    comment: 'Fixed delivery fee for this distance range'
+  },
+  // Order (for sorting tiers)
+  displayOrder: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Display order for sorting tiers'
+  },
+  // Whether this tier is active
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
+}, {
+  timestamps: true,
+  tableName: 'delivery_fee_tiers',
+  indexes: [
+    {
+      fields: ['deliveryConfigId']
+    },
+    {
+      fields: ['minDistance', 'maxDistance']
+    }
+  ],
+  validate: {
+    minLessThanMax() {
+      if (this.minDistance >= this.maxDistance) {
+        throw new Error('Minimum distance must be less than maximum distance');
+      }
+    }
+  }
+});
+
+// Define associations
+DeliveryFeeTier.belongsTo(DeliveryConfig, { foreignKey: 'deliveryConfigId', as: 'deliveryConfig' });
+DeliveryConfig.hasMany(DeliveryFeeTier, { foreignKey: 'deliveryConfigId', as: 'feeTiers' });
+
+module.exports = DeliveryFeeTier; 

@@ -5,7 +5,7 @@
       v-model="showNotifications"
       :close-on-content-click="false"
       location="bottom end"
-      min-width="320"
+      min-width="360"
       offset="10"
     >
       <template v-slot:activator="{ props }">
@@ -56,11 +56,11 @@
             >
               <template v-slot:prepend>
                 <v-avatar
-                  :color="getNotificationColor(notification.type)"
+                  :color="getNotificationColor(notification.type, notification.status)"
                   variant="tonal"
                   size="40"
                 >
-                  <v-icon :icon="getNotificationIcon(notification.type)" color="white"></v-icon>
+                  <v-icon :icon="getNotificationIcon(notification.type, notification.status)" color="white"></v-icon>
                 </v-avatar>
               </template>
               
@@ -68,8 +68,36 @@
                 {{ notification.title }}
               </v-list-item-title>
               
-              <v-list-item-subtitle>
-                {{ notification.message }}
+              <v-list-item-subtitle class="d-flex flex-column">
+                <span>{{ notification.message }}</span>
+                
+                <!-- Action buttons for driver notifications -->
+                <div v-if="notification.type === 'order_status' && notification.status === 'on_the_way' && notification.driverId" 
+                     class="d-flex mt-1 notification-actions">
+                  <v-btn
+                    color="primary"
+                    variant="text"
+                    size="small"
+                    density="compact"
+                    @click.stop="contactDriver(notification.driverId, 'chat')"
+                    class="px-2"
+                  >
+                    <v-icon size="small" class="mr-1">mdi-chat</v-icon>
+                    Chat
+                  </v-btn>
+                  
+                  <v-btn
+                    color="success"
+                    variant="text"
+                    size="small"
+                    density="compact"
+                    @click.stop="contactDriver(notification.driverId, 'call')"
+                    class="px-2"
+                  >
+                    <v-icon size="small" class="mr-1">mdi-phone</v-icon>
+                    Call
+                  </v-btn>
+                </div>
               </v-list-item-subtitle>
               
               <template v-slot:append>
@@ -111,16 +139,75 @@
         
         <v-spacer></v-spacer>
         
-        <v-btn
-          v-if="currentUpdatedOrder"
-          color="white"
-          variant="text"
-          @click="viewUpdatedOrder"
-        >
-          View
-        </v-btn>
+        <div class="d-flex">
+          <!-- Driver contact buttons when appropriate -->
+          <template v-if="currentOrderStatus === 'on_the_way' && currentDriverId">
+            <v-btn
+              color="white"
+              variant="text"
+              size="small"
+              @click="contactDriver(currentDriverId, 'chat')"
+              class="mr-2"
+            >
+              <v-icon size="small" class="mr-1">mdi-chat</v-icon>
+              Chat
+            </v-btn>
+          </template>
+          
+          <v-btn
+            color="white"
+            variant="text"
+            @click="viewUpdatedOrder"
+          >
+            View
+          </v-btn>
+        </div>
       </div>
     </v-snackbar>
+    
+    <!-- Chat Dialog -->
+    <v-dialog v-model="showChatDialog" width="400">
+      <v-card v-if="selectedDriverId">
+        <v-card-title class="d-flex align-center">
+          <span>Chat with Driver</span>
+          <v-spacer></v-spacer>
+          <v-btn icon size="small" @click="showChatDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </v-card-title>
+        
+        <v-divider></v-divider>
+        
+        <v-card-text class="chat-container pa-0">
+          <order-chat-dialog
+            :driver-id="selectedDriverId"
+            :order-id="currentUpdatedOrder?.id"
+            @close="showChatDialog = false"
+          ></order-chat-dialog>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+    
+    <!-- Call Dialog -->
+    <v-dialog v-model="showCallDialog" width="300">
+      <v-card v-if="selectedDriverId">
+        <v-card-title class="text-center py-4">
+          <v-icon size="large" color="success" class="mb-2">mdi-phone-in-talk</v-icon>
+          <div class="text-h6 d-block w-100">Calling Driver...</div>
+        </v-card-title>
+        
+        <v-card-text class="text-center pb-0">
+          <v-btn color="error" @click="showCallDialog = false">
+            <v-icon class="mr-1">mdi-phone-hangup</v-icon>
+            End Call
+          </v-btn>
+        </v-card-text>
+        
+        <v-card-text class="text-center pt-0 text-caption text-grey">
+          This is a simulated call feature
+        </v-card-text>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
@@ -128,9 +215,14 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
+import OrderChatDialog from './OrderChatDialog.vue';
 
 export default {
   name: 'OrderNotifications',
+  
+  components: {
+    OrderChatDialog
+  },
   
   emits: ['notification-clicked'],
   
@@ -145,6 +237,13 @@ export default {
     const statusSnackbarMessage = ref('');
     const statusSnackbarColor = ref('success');
     const currentUpdatedOrder = ref(null);
+    const currentOrderStatus = ref(null);
+    const currentDriverId = ref(null);
+    
+    // Contact driver state
+    const showChatDialog = ref(false);
+    const showCallDialog = ref(false);
+    const selectedDriverId = ref(null);
     
     // Get notifications from store
     const notifications = computed(() => {
@@ -178,10 +277,22 @@ export default {
       }
     };
     
-    // Get notification color based on type
-    const getNotificationColor = (type) => {
+    // Get notification color based on type and status
+    const getNotificationColor = (type, status) => {
+      if (type === 'order_status') {
+        const statusColors = {
+          pending: 'warning',
+          confirmed: 'info',
+          preparing: 'info',
+          ready: 'info',
+          on_the_way: 'primary',
+          delivered: 'success',
+          cancelled: 'error'
+        };
+        return statusColors[status] || 'primary';
+      }
+      
       const colors = {
-        order_status: 'primary',
         order_delivered: 'success',
         order_cancelled: 'error',
         order_delayed: 'warning',
@@ -193,10 +304,22 @@ export default {
       return colors[type] || 'primary';
     };
     
-    // Get notification icon based on type
-    const getNotificationIcon = (type) => {
+    // Get notification icon based on type and status
+    const getNotificationIcon = (type, status) => {
+      if (type === 'order_status') {
+        const statusIcons = {
+          pending: 'mdi-clock-outline',
+          confirmed: 'mdi-clipboard-check',
+          preparing: 'mdi-food-outline',
+          ready: 'mdi-food',
+          on_the_way: 'mdi-bike-fast',
+          delivered: 'mdi-check-circle',
+          cancelled: 'mdi-cancel'
+        };
+        return statusIcons[status] || 'mdi-food';
+      }
+      
       const icons = {
-        order_status: 'mdi-food',
         order_delivered: 'mdi-check-circle',
         order_cancelled: 'mdi-cancel',
         order_delayed: 'mdi-clock-alert',
@@ -223,14 +346,35 @@ export default {
     // Open notification
     const openNotification = (notification) => {
       markAsRead(notification);
+      
+      // Keep dialog open if interacting with contact buttons
+      if (notification.type === 'order_status' && 
+          notification.status === 'on_the_way' && 
+          (showChatDialog.value || showCallDialog.value)) {
+        return;
+      }
+      
       showNotifications.value = false;
       
       // Handle based on notification type
       if (notification.orderId) {
-        router.push(`/orders/${notification.orderId}`);
+        router.push(`/orders/${notification.orderId}/tracking`);
       }
       
       emit('notification-clicked', notification);
+    };
+    
+    // Contact driver
+    const contactDriver = (driverId, method) => {
+      selectedDriverId.value = driverId;
+      
+      if (method === 'chat') {
+        showChatDialog.value = true;
+        showCallDialog.value = false;
+      } else if (method === 'call') {
+        showCallDialog.value = true;
+        showChatDialog.value = false;
+      }
     };
     
     // View updated order
@@ -238,8 +382,27 @@ export default {
       showStatusSnackbar.value = false;
       
       if (currentUpdatedOrder.value) {
-        router.push(`/orders/${currentUpdatedOrder.value.id}`);
+        router.push(`/orders/${currentUpdatedOrder.value.id}/tracking`);
       }
+    };
+    
+    // Helper to get detailed status message
+    const getDetailedStatusMessage = (status, data) => {
+      const statusMessages = {
+        pending: 'Your order is awaiting confirmation from the restaurant.',
+        confirmed: 'Great news! The restaurant has confirmed your order.',
+        preparing: 'The restaurant is now preparing your delicious meal.',
+        ready: 'Your food is ready for pickup! The driver will be on their way soon.',
+        on_the_way: data && data.eta ? 
+          `Your food is on the way! Estimated delivery in ${Math.round(data.eta)} minutes.` : 
+          'Your food is on the way!',
+        delivered: 'Your order has been delivered. Enjoy your meal!',
+        cancelled: data && data.reason ? 
+          `Your order has been cancelled. Reason: ${data.reason}` : 
+          'Your order has been cancelled.'
+      };
+      
+      return statusMessages[status] || 'Your order status has been updated.';
     };
     
     // Socket event listeners
@@ -247,17 +410,31 @@ export default {
       // Listen for order status updates
       store.subscribe((mutation, state) => {
         if (mutation.type === 'orderTracking/ADD_NOTIFICATION') {
-          // Show snackbar for new notifications
           const notification = mutation.payload;
           
-          if (notification && notification.type === 'order_status') {
+          // Show snackbar for order status updates
+          if (notification.type === 'order_status') {
             statusSnackbarTitle.value = notification.title;
             statusSnackbarMessage.value = notification.message;
-            statusSnackbarColor.value = getNotificationColor(notification.type);
+            statusSnackbarColor.value = getNotificationColor(notification.type, notification.status);
+            currentUpdatedOrder.value = { id: notification.orderId };
+            currentOrderStatus.value = notification.status;
+            currentDriverId.value = notification.driverId;
             showStatusSnackbar.value = true;
             
-            if (notification.orderId) {
-              currentUpdatedOrder.value = { id: notification.orderId };
+            // Request permission and show browser notification
+            if (Notification.permission === 'granted') {
+              const browserNotification = new Notification(notification.title, {
+                body: notification.message,
+                icon: '/icons/icon-192x192.png'
+              });
+              
+              browserNotification.onclick = () => {
+                window.focus();
+                router.push(`/orders/${notification.orderId}/tracking`);
+              };
+            } else if (Notification.permission !== 'denied') {
+              Notification.requestPermission();
             }
           }
         }
@@ -267,7 +444,10 @@ export default {
     // Lifecycle hooks
     onMounted(() => {
       setupEventListeners();
-      store.dispatch('orderTracking/loadNotifications');
+    });
+    
+    onBeforeUnmount(() => {
+      showStatusSnackbar.value = false;
     });
     
     return {
@@ -279,14 +459,18 @@ export default {
       statusSnackbarMessage,
       statusSnackbarColor,
       currentUpdatedOrder,
-      
+      currentOrderStatus,
+      currentDriverId,
+      showChatDialog,
+      showCallDialog,
+      selectedDriverId,
       formatTimeAgo,
       getNotificationColor,
       getNotificationIcon,
-      markAsRead,
       markAllAsRead,
       openNotification,
-      viewUpdatedOrder
+      viewUpdatedOrder,
+      contactDriver
     };
   }
 };
@@ -299,11 +483,14 @@ export default {
 }
 
 .unread {
-  background-color: var(--v-primary-lighten-5, rgba(25, 118, 210, 0.05));
+  background-color: var(--v-theme-surface-bright);
 }
 
-.v-list-item__prepend {
-  align-self: flex-start;
-  margin-top: 8px;
+.notification-actions {
+  margin-top: 4px;
+}
+
+.chat-container {
+  height: 400px;
 }
 </style>

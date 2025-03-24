@@ -249,6 +249,13 @@
           </div>
         </v-card-text>
       </template>
+      
+      <!-- Individual Item Reviews -->
+      <order-item-review 
+        v-if="review.itemRatings && review.itemRatings.length"
+        :review="review"
+        :products="orderItems"
+      ></order-item-review>
     </v-card>
     
     <!-- Restaurant Response Dialog -->
@@ -488,9 +495,14 @@
 import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { format } from 'date-fns';
+import OrderItemReview from './OrderItemReview.vue';
 
 export default {
   name: 'ReviewItem',
+  
+  components: {
+    OrderItemReview
+  },
   
   props: {
     review: {
@@ -587,6 +599,10 @@ export default {
         return imageDialog.value.images[imageDialog.value.currentIndex];
       }
       return '';
+    });
+    
+    const orderItems = computed(() => {
+      return props.review.order?.items || [];
     });
     
     // Methods
@@ -905,6 +921,7 @@ export default {
       isResponseValid,
       isEditResponseValid,
       currentImage,
+      orderItems,
       
       // Methods
       formatDate,

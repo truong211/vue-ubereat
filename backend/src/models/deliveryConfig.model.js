@@ -1,0 +1,84 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const Restaurant = require('./restaurant.model');
+
+/**
+ * DeliveryConfig Model
+ * Manages delivery settings like maximum distance and fees
+ */
+const DeliveryConfig = sequelize.define('DeliveryConfig', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  // If null, this is a global setting. If restaurantId is set, it's a restaurant-specific setting
+  restaurantId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: Restaurant,
+      key: 'id'
+    },
+    comment: 'When null, this is a global setting. When set, it is a restaurant-specific setting'
+  },
+  // Maximum delivery distance
+  maxDeliveryDistance: {
+    type: DataTypes.DECIMAL(5, 2),
+    allowNull: false,
+    defaultValue: 10.00,
+    comment: 'Maximum delivery distance in kilometers'
+  },
+  // Minimum order amount for delivery
+  minOrderAmountForDelivery: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 50000.00,
+    comment: 'Minimum order amount for delivery'
+  },
+  // Base delivery fee
+  baseDeliveryFee: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 15000.00,
+    comment: 'Base delivery fee applied to all orders'
+  },
+  // Whether to use distance-based fee calculation
+  useDistanceBasedFee: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'Whether to calculate delivery fee based on distance'
+  },
+  // Fee per kilometer (when useDistanceBasedFee is true)
+  feePerKilometer: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 5000.00,
+    comment: 'Additional fee per kilometer'
+  },
+  // Free delivery threshold
+  freeDeliveryThreshold: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Order amount threshold for free delivery. Null means no free delivery offered'
+  },
+  // Whether this config is active
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
+}, {
+  timestamps: true,
+  tableName: 'delivery_configs',
+  indexes: [
+    {
+      fields: ['restaurantId']
+    }
+  ]
+});
+
+// Define associations
+DeliveryConfig.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+Restaurant.hasOne(DeliveryConfig, { foreignKey: 'restaurantId', as: 'deliveryConfig' });
+
+module.exports = DeliveryConfig; 

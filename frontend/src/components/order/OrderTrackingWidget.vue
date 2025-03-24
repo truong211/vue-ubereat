@@ -35,63 +35,112 @@
               {{ formatTime(step.time) }}
             </span>
           </div>
+          
+          <!-- ETA for "On the Way" step -->
+          <div v-if="isCurrentStep(step, orderStatus) && step.id === 'on_the_way' && order?.estimatedDeliveryTime" class="mt-1">
+            <div class="d-flex align-center">
+              <v-icon size="x-small" color="primary" class="mr-1">mdi-clock-outline</v-icon>
+              <span class="text-caption">
+                ETA: {{ formatETA(order.estimatedDeliveryTime) }}
+              </span>
+            </div>
+          </div>
         </v-timeline-item>
       </v-timeline>
       
       <!-- Driver Info (when order is on the way) -->
-      <div v-if="orderStatus === 'on_the_way' && driverInfo" class="driver-info pa-3 pb-0">
-        <div class="d-flex align-center">
-          <v-avatar size="28" class="mr-2">
-            <v-img v-if="driverInfo.avatar" :src="driverInfo.avatar" alt="Driver"></v-img>
-            <v-icon v-else color="primary">mdi-account</v-icon>
-          </v-avatar>
-          <div>
-            <span class="text-body-2">{{ driverInfo.name }}</span>
-            <span v-if="driverInfo.eta" class="text-caption d-block">
-              <v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>
-              {{ driverInfo.eta }} min away
-            </span>
+      <div v-if="driverInfo && orderStatus === 'on_the_way'" class="driver-info pa-3 pt-0">
+        <v-card variant="outlined" class="mb-3">
+          <v-card-item>
+            <template v-slot:prepend>
+              <v-avatar color="primary" size="42">
+                <v-icon color="white">mdi-account</v-icon>
+              </v-avatar>
+            </template>
+            
+            <v-card-title>{{ driverInfo.name }}</v-card-title>
+            <v-card-subtitle>{{ driverInfo.vehicle || 'Delivery Vehicle' }}</v-card-subtitle>
+            
+            <template v-slot:append>
+              <div class="d-flex flex-column align-end justify-center text-caption">
+                <div>{{ driverInfo.rating }} ★</div>
+                <div>{{ driverInfo.totalDeliveries || 0 }} deliveries</div>
+              </div>
+            </template>
+          </v-card-item>
+          
+          <v-card-text class="d-flex justify-space-between pt-0">
+            <v-btn
+              prepend-icon="mdi-chat-outline"
+              variant="tonal"
+              color="primary"
+              size="small"
+              @click="onContactDriver('chat')"
+            >
+              Chat
+            </v-btn>
+            
+            <v-btn
+              prepend-icon="mdi-phone"
+              variant="tonal"
+              color="success"
+              size="small"
+              @click="onContactDriver('call')"
+            >
+              Call
+            </v-btn>
+          </v-card-text>
+        </v-card>
+        
+        <!-- Real-time updates section -->
+        <v-alert
+          v-if="lastUpdate"
+          density="compact"
+          type="info"
+          variant="tonal"
+          class="mb-3"
+          border="start"
+        >
+          <div class="d-flex justify-space-between align-center">
+            <div>
+              <div class="text-body-2 font-weight-medium">Latest Update</div>
+              <div class="text-caption">{{ lastUpdate }}</div>
+            </div>
+            <div class="text-caption text-medium-emphasis">
+              {{ formatTimeAgo(order?.lastUpdatedAt) }}
+            </div>
           </div>
-        </div>
+        </v-alert>
       </div>
       
-      <!-- Connection Status -->
-      <div v-if="showConnectionStatus && trackingStatus !== 'active'" class="connection-status px-3 pb-3">
-        <v-alert
-          :type="trackingStatus === 'connecting' ? 'warning' : 'error'"
-          variant="tonal"
-          density="compact"
-          class="mb-0 mt-2"
-        >
-          {{ 
-            trackingStatus === 'connecting' 
-              ? 'Connecting to tracking service...' 
-              : 'Connection lost. Live updates paused.' 
-          }}
-          <template v-if="trackingStatus === 'error'" v-slot:append>
-            <v-btn
-              size="small"
-              color="error"
-              variant="text"
-              @click="retryConnection"
-            >
-              Retry
-            </v-btn>
-          </template>
-        </v-alert>
+      <!-- Connection Status (if enabled) -->
+      <div v-if="showConnectionStatus && orderStatus !== 'delivered' && orderStatus !== 'cancelled'" class="px-3 pb-3">
+        <div class="d-flex align-center">
+          <v-icon
+            size="small"
+            :color="isConnected ? 'success' : 'warning'"
+            class="mr-2"
+          >
+            {{ isConnected ? 'mdi-wifi' : 'mdi-wifi-strength-1-alert' }}
+          </v-icon>
+          <span class="text-caption text-medium-emphasis">
+            {{ isConnected ? 'Receiving live updates' : 'Reconnecting...' }}
+          </span>
+        </div>
       </div>
     </v-card-text>
     
-    <!-- Actions -->
+    <!-- Tracking Details Button -->
+    <v-divider></v-divider>
+    
     <v-card-actions>
-      <v-spacer></v-spacer>
-      <v-btn 
-        variant="text" 
-        color="primary" 
-        :to="`/order-tracking/${orderId}`"
-        prepend-icon="mdi-map-marker-path"
+      <v-btn
+        block
+        variant="text"
+        color="primary"
+        :to="`/orders/${orderId}/tracking`"
       >
-        Live Tracking
+        Detailed Tracking View
       </v-btn>
     </v-card-actions>
   </v-card>
@@ -115,7 +164,9 @@ export default {
     }
   },
   
-  setup(props) {
+  emits: ['contact-driver'],
+  
+  setup(props, { emit }) {
     const store = useStore();
     const isLoading = ref(true);
     
@@ -161,6 +212,31 @@ export default {
     
     // Get tracking status
     const trackingStatus = computed(() => store.state.orderTracking.trackingStatus);
+    
+    // Check if connected
+    const isConnected = computed(() => 
+      trackingStatus.value === 'connected' || trackingStatus.value === 'tracking'
+    );
+    
+    // Get latest update message
+    const lastUpdate = computed(() => {
+      if (!order.value || !order.value.status) return null;
+      
+      const statusMessages = {
+        preparing: 'The restaurant is preparing your food',
+        ready: 'Your order is ready for pickup',
+        on_the_way: order.value.estimatedDeliveryTime ? 
+          `Arriving in approximately ${formatETA(order.value.estimatedDeliveryTime)}` : 
+          'Your driver is on the way'
+      };
+      
+      // If we have a custom message in the updates, use that instead
+      if (order.value.updates && order.value.updates.length > 0) {
+        return order.value.updates[order.value.updates.length - 1].message;
+      }
+      
+      return statusMessages[order.value.status] || null;
+    });
     
     // Create order steps
     const orderSteps = computed(() => [
@@ -236,9 +312,49 @@ export default {
       });
     };
     
-    // Step status helpers
+    const formatETA = (minutes) => {
+      if (!minutes) return 'unknown time';
+      
+      if (minutes < 1) return 'less than a minute';
+      
+      const roundedMinutes = Math.round(minutes);
+      return `${roundedMinutes} ${roundedMinutes === 1 ? 'minute' : 'minutes'}`;
+    };
+    
+    const formatTimeAgo = (timestamp) => {
+      if (!timestamp) return '';
+      
+      const now = new Date();
+      const date = new Date(timestamp);
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      
+      const diffHours = Math.floor(diffMins / 60);
+      return `${diffHours}h ago`;
+    };
+    
+    const getCurrentStepColor = (step, currentStatus) => {
+      // If order is cancelled, everything should be grey
+      if (currentStatus === 'cancelled') {
+        return 'grey';
+      }
+      
+      const statusOrder = ['placed', 'confirmed', 'preparing', 'ready', 'on_the_way', 'delivered'];
+      const stepIndex = statusOrder.indexOf(step.id);
+      const currentIndex = statusOrder.indexOf(currentStatus);
+      
+      if (stepIndex === currentIndex) return 'primary';
+      if (stepIndex < currentIndex) return 'success';
+      return 'grey';
+    };
+    
     const isStepCompleted = (step, currentStatus) => {
-      const statusOrder = ['pending', 'confirmed', 'preparing', 'ready', 'on_the_way', 'delivered'];
+      if (currentStatus === 'cancelled') return false;
+      
+      const statusOrder = ['placed', 'confirmed', 'preparing', 'ready', 'on_the_way', 'delivered'];
       const stepIndex = statusOrder.indexOf(step.id);
       const currentIndex = statusOrder.indexOf(currentStatus);
       
@@ -249,30 +365,47 @@ export default {
       return step.id === currentStatus;
     };
     
-    const getCurrentStepColor = (step, currentStatus) => {
-      if (currentStatus === 'cancelled') {
-        return isStepCompleted(step, currentStatus) ? 'grey' : 'grey-lighten-2';
-      }
+    // Handle driver contact
+    const onContactDriver = (method) => {
+      if (!driverInfo.value) return;
       
-      if (step.id === 'delivered' && currentStatus === 'delivered') {
-        return 'success';
-      }
+      emit('contact-driver', {
+        driverId: driverInfo.value.id,
+        orderId: props.orderId,
+        method
+      });
       
-      return isStepCompleted(step, currentStatus) ? 'primary' : 'grey-lighten-2';
+      // Also dispatch to global event bus via store
+      store.dispatch('orderTracking/contactDriver', {
+        driverId: driverInfo.value.id,
+        orderId: props.orderId,
+        method
+      });
     };
     
-    // Connection management
-    const retryConnection = () => {
-      store.dispatch('orderTracking/retryConnection');
-    };
-    
-    // Lifecycle
+    // Setup and cleanup
     onMounted(() => {
       fetchOrderData();
+      
+      // Refresh order data periodically
+      const refreshInterval = setInterval(() => {
+        if (['delivered', 'cancelled'].includes(orderStatus.value)) {
+          clearInterval(refreshInterval);
+        } else {
+          fetchOrderData();
+        }
+      }, 60000); // Refresh every minute
+      
+      return () => {
+        clearInterval(refreshInterval);
+      };
     });
     
-    onUnmounted(() => {
-      // Don't stop tracking on unmount, as other components may need it
+    // Watch for order status changes to start/stop tracking
+    watch(() => orderStatus.value, (newStatus) => {
+      if (['delivered', 'cancelled'].includes(newStatus)) {
+        store.dispatch('orderTracking/stopTracking', props.orderId);
+      }
     });
     
     return {
@@ -280,15 +413,18 @@ export default {
       order,
       orderStatus,
       driverInfo,
-      trackingStatus,
+      isConnected,
       orderSteps,
+      lastUpdate,
       getStatusColor,
       getStatusText,
       formatTime,
+      formatETA,
+      formatTimeAgo,
+      getCurrentStepColor,
       isStepCompleted,
       isCurrentStep,
-      getCurrentStepColor,
-      retryConnection
+      onContactDriver
     };
   }
 };
@@ -296,17 +432,11 @@ export default {
 
 <style scoped>
 .order-tracking-widget {
-  max-width: 100%;
-}
-
-.connection-status {
-  font-size: 0.875rem;
+  width: 100%;
+  overflow: hidden;
 }
 
 .driver-info {
-  background-color: #f5f5f5;
-  border-radius: 4px;
-  margin: 0 12px;
-  padding: 8px 12px;
+  border-top: 1px solid var(--v-border-opacity-var, rgba(0, 0, 0, 0.12));
 }
 </style> 

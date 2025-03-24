@@ -16,6 +16,7 @@ import restaurantOrders from './modules/restaurantOrders'
 import analytics from './modules/analytics'
 import users from './modules/users'
 import disputes from './modules/disputes'
+import favorites from './modules/favorites'
 
 // Create a new store instance.
 export default createStore({
@@ -161,6 +162,7 @@ export default createStore({
     restaurantOrders,
     analytics,
     users,
-    disputes
+    disputes,
+    favorites
   }
 })

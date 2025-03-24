@@ -67,9 +67,40 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  // New fields for social login
+  isPhoneVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  // Email verification with OTP
+  emailVerificationOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  emailVerificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  // Phone verification with OTP
+  phoneVerificationOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  phoneVerificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  // Password reset with OTP
+  resetPasswordOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  resetPasswordExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  // Social login fields
   socialProvider: {
-    type: DataTypes.ENUM('local', 'google', 'facebook'),
+    type: DataTypes.ENUM('local', 'google', 'facebook', 'apple'),
     defaultValue: 'local'
   },
   socialId: {
@@ -80,6 +111,7 @@ const User = sequelize.define('User', {
     type: DataTypes.TEXT,
     allowNull: true
   },
+  // Legacy verification fields
   verificationToken: {
     type: DataTypes.STRING(255),
     allowNull: true
@@ -95,6 +127,31 @@ const User = sequelize.define('User', {
   resetPasswordExpires: {
     type: DataTypes.DATE,
     allowNull: true
+  },
+  // User preferences
+  preferredLanguage: {
+    type: DataTypes.STRING(10),
+    defaultValue: 'vi'
+  },
+  notificationPreferences: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: {
+      email: true,
+      push: true,
+      sms: false
+    }
+  },
+  // Favorite restaurants and dishes (stored as JSON arrays of IDs)
+  favoriteRestaurants: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  favoriteDishes: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
   }
 }, {
   timestamps: true,
@@ -126,6 +183,9 @@ User.prototype.toJSON = function() {
   delete values.socialToken;
   delete values.verificationToken;
   delete values.resetPasswordToken;
+  delete values.emailVerificationOtp;
+  delete values.phoneVerificationOtp;
+  delete values.resetPasswordOtp;
   return values;
 };
 

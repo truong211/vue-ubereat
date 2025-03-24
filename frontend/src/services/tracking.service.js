@@ -7,6 +7,7 @@ class TrackingService {
   constructor() {
     this.socket = null;
     this.trackingInterval = null;
+    this.etaUpdateInterval = null;
     this.connected = false;
     this.apiUrl = config.apiUrl;
     this.reconnectAttempts = 0;
@@ -164,6 +165,11 @@ class TrackingService {
         data: initialData
       });
 
+      // Start continuous ETA updates for active deliveries
+      if (initialData.status === 'on_the_way' && initialData.driverLocation) {
+        this.startContinuousEtaUpdates(orderId);
+      }
+
       return initialData;
     } catch (error) {
       console.error('Error starting order tracking:', error);
@@ -184,6 +190,9 @@ class TrackingService {
     if (this.socket && this.connected) {
       this.socket.emit('leave_order_room', { orderId });
     }
+
+    // Stop continuous ETA updates
+    this.stopContinuousEtaUpdates();
 
     // Remove order from tracking set
     this.trackingOrders.delete(orderId);
@@ -295,6 +304,46 @@ class TrackingService {
     ];
 
     return trackableStatuses.includes(order.status);
+  }
+
+  /**
+   * Start continuous ETA updates
+   * @param {String} orderId - The order ID to update ETA for
+   */
+  startContinuousEtaUpdates(orderId) {
+    // Clear any existing interval
+    this.stopContinuousEtaUpdates();
+    
+    // Set interval to update ETA every 30 seconds
+    this.etaUpdateInterval = setInterval(async () => {
+      try {
+        const etaData = await this.getEstimatedDeliveryTime(orderId);
+        
+        // Update store with new ETA
+        store.commit('tracking/UPDATE_ORDER_ETA', {
+          orderId,
+          eta: etaData.estimatedTime,
+          trafficConditions: etaData.trafficConditions
+        });
+        
+        // Trigger callback if registered
+        if (this.callbacks.onEtaUpdate) {
+          this.callbacks.onEtaUpdate(etaData);
+        }
+      } catch (error) {
+        console.error('Error updating ETA:', error);
+      }
+    }, 30000); // Update every 30 seconds
+  }
+
+  /**
+   * Stop continuous ETA updates
+   */
+  stopContinuousEtaUpdates() {
+    if (this.etaUpdateInterval) {
+      clearInterval(this.etaUpdateInterval);
+      this.etaUpdateInterval = null;
+    }
   }
 }
 

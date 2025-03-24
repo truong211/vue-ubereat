@@ -19,6 +19,17 @@
           <span class="text-h5 font-weight-bold primary--text">UberEat</span>
         </router-link>
 
+        <!-- Quick Search Button -->
+        <v-btn
+          to="/search"
+          icon
+          variant="text"
+          class="ml-4"
+          title="Search"
+        >
+          <v-icon>mdi-magnify</v-icon>
+        </v-btn>
+
         <v-spacer></v-spacer>
 
         <!-- Desktop Navigation -->
@@ -424,6 +435,7 @@ export default {
       navigationItems: [
         { title: 'Home', to: '/' },
         { title: 'Restaurants', to: '/restaurants' },
+        { title: 'Search', to: '/search' },
         { title: 'Promotions', to: '/promotions' },
         { title: 'About Us', to: '/about' },
         { title: 'Contact', to: '/contact' }
@@ -432,10 +444,10 @@ export default {
       userMenuItems: [
         { title: 'My Profile', to: '/profile', icon: 'mdi-account' },
         { title: 'My Orders', to: '/orders', icon: 'mdi-receipt' },
+        { title: 'Favorites', to: '/profile/favorites', icon: 'mdi-heart' },
         { title: 'Notifications', to: '/profile/notifications', icon: 'mdi-bell-outline' },
-        { title: 'Favorites', to: '/favorites', icon: 'mdi-heart' },
-        { title: 'Addresses', to: '/addresses', icon: 'mdi-map-marker' },
-        { title: 'Payment Methods', to: '/payment-methods', icon: 'mdi-credit-card' }
+        { title: 'Addresses', to: '/profile/addresses', icon: 'mdi-map-marker' },
+        { title: 'Payment Methods', to: '/profile/payment-methods', icon: 'mdi-credit-card' }
       ],
       
       socialLinks: [
@@ -448,6 +460,7 @@ export default {
       quickLinks: [
         { title: 'Home', to: '/' },
         { title: 'Restaurants', to: '/restaurants' },
+        { title: 'Search', to: '/search' },
         { title: 'Promotions', to: '/promotions' },
         { title: 'About Us', to: '/about' },
         { title: 'Contact', to: '/contact' },

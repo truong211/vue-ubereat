@@ -1,4 +1,4 @@
-const { Review, Restaurant, User, OrderItem, ReviewVote, ReviewReport } = require('../models');
+const { Review, Restaurant, User, OrderItem, ReviewVote, ReviewReport, ItemRating, Product } = require('../models');
 const { Op } = require('sequelize');
 const NotificationService = require('./notification.service');
 
@@ -7,7 +7,7 @@ class ReviewService {
    * Create a new review
    */
   async createReview(data, userId) {
-    const { restaurantId, orderId, rating, comment, images = [], orderItemIds = [] } = data;
+    const { restaurantId, orderId, rating, comment, images = [], itemRatings = [] } = data;
 
     const review = await Review.create({
       userId,
@@ -20,20 +20,35 @@ class ReviewService {
       moderationStatus: this.shouldRequireModeration(data) ? 'pending' : 'approved'
     });
 
-    // Associate order items if provided
-    if (orderItemIds.length > 0) {
-      await ReviewOrderItem.bulkCreate(
-        orderItemIds.map(itemId => ({
-          reviewId: review.id,
-          orderItemId: itemId
-        }))
-      );
+    // Add item-specific ratings if provided
+    if (itemRatings && itemRatings.length > 0) {
+      await this.addItemRatings(review.id, itemRatings);
     }
 
     // Send notification to restaurant owner
     await this.notifyRestaurantOwner(review);
 
     return review;
+  }
+
+  /**
+   * Add item-specific ratings
+   */
+  async addItemRatings(reviewId, itemRatings) {
+    // Create item ratings in bulk
+    await Promise.all(
+      itemRatings.map(async (item) => {
+        await ItemRating.create({
+          reviewId,
+          orderItemId: item.orderItemId,
+          productId: item.productId,
+          rating: item.rating,
+          comment: item.comment || null,
+          aspects: item.aspects || [],
+          images: item.images || []
+        });
+      })
+    );
   }
 
   /**
@@ -304,6 +319,39 @@ class ReviewService {
         count: parseInt(trend.count)
       }))
     };
+  }
+
+  /**
+   * Get item ratings for a review
+   */
+  async getItemRatings(reviewId) {
+    return await ItemRating.findAll({
+      where: { reviewId },
+      include: [
+        {
+          model: Product,
+          attributes: ['id', 'name', 'image_url']
+        }
+      ]
+    });
+  }
+
+  /**
+   * Get reviews with item ratings
+   */
+  async getReviewsWithItemRatings(options) {
+    const reviews = await Review.findAll(options);
+    
+    // Enrich reviews with item ratings
+    const reviewsWithItems = await Promise.all(
+      reviews.map(async (review) => {
+        const reviewObj = review.toJSON();
+        reviewObj.itemRatings = await this.getItemRatings(review.id);
+        return reviewObj;
+      })
+    );
+    
+    return reviewsWithItems;
   }
 
   /**

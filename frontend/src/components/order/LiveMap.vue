@@ -12,6 +12,16 @@
         <span>ETA: {{ formatETA(eta) }}</span>
       </div>
     </div>
+    
+    <!-- Traffic conditions indicator -->
+    <div v-if="trafficConditions" class="map-traffic pa-2">
+      <div class="d-flex align-center">
+        <v-icon :color="getTrafficColor(trafficConditions)" size="small" class="mr-2">
+          {{ getTrafficIcon(trafficConditions) }}
+        </v-icon>
+        <span>Traffic: {{ trafficConditions }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -51,10 +61,14 @@ export default {
     pathPoints: {
       type: Array,
       default: () => []
+    },
+    trafficConditions: {
+      type: String,
+      default: null
     }
   },
   
-  setup(props) {
+  setup(props, { emit }) {
     const mapContainer = ref(null);
     const map = ref(null);
     const isLoading = ref(true);
@@ -64,11 +78,32 @@ export default {
       driver: null
     });
     const routePath = ref(null);
+    const driverHistory = ref([]);
+    const driverHistoryPath = ref(null);
     
     // Format ETA in minutes
     const formatETA = (minutes) => {
       if (minutes < 1) return 'Less than a minute';
-      return `${Math.round(minutes)} ${minutes === 1 ? 'minute' : 'minutes'}`;
+      return `${Math.round(minutes)} ${Math.round(minutes) === 1 ? 'minute' : 'minutes'}`;
+    };
+    
+    // Traffic condition helpers
+    const getTrafficColor = (condition) => {
+      const colors = {
+        'light': 'success',
+        'moderate': 'warning',
+        'heavy': 'error'
+      };
+      return colors[condition?.toLowerCase()] || 'grey';
+    };
+    
+    const getTrafficIcon = (condition) => {
+      const icons = {
+        'light': 'mdi-car-cruise-control',
+        'moderate': 'mdi-car',
+        'heavy': 'mdi-car-brake-alert'
+      };
+      return icons[condition?.toLowerCase()] || 'mdi-car';
     };
     
     // Initialize map
@@ -106,6 +141,7 @@ export default {
       }
       
       isLoading.value = false;
+      emit('map-ready');
     };
     
     // Add restaurant and customer markers
@@ -149,9 +185,17 @@ export default {
     const addDriverMarker = () => {
       if (!props.driverLocation) return;
       
+      // Add current position to history
+      driverHistory.value.push([props.driverLocation.lat, props.driverLocation.lng]);
+      
+      // Limit history length
+      if (driverHistory.value.length > 20) {
+        driverHistory.value.shift();
+      }
+      
       // Create driver icon
       const driverIcon = L.divIcon({
-        html: `<div class="custom-marker driver-marker">
+        html: `<div class="custom-marker driver-marker pulse">
                 <v-icon color="red">mdi-bike</v-icon>
                </div>`,
         className: 'custom-marker-container',
@@ -159,9 +203,25 @@ export default {
         iconAnchor: [20, 40]
       });
       
-      // If driver marker exists, update its position
+      // If driver marker exists, update its position with animation
       if (markers.value.driver) {
-        markers.value.driver.setLatLng([props.driverLocation.lat, props.driverLocation.lng]);
+        const newLatLng = [props.driverLocation.lat, props.driverLocation.lng];
+        markers.value.driver.setLatLng(newLatLng);
+        
+        // Update driver's history path
+        if (driverHistory.value.length > 1) {
+          if (driverHistoryPath.value) {
+            map.value.removeLayer(driverHistoryPath.value);
+          }
+          
+          driverHistoryPath.value = L.polyline(driverHistory.value, {
+            color: '#FF6B6B',
+            weight: 3,
+            opacity: 0.6,
+            dashArray: '5, 10',
+            lineJoin: 'round'
+          }).addTo(map.value);
+        }
       } 
       // Otherwise create a new marker
       else {
@@ -198,17 +258,44 @@ export default {
         map.value.removeLayer(routePath.value);
       }
       
-      // Draw the path
+      // Draw the path with styled appearance
       routePath.value = L.polyline(routePoints, {
         color: '#007BFF',
         weight: 4,
-        opacity: 0.7,
-        lineJoin: 'round'
+        opacity: 0.8,
+        lineJoin: 'round',
+        lineCap: 'round'
+      }).addTo(map.value);
+      
+      // Add direction arrows
+      const arrowDecorator = L.polylineDecorator(routePath.value, {
+        patterns: [
+          {
+            offset: '5%',
+            repeat: '10%',
+            symbol: L.Symbol.arrowHead({
+              pixelSize: 10,
+              polygon: false,
+              pathOptions: {
+                color: '#007BFF',
+                fillOpacity: 1,
+                weight: 2
+              }
+            })
+          }
+        ]
       }).addTo(map.value);
       
       // Fit map to show the entire route
       const bounds = L.latLngBounds(routePoints);
       map.value.fitBounds(bounds, { padding: [50, 50] });
+    };
+    
+    // Center map on driver
+    const centerOnDriver = () => {
+      if (props.driverLocation && map.value) {
+        map.value.setView([props.driverLocation.lat, props.driverLocation.lng], 15);
+      }
     };
     
     // Lifecycle hooks
@@ -234,7 +321,10 @@ export default {
     return {
       mapContainer,
       isLoading,
-      formatETA
+      formatETA,
+      getTrafficColor,
+      getTrafficIcon,
+      centerOnDriver
     };
   }
 };
@@ -249,30 +339,64 @@ export default {
 
 .map-container {
   width: 100%;
-  border-radius: 8px;
+  height: 100%;
+  z-index: 1;
 }
 
 .map-loader {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
-  background: rgba(255, 255, 255, 0.8);
-  padding: 16px;
-  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 10;
 }
 
 .map-eta {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  background: white;
+  bottom: 10px;
+  right: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
   border-radius: 4px;
+  font-weight: 500;
+  z-index: 5;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  z-index: 1000;
+}
+
+.map-traffic {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  font-weight: 500;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Pulse animation for driver marker */
+.pulse {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* Ensuring the map displays correctly */

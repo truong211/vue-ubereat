@@ -21,6 +21,13 @@ const MarketingContent = require('./marketingContent.model');
 const FAQ = require('./faq.model');
 const Notification = require('./notification.model');
 const NotificationTracking = require('./notificationTracking.model');
+const Loyalty = require('./Loyalty');
+const LoyaltyReward = require('./LoyaltyReward');
+const LoyaltyRedemption = require('./LoyaltyRedemption');
+const ReviewResponse = require('./ReviewResponse');
+const StaffPermission = require('./staffPermission.model');
+const DeliveryConfig = require('./deliveryConfig.model');
+const DeliveryFeeTier = require('./deliveryFeeTier.model');
 
 // Define relationships
 User.hasMany(UserActivityLog, { foreignKey: 'userId' });
@@ -38,6 +45,46 @@ NotificationTracking.belongsTo(User, { foreignKey: 'userId' });
 
 Notification.hasMany(NotificationTracking, { foreignKey: 'notificationId' });
 NotificationTracking.belongsTo(Notification, { foreignKey: 'notificationId' });
+
+// Add loyalty relationships
+User.hasMany(Loyalty, { foreignKey: 'userId' });
+Loyalty.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Restaurant.hasMany(Loyalty, { foreignKey: 'restaurantId' });
+Loyalty.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+
+Restaurant.hasMany(LoyaltyReward, { foreignKey: 'restaurantId' });
+LoyaltyReward.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+
+LoyaltyReward.hasMany(LoyaltyRedemption, { foreignKey: 'rewardId' });
+LoyaltyRedemption.belongsTo(LoyaltyReward, { foreignKey: 'rewardId', as: 'reward' });
+
+User.hasMany(LoyaltyRedemption, { foreignKey: 'userId' });
+LoyaltyRedemption.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Order.hasMany(LoyaltyRedemption, { foreignKey: 'orderId' });
+LoyaltyRedemption.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
+
+// Add review response relationships
+Review.hasOne(ReviewResponse, { foreignKey: 'reviewId' });
+ReviewResponse.belongsTo(Review, { foreignKey: 'reviewId', as: 'review' });
+
+Restaurant.hasMany(ReviewResponse, { foreignKey: 'restaurantId' });
+ReviewResponse.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+
+User.hasMany(ReviewResponse, { foreignKey: 'respondedBy' });
+ReviewResponse.belongsTo(User, { foreignKey: 'respondedBy', as: 'responder' });
+
+// Add staff permission relationships
+User.hasOne(StaffPermission, { foreignKey: 'userId', as: 'permissions' });
+StaffPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Add delivery config relationships
+Restaurant.hasOne(DeliveryConfig, { foreignKey: 'restaurantId', as: 'deliveryConfig' });
+DeliveryConfig.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+
+DeliveryConfig.hasMany(DeliveryFeeTier, { foreignKey: 'deliveryConfigId', as: 'feeTiers' });
+DeliveryFeeTier.belongsTo(DeliveryConfig, { foreignKey: 'deliveryConfigId', as: 'deliveryConfig' });
 
 module.exports = {
   User,
@@ -62,5 +109,12 @@ module.exports = {
   MarketingContent,
   FAQ,
   Notification,
-  NotificationTracking
+  NotificationTracking,
+  Loyalty,
+  LoyaltyReward,
+  LoyaltyRedemption,
+  ReviewResponse,
+  StaffPermission,
+  DeliveryConfig,
+  DeliveryFeeTier
 };

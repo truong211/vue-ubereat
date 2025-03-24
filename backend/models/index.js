@@ -19,6 +19,14 @@ if (config.use_env_variable) {
 db.Article = require('./article.model')(sequelize, Sequelize.DataTypes);
 db.Banner = require('./banner.model')(sequelize, Sequelize.DataTypes);
 db.Notification = require('./notification.model')(sequelize, Sequelize.DataTypes);
+db.Promotion = require('./promotion.model')(sequelize, Sequelize.DataTypes);
+db.ReviewResponse = require('./reviewResponse.model')(sequelize, Sequelize.DataTypes);
+
+// Import loyalty models (multiple models in one file)
+const loyaltyModels = require('./loyalty.model')(sequelize, Sequelize.DataTypes);
+db.Loyalty = loyaltyModels.Loyalty;
+db.LoyaltyReward = loyaltyModels.LoyaltyReward;
+db.LoyaltyRedemption = loyaltyModels.LoyaltyRedemption;
 
 // Import other models dynamically (if they exist)
 fs.readdirSync(__dirname)
@@ -29,7 +37,10 @@ fs.readdirSync(__dirname)
       file.slice(-9) === '.model.js' &&
       file !== 'article.model.js' &&
       file !== 'banner.model.js' &&
-      file !== 'notification.model.js'
+      file !== 'notification.model.js' &&
+      file !== 'promotion.model.js' &&
+      file !== 'reviewResponse.model.js' &&
+      file !== 'loyalty.model.js'
     );
   })
   .forEach(file => {

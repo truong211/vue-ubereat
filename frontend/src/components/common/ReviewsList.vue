@@ -151,37 +151,31 @@
               {{ review.comment }}
             </v-list-item-text>
 
-            <!-- Voting and actions -->
-            <div class="d-flex align-center">
-              <div class="d-flex align-center">
-                <v-btn
-                  variant="text"
-                  density="comfortable"
-                  :color="review.userLiked ? 'success' : undefined"
-                  prepend-icon="mdi-thumb-up"
-                  @click="likeReview(review)"
-                >
-                  {{ review.likes || 0 }}
-                </v-btn>
-                <v-btn
-                  variant="text"
-                  density="comfortable"
-                  :color="review.userDisliked ? 'error' : undefined"
-                  prepend-icon="mdi-thumb-down"
-                  @click="dislikeReview(review)"
-                >
-                  {{ review.dislikes || 0 }}
-                </v-btn>
-              </div>
-              
-              <v-spacer></v-spacer>
-              
-              <report-review
-                v-if="review.id"
-                :review-id="review.id"
-                :item-type="itemType"
-                :item-id="itemId"
-              />
+            <!-- Review Actions -->
+            <div class="review-actions flex items-center space-x-4 text-sm">
+              <button
+                @click="handleVote(review.id, true)"
+                :class="{
+                  'text-primary': review.userLiked,
+                  'text-gray-500': !review.userLiked
+                }"
+                class="flex items-center space-x-1 hover:text-primary"
+              >
+                <i class="fas fa-thumbs-up"></i>
+                <span>{{ review.helpfulVotes || 0 }}</span>
+              </button>
+
+              <button
+                @click="handleVote(review.id, false)"
+                :class="{
+                  'text-primary': review.userDisliked,
+                  'text-gray-500': !review.userDisliked
+                }"
+                class="flex items-center space-x-1 hover:text-primary"
+              >
+                <i class="fas fa-thumbs-down"></i>
+                <span>{{ review.unhelpfulVotes || 0 }}</span>
+              </button>
             </div>
 
             <!-- Restaurant response -->
@@ -192,6 +186,14 @@
               :response="review.restaurantResponse"
               class="mt-3"
               @response-updated="handleResponseUpdate"
+            />
+
+            <!-- Individual Item Ratings -->
+            <order-item-review 
+              v-if="review.itemRatings && review.itemRatings.length"
+              :review="review" 
+              :products="getOrderProducts(review)"
+              class="mt-3"
             />
           </v-list-item>
           
@@ -225,6 +227,7 @@ import { useI18n } from 'vue-i18n'
 import { useStore } from 'vuex'
 import RestaurantResponse from '../review/RestaurantResponse.vue'
 import ReportReview from '../review/ReportReview.vue'
+import OrderItemReview from '../review/OrderItemReview.vue'
 
 interface Review {
   id: string
@@ -239,6 +242,8 @@ interface Review {
   userLiked?: boolean
   userDisliked?: boolean
   restaurantResponse?: any
+  itemRatings?: any[]
+  order?: any
 }
 
 interface UserReview {
@@ -257,7 +262,8 @@ export default defineComponent({
 
   components: {
     RestaurantResponse,
-    ReportReview
+    ReportReview,
+    OrderItemReview
   },
 
   props: {
@@ -426,7 +432,7 @@ export default defineComponent({
       }
     }
 
-    const handleVote = async (review: Review, type: 'like' | 'dislike') => {
+    const handleVote = async (reviewId: string, type: boolean) => {
       if (!store.getters.isAuthenticated) {
         store.dispatch('auth/showLoginPrompt')
         return
@@ -434,47 +440,48 @@ export default defineComponent({
     
       try {
         await store.dispatch('reviews/voteReview', {
-          reviewId: review.id,
+          reviewId: reviewId,
           itemType: props.itemType,
           itemId: props.itemId,
-          voteType: type
+          voteType: type ? 'like' : 'dislike'
         })
     
         // Optimistic update
-        const isPositive = type === 'like'
-        const wasOppositeVote = isPositive ? review.userDisliked : review.userLiked
-        
-        if (isPositive) {
-          review.userLiked = !review.userLiked
-          review.likes = (review.likes || 0) + (review.userLiked ? 1 : -1)
-          if (wasOppositeVote) {
-            review.userDisliked = false
-            review.dislikes = Math.max(0, (review.dislikes || 0) - 1)
-          }
-        } else {
-          review.userDisliked = !review.userDisliked
-          review.dislikes = (review.dislikes || 0) + (review.userDisliked ? 1 : -1)
-          if (wasOppositeVote) {
-            review.userLiked = false
-            review.likes = Math.max(0, (review.likes || 0) - 1)
+        const review = props.reviews.find(r => r.id === reviewId)
+        if (review) {
+          if (type) {
+            review.userLiked = !review.userLiked
+            review.likes = (review.likes || 0) + (review.userLiked ? 1 : -1)
+            if (review.userDisliked) {
+              review.userDisliked = false
+              review.dislikes = Math.max(0, (review.dislikes || 0) - 1)
+            }
+          } else {
+            review.userDisliked = !review.userDisliked
+            review.dislikes = (review.dislikes || 0) + (review.userDisliked ? 1 : -1)
+            if (review.userLiked) {
+              review.userLiked = false
+              review.likes = Math.max(0, (review.likes || 0) - 1)
+            }
           }
         }
       } catch (error) {
-        console.error(`Failed to ${type} review:`, error)
+        console.error(`Failed to vote:`, error)
         store.dispatch('showNotification', {
           type: 'error',
           message: t('review.voteError')
         })
       }
     }
-    
-    // Replace existing likeReview and dislikeReview methods
-    const likeReview = (review: Review) => handleVote(review, 'like')
-    const dislikeReview = (review: Review) => handleVote(review, 'dislike')
 
     const handleResponseUpdate = (response: any) => {
       emit('response-updated', response)
     }
+
+    // Get order products for a review
+    const getOrderProducts = (review: Review) => {
+      return review.order?.items || [];
+    };
 
     // Reset page when filters change
     watch([
@@ -503,9 +510,9 @@ export default defineComponent({
       getRatingPercentage,
       formatDate,
       submitReview,
-      likeReview,
-      dislikeReview,
-      handleResponseUpdate
+      handleVote,
+      handleResponseUpdate,
+      getOrderProducts
     }
   }
 })

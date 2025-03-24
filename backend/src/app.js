@@ -32,6 +32,10 @@ const notificationRoutes = require('./routes/notification.routes');
 const menuRoutes = require('./routes/menu.routes');
 const articleRoutes = require('./routes/article.routes');
 const bannerRoutes = require('./routes/banner.routes');
+const addressRoutes = require('./routes/address.routes');
+const favoriteRoutes = require('./routes/favorite.routes');
+const loyaltyRoutes = require('./routes/loyalty.routes');
+const reviewResponseRoutes = require('./routes/review-response.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -103,6 +107,10 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/banners', bannerRoutes);
+app.use('/api/addresses', addressRoutes);
+app.use('/api/favorites', favoriteRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/review-responses', reviewResponseRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

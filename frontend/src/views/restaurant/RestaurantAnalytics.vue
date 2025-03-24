@@ -15,10 +15,10 @@
                   rounded="pill"
                   color="primary"
                 >
-                  <v-btn value="day">Day</v-btn>
-                  <v-btn value="week">Week</v-btn>
-                  <v-btn value="month">Month</v-btn>
-                  <v-btn value="year">Year</v-btn>
+                  <v-btn value="day">Ngày</v-btn>
+                  <v-btn value="week">Tuần</v-btn>
+                  <v-btn value="month">Tháng</v-btn>
+                  <v-btn value="year">Năm</v-btn>
                 </v-btn-toggle>
               </v-col>
               
@@ -27,8 +27,114 @@
                   prepend-icon="mdi-calendar"
                   @click="showDatePicker = true"
                 >
-                  Custom Range
+                  Tùy chỉnh
                 </v-btn>
+              </v-col>
+              
+              <v-col cols="12" sm="auto">
+                <v-btn
+                  color="primary"
+                  prepend-icon="mdi-file-download"
+                  @click="downloadReport"
+                >
+                  Xuất báo cáo
+                </v-btn>
+              </v-col>
+            </v-row>
+          </v-card-text>
+        </v-card>
+        
+        <!-- Revenue Report Section -->
+        <v-card class="mb-6">
+          <v-card-title class="d-flex justify-space-between align-center">
+            <span>Báo Cáo Doanh Thu</span>
+            <v-select
+              v-model="revenueGrouping"
+              :items="[
+                {text: 'Theo ngày', value: 'day'}, 
+                {text: 'Theo tuần', value: 'week'}, 
+                {text: 'Theo tháng', value: 'month'}
+              ]"
+              density="compact"
+              style="max-width: 150px"
+              hide-details
+            ></v-select>
+          </v-card-title>
+          
+          <v-card-text>
+            <v-row>
+              <!-- Revenue Summary Cards -->
+              <v-col cols="12" md="4">
+                <v-card variant="outlined">
+                  <v-card-text>
+                    <div class="text-overline">Tổng doanh thu</div>
+                    <div class="text-h4 mb-1">{{ formatCurrency(revenueData.total) }}</div>
+                    <div :class="['text-caption', revenueData.growth >= 0 ? 'text-success' : 'text-error']">
+                      <v-icon size="small">{{ revenueData.growth >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}</v-icon>
+                      {{ Math.abs(revenueData.growth) }}% so với kỳ trước
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              
+              <v-col cols="12" md="4">
+                <v-card variant="outlined">
+                  <v-card-text>
+                    <div class="text-overline">Số đơn hàng</div>
+                    <div class="text-h4 mb-1">{{ revenueData.orderCount }}</div>
+                    <div :class="['text-caption', revenueData.orderGrowth >= 0 ? 'text-success' : 'text-error']">
+                      <v-icon size="small">{{ revenueData.orderGrowth >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}</v-icon>
+                      {{ Math.abs(revenueData.orderGrowth) }}% so với kỳ trước
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              
+              <v-col cols="12" md="4">
+                <v-card variant="outlined">
+                  <v-card-text>
+                    <div class="text-overline">Giá trị trung bình</div>
+                    <div class="text-h4 mb-1">{{ formatCurrency(revenueData.avgOrder) }}</div>
+                    <div :class="['text-caption', revenueData.avgOrderGrowth >= 0 ? 'text-success' : 'text-error']">
+                      <v-icon size="small">{{ revenueData.avgOrderGrowth >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}</v-icon>
+                      {{ Math.abs(revenueData.avgOrderGrowth) }}% so với kỳ trước
+                    </div>
+                  </v-card-text>
+                </v-card>
+              </v-col>
+              
+              <!-- Revenue Chart -->
+              <v-col cols="12">
+                <v-chart class="chart" :option="revenueChartOption" autoresize />
+              </v-col>
+              
+              <!-- Revenue Breakdown Table -->
+              <v-col cols="12">
+                <div class="text-subtitle-1 mb-2">Chi tiết doanh thu</div>
+                <v-data-table
+                  :headers="revenueTableHeaders"
+                  :items="revenueTableData"
+                  :items-per-page="5"
+                  density="comfortable"
+                >
+                  <template v-slot:item.period="{ item }">
+                    <span>{{ item.period }}</span>
+                  </template>
+                  <template v-slot:item.revenue="{ item }">
+                    <span>{{ formatCurrency(item.revenue) }}</span>
+                  </template>
+                  <template v-slot:item.orderCount="{ item }">
+                    <span>{{ item.orderCount }}</span>
+                  </template>
+                  <template v-slot:item.avgOrderValue="{ item }">
+                    <span>{{ formatCurrency(item.avgOrderValue) }}</span>
+                  </template>
+                  <template v-slot:item.growth="{ item }">
+                    <span :class="item.growth >= 0 ? 'text-success' : 'text-error'">
+                      {{ item.growth >= 0 ? '+' : '' }}{{ item.growth }}%
+                    </span>
+                  </template>
+                </v-data-table>
               </v-col>
             </v-row>
           </v-card-text>
@@ -220,7 +326,8 @@
 <script>
 import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
-import { subDays } from 'date-fns';
+import { subDays, format, parseISO, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
+import { vi } from 'date-fns/locale';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import {
@@ -278,6 +385,29 @@ export default {
     const startDate = ref(subDays(new Date(), 7));
     const endDate = ref(new Date());
     const isLoading = ref(false);
+    const revenueGrouping = ref('day');
+    
+    // Revenue data
+    const revenueData = ref({
+      total: 85400000,
+      growth: 12.5,
+      orderCount: 256,
+      orderGrowth: 8.2,
+      avgOrder: 333594,
+      avgOrderGrowth: 4.3
+    });
+    
+    // Revenue table
+    const revenueTableHeaders = [
+      { title: 'Kỳ', key: 'period' },
+      { title: 'Doanh thu', key: 'revenue' },
+      { title: 'Số đơn', key: 'orderCount' },
+      { title: 'Trung bình/đơn', key: 'avgOrderValue' },
+      { title: 'Tăng trưởng', key: 'growth' }
+    ];
+    
+    const revenueTableData = ref([]);
+    
     const metrics = ref({
       revenue: 0,
       revenueTrend: 0,
@@ -329,8 +459,83 @@ export default {
         }
       ]
     }));
+    
+    // Revenue chart option
+    const revenueChartOption = computed(() => {
+      // Different x-axis labels based on the grouping
+      let xAxisData = [];
+      
+      switch(revenueGrouping.value) {
+        case 'day':
+          xAxisData = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+          break;
+        case 'week':
+          xAxisData = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'];
+          break;
+        case 'month':
+          xAxisData = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 
+                      'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+          break;
+      }
+      
+      // Generate some sample data
+      const generateSampleData = (base, variance) => {
+        return xAxisData.map(() => base + Math.floor(Math.random() * variance));
+      };
+      
+      return {
+        tooltip: {
+          trigger: 'axis',
+          formatter: function(params) {
+            const revenue = params[0].value;
+            const formattedRevenue = new Intl.NumberFormat('vi-VN', {
+              style: 'currency',
+              currency: 'VND'
+            }).format(revenue);
+            return `${params[0].name}: ${formattedRevenue}`;
+          }
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'category',
+          data: xAxisData
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: {
+            formatter: function(value) {
+              if (value >= 1000000) {
+                return (value / 1000000).toFixed(1) + 'M';
+              } else {
+                return (value / 1000).toFixed(0) + 'K';
+              }
+            }
+          }
+        },
+        series: [
+          {
+            name: 'Doanh thu',
+            type: 'bar',
+            data: generateSampleData(5000000, 7000000),
+            itemStyle: {
+              color: '#4CAF50'
+            },
+            emphasis: {
+              itemStyle: {
+                color: '#2E7D32'
+              }
+            }
+          }
+        ]
+      };
+    });
 
-    // Load data
+    // Methods
     const loadAnalytics = async () => {
       isLoading.value = true;
       try {
@@ -340,15 +545,65 @@ export default {
           endDate: endDate.value
         });
         metrics.value = { ...metrics.value, ...response };
+        
+        // Update revenue table data based on the current grouping
+        updateRevenueTableData();
       } catch (error) {
         console.error('Failed to load analytics:', error);
       } finally {
         isLoading.value = false;
       }
     };
+    
+    // Format currency in VND
+    const formatCurrency = (amount) => {
+      return new Intl.NumberFormat('vi-VN', {
+        style: 'currency',
+        currency: 'VND'
+      }).format(amount);
+    };
+    
+    // Generate sample data for the revenue table
+    const updateRevenueTableData = () => {
+      const result = [];
+      let periods;
+      
+      switch(revenueGrouping.value) {
+        case 'day':
+          periods = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+          break;
+        case 'week':
+          periods = ['Tuần 1', 'Tuần 2', 'Tuần 3', 'Tuần 4'];
+          break;
+        case 'month':
+          periods = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6'];
+          break;
+      }
+      
+      periods.forEach(period => {
+        const revenue = Math.floor(Math.random() * 50000000) + 5000000;
+        const orderCount = Math.floor(Math.random() * 100) + 10;
+        result.push({
+          period,
+          revenue,
+          orderCount,
+          avgOrderValue: Math.floor(revenue / orderCount),
+          growth: Math.floor(Math.random() * 30) - 10 // Range from -10% to +20%
+        });
+      });
+      
+      revenueTableData.value = result;
+    };
+    
+    // Download the current report
+    const downloadReport = () => {
+      // This would be implemented to generate a report in PDF or Excel format
+      alert(`Báo cáo ${revenueGrouping.value === 'day' ? 'theo ngày' : 
+           revenueGrouping.value === 'week' ? 'theo tuần' : 'theo tháng'} sẽ được tải xuống`);
+    };
 
     // Watch for date changes
-    watch([timeRange, dateRange], () => {
+    watch([timeRange, dateRange, revenueGrouping], () => {
       loadAnalytics();
     });
 
@@ -372,7 +627,14 @@ export default {
       dateRange,
       metrics,
       isLoading,
-      salesChartOption
+      salesChartOption,
+      revenueGrouping,
+      revenueData,
+      revenueChartOption,
+      revenueTableHeaders,
+      revenueTableData,
+      formatCurrency,
+      downloadReport
     };
   }
 };
