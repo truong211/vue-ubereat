@@ -1,215 +1,273 @@
-const { NotificationTracking, Notification, User } = require('../models');
-const { Op } = require('sequelize');
+const db = require('../config/database');
+const logger = require('../utils/logger');
 
+/**
+ * Service for tracking notification delivery and user interactions
+ */
 class NotificationTrackingService {
   /**
-   * Track notification delivery status
+   * Record that a notification was sent
+   * @param {Object} notification - The notification object
+   * @param {String} channel - Delivery channel (email, push, sms, in-app)
+   * @returns {Promise<Object>} Tracking record
    */
-  async trackDelivery(notificationId, userId, status, deviceInfo = {}, errorDetails = null) {
+  async trackSent(notification, channel) {
     try {
-      const tracking = await NotificationTracking.create({
-        notificationId,
-        userId,
-        deliveryStatus: status,
-        deviceInfo,
-        errorDetails,
-        deliveredAt: status === 'delivered' ? new Date() : null
-      });
+      const trackingData = {
+        notificationId: notification.id,
+        userId: notification.userId,
+        channel,
+        status: 'sent',
+        sentAt: new Date(),
+        metadata: JSON.stringify({
+          notificationType: notification.type,
+          title: notification.title
+        })
+      };
 
-      return tracking;
+      const result = await db.query(
+        'INSERT INTO notification_tracking SET ?',
+        [trackingData]
+      );
+
+      return {
+        id: result.insertId,
+        ...trackingData
+      };
     } catch (error) {
-      console.error('Error tracking notification delivery:', error);
-      throw error;
+      logger.error('Error tracking notification sent:', error);
+      return null;
     }
   }
 
   /**
-   * Track notification click
+   * Record that a notification was delivered
+   * @param {Number} trackingId - ID of the tracking record
+   * @param {Object} metadata - Additional metadata about delivery
+   * @returns {Promise<Boolean>} Success status
    */
-  async trackClick(notificationId, userId) {
+  async trackDelivered(trackingId, metadata = {}) {
     try {
-      const tracking = await NotificationTracking.findOne({
-        where: {
-          notificationId,
+      await db.query(
+        `UPDATE notification_tracking 
+         SET status = ?, deliveredAt = ?, metadata = JSON_MERGE_PATCH(metadata, ?)
+         WHERE id = ?`,
+        ['delivered', new Date(), JSON.stringify(metadata), trackingId]
+      );
+      return true;
+    } catch (error) {
+      logger.error('Error tracking notification delivered:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Record that a notification failed to deliver
+   * @param {Number} trackingId - ID of the tracking record
+   * @param {String} reason - Reason for failure
+   * @returns {Promise<Boolean>} Success status
+   */
+  async trackFailed(trackingId, reason) {
+    try {
+      await db.query(
+        `UPDATE notification_tracking 
+         SET status = ?, metadata = JSON_MERGE_PATCH(metadata, ?)
+         WHERE id = ?`,
+        [
+          'failed', 
+          JSON.stringify({ failureReason: reason, failedAt: new Date() }), 
+          trackingId
+        ]
+      );
+      return true;
+    } catch (error) {
+      logger.error('Error tracking notification failure:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Record that a user opened a notification
+   * @param {Number} notificationId - ID of the notification
+   * @param {Number} userId - ID of the user
+   * @returns {Promise<Boolean>} Success status
+   */
+  async trackOpened(notificationId, userId) {
+    try {
+      // First update notification itself
+      await db.query(
+        'UPDATE notifications SET isRead = true, readAt = ? WHERE id = ? AND userId = ?',
+        [new Date(), notificationId, userId]
+      );
+
+      // Then update tracking record(s)
+      await db.query(
+        `UPDATE notification_tracking 
+         SET status = ?, openedAt = ?, metadata = JSON_MERGE_PATCH(metadata, ?)
+         WHERE notificationId = ? AND userId = ?`,
+        [
+          'opened', 
+          new Date(), 
+          JSON.stringify({ event: 'opened' }), 
+          notificationId, 
           userId
-        }
-      });
-
-      if (tracking) {
-        await tracking.update({
-          deliveryStatus: 'clicked',
-          clickedAt: new Date()
-        });
-      } else {
-        await NotificationTracking.create({
-          notificationId,
-          userId,
-          deliveryStatus: 'clicked',
-          clickedAt: new Date()
-        });
-      }
+        ]
+      );
+      return true;
     } catch (error) {
-      console.error('Error tracking notification click:', error);
-      throw error;
+      logger.error('Error tracking notification opened:', error);
+      return false;
     }
   }
 
   /**
-   * Get notification delivery statistics
+   * Record that a user clicked/interacted with a notification
+   * @param {Number} notificationId - ID of the notification
+   * @param {Number} userId - ID of the user
+   * @param {String} action - The action taken (e.g., 'clicked', 'dismissed')
+   * @returns {Promise<Boolean>} Success status
    */
-  async getDeliveryStats(startDate = null, endDate = null) {
+  async trackInteraction(notificationId, userId, action) {
     try {
-      const where = {};
-      if (startDate && endDate) {
-        where.createdAt = {
-          [Op.between]: [startDate, endDate]
+      await db.query(
+        `UPDATE notification_tracking 
+         SET interactedAt = ?, metadata = JSON_MERGE_PATCH(metadata, ?)
+         WHERE notificationId = ? AND userId = ?`,
+        [
+          new Date(), 
+          JSON.stringify({ 
+            action, 
+            interactedAt: new Date() 
+          }), 
+          notificationId, 
+          userId
+        ]
+      );
+      return true;
+    } catch (error) {
+      logger.error('Error tracking notification interaction:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get delivery statistics for a specific notification
+   * @param {Number} notificationId - ID of the notification
+   * @returns {Promise<Object>} Delivery statistics
+   */
+  async getDeliveryStats(notificationId) {
+    try {
+      const stats = await db.query(`
+        SELECT 
+          status,
+          COUNT(*) as count
+        FROM 
+          notification_tracking
+        WHERE 
+          notificationId = ?
+        GROUP BY 
+          status
+      `, [notificationId]);
+
+      // Format the results into an easy-to-use object
+      const formatted = {
+        sent: 0,
+        delivered: 0,
+        opened: 0,
+        failed: 0
+      };
+
+      stats.forEach(stat => {
+        formatted[stat.status] = stat.count;
+      });
+
+      // Calculate open rate if we have deliveries
+      formatted.openRate = formatted.delivered > 0 
+        ? (formatted.opened / formatted.delivered) * 100 
+        : 0;
+
+      return formatted;
+    } catch (error) {
+      logger.error('Error getting notification delivery stats:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get user engagement metrics for notifications
+   * @param {Number} userId - User ID to get metrics for (optional)
+   * @param {Object} dateRange - Date range for metrics
+   * @returns {Promise<Object>} User engagement metrics
+   */
+  async getUserEngagementMetrics(userId = null, dateRange = {}) {
+    try {
+      let whereClause = '';
+      const params = [];
+
+      if (userId) {
+        whereClause += 'userId = ?';
+        params.push(userId);
+      }
+
+      if (dateRange.start) {
+        whereClause += whereClause ? ' AND ' : '';
+        whereClause += 'sentAt >= ?';
+        params.push(dateRange.start);
+      }
+
+      if (dateRange.end) {
+        whereClause += whereClause ? ' AND ' : '';
+        whereClause += 'sentAt <= ?';
+        params.push(dateRange.end);
+      }
+
+      // Build the final query
+      let query = `
+        SELECT 
+          COUNT(*) as totalSent,
+          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
+          SUM(CASE WHEN status = 'opened' THEN 1 ELSE 0 END) as opened,
+          SUM(CASE WHEN interactedAt IS NOT NULL THEN 1 ELSE 0 END) as interacted
+        FROM 
+          notification_tracking
+      `;
+
+      if (whereClause) {
+        query += ` WHERE ${whereClause}`;
+      }
+
+      const [results] = await db.query(query, params);
+
+      if (!results) {
+        return {
+          totalSent: 0,
+          delivered: 0,
+          opened: 0,
+          interacted: 0,
+          deliveryRate: 0,
+          openRate: 0,
+          interactionRate: 0
         };
       }
 
-      const stats = await NotificationTracking.findAll({
-        attributes: [
-          'deliveryStatus',
-          [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-        ],
-        where,
-        group: ['deliveryStatus']
-      });
-
-      const total = stats.reduce((acc, stat) => acc + parseInt(stat.getDataValue('count')), 0);
-      const delivered = stats.find(s => s.deliveryStatus === 'delivered')?.getDataValue('count') || 0;
-      const clicked = stats.find(s => s.deliveryStatus === 'clicked')?.getDataValue('count') || 0;
-      const failed = stats.find(s => s.deliveryStatus === 'failed')?.getDataValue('count') || 0;
+      // Calculate rates
+      const totalSent = results.totalSent || 0;
+      const delivered = results.delivered || 0;
+      const opened = results.opened || 0;
+      const interacted = results.interacted || 0;
 
       return {
-        total,
+        totalSent,
         delivered,
-        clicked,
-        failed,
-        deliveryRate: total > 0 ? (delivered / total * 100).toFixed(2) : 0,
-        clickRate: delivered > 0 ? (clicked / delivered * 100).toFixed(2) : 0,
-        failureRate: total > 0 ? (failed / total * 100).toFixed(2) : 0
+        opened,
+        interacted,
+        deliveryRate: totalSent > 0 ? (delivered / totalSent) * 100 : 0,
+        openRate: delivered > 0 ? (opened / delivered) * 100 : 0,
+        interactionRate: opened > 0 ? (interacted / opened) * 100 : 0
       };
     } catch (error) {
-      console.error('Error getting delivery stats:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get user engagement metrics
-   */
-  async getUserEngagementMetrics(userId, startDate = null, endDate = null) {
-    try {
-      const where = { userId };
-      if (startDate && endDate) {
-        where.createdAt = {
-          [Op.between]: [startDate, endDate]
-        };
-      }
-
-      const tracking = await NotificationTracking.findAll({ where });
-      const total = tracking.length;
-      const viewed = tracking.filter(t => t.deliveryStatus === 'delivered').length;
-      const clicked = tracking.filter(t => t.deliveryStatus === 'clicked').length;
-
-      return {
-        totalNotifications: total,
-        viewedNotifications: viewed,
-        clickedNotifications: clicked,
-        viewRate: total > 0 ? (viewed / total * 100).toFixed(2) : 0,
-        clickThroughRate: viewed > 0 ? (clicked / viewed * 100).toFixed(2) : 0
-      };
-    } catch (error) {
-      console.error('Error getting user engagement metrics:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get notification performance by type
-   */
-  async getPerformanceByType(startDate = null, endDate = null) {
-    try {
-      const where = {};
-      if (startDate && endDate) {
-        where.createdAt = {
-          [Op.between]: [startDate, endDate]
-        };
-      }
-
-      const performance = await NotificationTracking.findAll({
-        include: [{
-          model: Notification,
-          as: 'notification',
-          attributes: ['type']
-        }],
-        attributes: [
-          [sequelize.col('notification.type'), 'type'],
-          [sequelize.fn('COUNT', sequelize.col('NotificationTracking.id')), 'total'],
-          [
-            sequelize.fn('SUM', 
-              sequelize.literal("CASE WHEN delivery_status = 'delivered' THEN 1 ELSE 0 END")
-            ),
-            'delivered'
-          ],
-          [
-            sequelize.fn('SUM',
-              sequelize.literal("CASE WHEN delivery_status = 'clicked' THEN 1 ELSE 0 END")
-            ),
-            'clicked'
-          ]
-        ],
-        where,
-        group: [sequelize.col('notification.type')]
-      });
-
-      return performance.map(p => ({
-        type: p.getDataValue('type'),
-        total: parseInt(p.getDataValue('total')),
-        delivered: parseInt(p.getDataValue('delivered')),
-        clicked: parseInt(p.getDataValue('clicked')),
-        deliveryRate: (p.getDataValue('delivered') / p.getDataValue('total') * 100).toFixed(2),
-        clickRate: (p.getDataValue('clicked') / p.getDataValue('delivered') * 100).toFixed(2)
-      }));
-    } catch (error) {
-      console.error('Error getting performance by type:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get best performing time slots
-   */
-  async getBestPerformingTimeSlots(days = 30) {
-    try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      const clicks = await NotificationTracking.findAll({
-        attributes: [
-          [
-            sequelize.fn('EXTRACT', sequelize.literal('HOUR FROM "clickedAt"')),
-            'hour'
-          ],
-          [sequelize.fn('COUNT', sequelize.col('id')), 'clicks']
-        ],
-        where: {
-          clickedAt: {
-            [Op.gte]: startDate
-          }
-        },
-        group: [sequelize.literal('EXTRACT(HOUR FROM "clickedAt")')],
-        order: [[sequelize.literal('clicks'), 'DESC']]
-      });
-
-      return clicks.map(c => ({
-        hour: c.getDataValue('hour'),
-        clicks: parseInt(c.getDataValue('clicks')),
-        timeSlot: `${c.getDataValue('hour')}:00 - ${c.getDataValue('hour')}:59`
-      }));
-    } catch (error) {
-      console.error('Error getting best performing time slots:', error);
-      throw error;
+      logger.error('Error getting user engagement metrics:', error);
+      return null;
     }
   }
 }

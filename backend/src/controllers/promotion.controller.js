@@ -1,8 +1,8 @@
 const { validationResult } = require('express-validator');
-const { Promotion, Product, Restaurant, ProductPromotion, UserPromotion, Order } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
-const sequelize = require('../config/database');
-const { Op } = require('sequelize');
+const db = require('../config/database');
+const logger = require('../utils/logger');
+const { v4: uuidv4 } = require('uuid');
 
 /**
  * Get all active promotions
@@ -15,26 +15,37 @@ exports.getActivePromotions = async (req, res, next) => {
 
     // Calculate pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     // Get active promotions
-    const promotions = await Promotion.findAndCountAll({
-      where: {
-        status: 'active',
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      },
-      limit: parseInt(limit),
-      offset,
-      order: [['createdAt', 'DESC']]
-    });
+    const promotions = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE status = 'active'
+        AND startDate <= ?
+        AND endDate >= ?
+      ORDER BY createdAt DESC
+      LIMIT ? OFFSET ?
+    `, [now, now, parseInt(limit), offset]);
+
+    // Get total count for pagination
+    const [countResult] = await db.query(`
+      SELECT COUNT(*) as total
+      FROM promotions
+      WHERE status = 'active'
+        AND startDate <= ?
+        AND endDate >= ?
+    `, [now, now]);
+    
+    const total = countResult?.total || 0;
 
     res.status(200).json({
       status: 'success',
-      results: promotions.count,
-      totalPages: Math.ceil(promotions.count / parseInt(limit)),
+      results: total,
+      totalPages: Math.ceil(total / parseInt(limit)),
       currentPage: parseInt(page),
       data: {
-        promotions: promotions.rows
+        promotions
       }
     });
   } catch (error) {
@@ -50,28 +61,31 @@ exports.getActivePromotions = async (req, res, next) => {
 exports.getPromotionDetails = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     // Find promotion
-    const promotion = await Promotion.findOne({
-      where: {
-        id,
-        status: 'active',
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      },
-      include: [
-        {
-          model: Product,
-          as: 'products',
-          through: { attributes: [] },
-          attributes: ['id', 'name', 'price', 'image_url']
-        }
-      ]
-    });
+    const [promotion] = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE id = ?
+        AND status = 'active'
+        AND startDate <= ?
+        AND endDate >= ?
+    `, [id, now, now]);
 
     if (!promotion) {
       return next(new AppError('Promotion not found or not active', 404));
     }
+
+    // Get associated products
+    const products = await db.query(`
+      SELECT p.id, p.name, p.price, p.image_url
+      FROM products p
+      JOIN product_promotions pp ON p.id = pp.product_id
+      WHERE pp.promotion_id = ?
+    `, [id]);
+
+    promotion.products = products;
 
     res.status(200).json({
       status: 'success',
@@ -89,77 +103,163 @@ exports.getPromotionDetails = async (req, res, next) => {
  * @route POST /api/promotions/validate
  * @access Private
  */
-exports.validatePromotion = async (req, res, next) => {
+exports.validatePromotion = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    const { code, restaurantId, orderTotal, items } = req.body;
+    const userId = req.user.id;
 
-    const { code, restaurantId, orderAmount } = req.body;
-
-    // Find promotion
-    const promotion = await Promotion.findOne({
-      where: {
-        code,
-        status: 'active',
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      }
-    });
+    // Find promotion by code
+    const [promotion] = await db.query(
+      `SELECT * FROM promotions WHERE code = ? AND isActive = true`,
+      [code]
+    );
 
     if (!promotion) {
-      return next(new AppError('Invalid or expired promotion code', 400));
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid promotion code'
+      });
     }
 
-    // Check minimum order value
-    if (promotion.minOrderValue && orderAmount < promotion.minOrderValue) {
-      return next(new AppError(`Minimum order amount of $${promotion.minOrderValue} required for this promotion`, 400));
+    // Check if promotion is active
+    const now = new Date();
+    if (promotion.start_date && new Date(promotion.start_date) > now) {
+      return res.status(400).json({
+        success: false,
+        message: 'Promotion is not active yet'
+      });
+    }
+
+    if (promotion.end_date && new Date(promotion.end_date) < now) {
+      return res.status(400).json({
+        success: false,
+        message: 'Promotion has expired'
+      });
+    }
+
+    // Check usage limits
+    if (promotion.usage_limit && promotion.current_redemptions >= promotion.usage_limit) {
+      return res.status(400).json({
+        success: false,
+        message: 'Promotion usage limit reached'
+      });
+    }
+
+    // Check per-user limit
+    if (promotion.per_user_limit) {
+      const [userRedemptions] = await db.query(
+        `SELECT COUNT(*) as count FROM user_promotions WHERE userId = ? AND promotionId = ?`,
+        [userId, promotion.id]
+      );
+
+      if (userRedemptions.count >= promotion.per_user_limit) {
+        return res.status(400).json({
+          success: false,
+          message: 'You have reached the maximum usage limit for this promotion'
+        });
+      }
+    }
+
+    // Check minimum order amount
+    if (promotion.min_order_amount && orderTotal < promotion.min_order_amount) {
+      return res.status(400).json({
+        success: false,
+        message: `Minimum order amount of $${promotion.min_order_amount} required for this promotion`
+      });
+    }
+
+    // Check restaurant restriction (if applicable)
+    if (promotion.restaurantId && promotion.restaurantId !== parseInt(restaurantId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'This promotion is not valid for the selected restaurant'
+      });
+    }
+
+    // Check product restrictions (if applicable)
+    let isApplicable = true;
+    let discountableAmount = orderTotal;
+
+    if (promotion.categoryId) {
+      // Check if order includes items from the required category
+      const categoryItems = items.filter(item => item.categoryId === promotion.categoryId);
+      
+      if (categoryItems.length === 0) {
+        isApplicable = false;
+      } else {
+        // Calculate discountable amount (only category items)
+        discountableAmount = categoryItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      }
+    }
+
+    // Check if promotion is tied to specific products
+    const productRestrictions = await db.query(
+      `SELECT product_id FROM product_promotions WHERE promotion_id = ?`,
+      [promotion.id]
+    );
+
+    if (productRestrictions.length > 0) {
+      const validProductIds = productRestrictions.map(p => p.product_id);
+      
+      // Check if order includes at least one of the valid products
+      const hasValidProduct = items.some(item => validProductIds.includes(item.productId));
+      
+      if (!hasValidProduct) {
+        isApplicable = false;
+      } else {
+        // Calculate discountable amount (only applicable products)
+        discountableAmount = items
+          .filter(item => validProductIds.includes(item.productId))
+          .reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      }
+    }
+
+    if (!isApplicable) {
+      return res.status(400).json({
+        success: false,
+        message: 'This promotion is not applicable to your current order items'
+      });
     }
 
     // Calculate discount
     let discountAmount = 0;
-    if (promotion.discountType === 'percentage') {
-      discountAmount = (orderAmount * promotion.discountValue) / 100;
+    
+    if (promotion.discount_type === 'percentage') {
+      discountAmount = (discountableAmount * promotion.discount_value) / 100;
+      
       // Apply max discount if set
-      if (promotion.maxDiscount && discountAmount > promotion.maxDiscount) {
-        discountAmount = promotion.maxDiscount;
+      if (promotion.max_discount && discountAmount > promotion.max_discount) {
+        discountAmount = promotion.max_discount;
       }
-    } else {
-      // Fixed amount discount
-      discountAmount = promotion.discountValue;
-    }
-
-    // If restaurant-specific, check if applicable
-    if (restaurantId) {
-      // Check if promotion is linked to specific products
-      const productPromotions = await ProductPromotion.findAll({
-        where: { promotionId: promotion.id },
-        include: [
-          {
-            model: Product,
-            where: { restaurantId }
-          }
-        ]
-      });
-
-      // If no products from this restaurant are linked to the promotion
-      if (productPromotions.length === 0) {
-        return next(new AppError('This promotion is not applicable to this restaurant', 400));
+    } else { // Fixed amount
+      discountAmount = promotion.discount_value;
+      
+      // Don't exceed the order total
+      if (discountAmount > discountableAmount) {
+        discountAmount = discountableAmount;
       }
     }
 
     res.status(200).json({
-      status: 'success',
+      success: true,
+      message: 'Promotion code valid',
       data: {
-        promotion,
-        discountAmount,
-        finalAmount: orderAmount - discountAmount
+        id: promotion.id,
+        code: promotion.code,
+        name: promotion.name,
+        discountType: promotion.discount_type,
+        discountValue: promotion.discount_value,
+        discountAmount: discountAmount.toFixed(2),
+        isApplicableToEntireOrder: !promotion.categoryId && productRestrictions.length === 0
       }
     });
   } catch (error) {
-    next(error);
+    logger.error('Error validating promotion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to validate promotion',
+      error: error.message
+    });
   }
 };
 
@@ -180,20 +280,30 @@ exports.getAllPromotions = async (req, res, next) => {
 
     // For restaurant owners, only show their promotions
     if (req.user.role === 'restaurant') {
-      const restaurant = await Restaurant.findOne({ where: { userId: req.user.id } });
-      if (!restaurant) {
+      const restaurant = await db.query(`
+        SELECT id
+        FROM restaurants
+        WHERE userId = ?
+      `, [req.user.id]);
+      if (restaurant.length === 0) {
         return next(new AppError('Restaurant not found', 404));
       }
 
       // Get products for this restaurant
-      const products = await Product.findAll({ where: { restaurantId: restaurant.id } });
+      const products = await db.query(`
+        SELECT id
+        FROM products
+        WHERE restaurantId = ?
+      `, [restaurant[0].id]);
       const productIds = products.map(product => product.id);
 
       // Get promotions linked to these products
-      const productPromotions = await ProductPromotion.findAll({
-        where: { productId: { [Op.in]: productIds } }
-      });
-      const promotionIds = productPromotions.map(pp => pp.promotionId);
+      const productPromotions = await db.query(`
+        SELECT promotion_id
+        FROM product_promotions
+        WHERE product_id IN (${productIds.join(',')})
+      `);
+      const promotionIds = productPromotions.map(pp => pp.promotion_id);
 
       // Add to filter
       filter.id = { [Op.in]: promotionIds };
@@ -203,28 +313,30 @@ exports.getAllPromotions = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Get promotions
-    const promotions = await Promotion.findAndCountAll({
-      where: filter,
-      limit: parseInt(limit),
-      offset,
-      order: [['createdAt', 'DESC']],
-      include: [
-        {
-          model: Product,
-          as: 'products',
-          through: { attributes: [] },
-          attributes: ['id', 'name']
-        }
-      ]
-    });
+    const promotions = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE ${Object.keys(filter).map(key => `${key} = ?`).join(' AND ')}
+      ORDER BY createdAt DESC
+      LIMIT ? OFFSET ?
+    `, [...Object.values(filter), parseInt(limit), offset]);
+
+    // Get total count for pagination
+    const [countResult] = await db.query(`
+      SELECT COUNT(*) as total
+      FROM promotions
+      WHERE ${Object.keys(filter).map(key => `${key} = ?`).join(' AND ')}
+    `, [...Object.values(filter)]);
+    
+    const total = countResult?.total || 0;
 
     res.status(200).json({
       status: 'success',
-      results: promotions.count,
-      totalPages: Math.ceil(promotions.count / parseInt(limit)),
+      results: total,
+      totalPages: Math.ceil(total / parseInt(limit)),
       currentPage: parseInt(page),
       data: {
-        promotions: promotions.rows
+        promotions
       }
     });
   } catch (error) {
@@ -237,79 +349,111 @@ exports.getAllPromotions = async (req, res, next) => {
  * @route POST /api/promotions
  * @access Private/Admin
  */
-exports.createPromotion = async (req, res, next) => {
+exports.createPromotion = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const {
       code,
+      name,
       description,
       discountType,
       discountValue,
+      minOrderAmount,
+      maxDiscount,
       startDate,
       endDate,
-      minOrderValue,
-      maxDiscount,
+      isActive,
+      usageLimit,
+      perUserLimit,
       restaurantId,
-      productIds
+      categoryId,
+      productIds,
+      campaignId
     } = req.body;
 
-    // Check if code already exists
-    const existingPromotion = await Promotion.findOne({ where: { code } });
+    // Validate promotion code uniqueness
+    const [existingPromotion] = await db.query(
+      'SELECT id FROM promotions WHERE code = ?',
+      [code]
+    );
+
     if (existingPromotion) {
-      return next(new AppError('Promotion code already exists', 400));
+      return res.status(400).json({
+        success: false,
+        message: 'Promotion code already exists'
+      });
     }
 
-    // Create promotion
-    const promotion = await Promotion.create({
-      code,
-      description,
-      discountType,
-      discountValue,
-      startDate,
-      endDate,
-      minOrderValue,
-      maxDiscount,
-      status: 'active'
-    });
+    // Start transaction
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    // If product IDs are provided, link them to the promotion
-    if (productIds && productIds.length > 0) {
-      // If restaurantId is provided, verify products belong to this restaurant
-      if (restaurantId) {
-        const products = await Product.findAll({
-          where: {
-            id: { [Op.in]: productIds },
-            restaurantId
-          }
-        });
-
-        if (products.length !== productIds.length) {
-          return next(new AppError('Some products do not belong to the specified restaurant', 400));
+    try {
+      // Create promotion
+      const result = await connection.query(
+        `INSERT INTO promotions SET ?`,
+        {
+          code,
+          name,
+          description,
+          discount_type: discountType,
+          discount_value: discountValue,
+          min_order_amount: minOrderAmount || 0,
+          max_discount: maxDiscount || null,
+          start_date: startDate,
+          end_date: endDate,
+          isActive: isActive || false,
+          usage_limit: usageLimit || null,
+          per_user_limit: perUserLimit || null,
+          current_redemptions: 0,
+          restaurantId: restaurantId || null,
+          categoryId: categoryId || null,
+          campaign_id: campaignId || null,
+          created_by: req.user.id,
+          created_at: new Date(),
+          updated_at: new Date()
         }
+      );
+
+      const promotionId = result.insertId;
+
+      // Add product associations if provided
+      if (productIds && productIds.length > 0) {
+        const productPromotions = productIds.map(productId => [
+          promotionId,
+          productId
+        ]);
+
+        await connection.query(
+          `INSERT INTO product_promotions (promotion_id, product_id) VALUES ?`,
+          [productPromotions]
+        );
       }
 
-      // Create product-promotion associations
-      const productPromotions = productIds.map(productId => ({
-        productId,
-        promotionId: promotion.id
-      }));
+      // Commit transaction
+      await connection.commit();
 
-      await ProductPromotion.bulkCreate(productPromotions);
+      res.status(201).json({
+        success: true,
+        message: 'Promotion created successfully',
+        data: {
+          id: promotionId,
+          code
+        }
+      });
+    } catch (error) {
+      // Rollback on error
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
-
-    res.status(201).json({
-      status: 'success',
-      data: {
-        promotion
-      }
-    });
   } catch (error) {
-    next(error);
+    logger.error('Error creating promotion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create promotion',
+      error: error.message
+    });
   }
 };
 
@@ -318,102 +462,131 @@ exports.createPromotion = async (req, res, next) => {
  * @route PUT /api/promotions/:id
  * @access Private/Admin
  */
-exports.updatePromotion = async (req, res, next) => {
+exports.updatePromotion = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { id } = req.params;
     const {
-      code,
+      name,
       description,
       discountType,
       discountValue,
+      minOrderAmount,
+      maxDiscount,
       startDate,
       endDate,
-      minOrderValue,
-      maxDiscount,
-      status,
-      productIds
+      isActive,
+      usageLimit,
+      perUserLimit,
+      restaurantId,
+      categoryId,
+      productIds,
+      campaignId
     } = req.body;
 
-    // Find promotion
-    const promotion = await Promotion.findByPk(id);
-    if (!promotion) {
-      return next(new AppError('Promotion not found', 404));
-    }
+    // Check if promotion exists
+    const [existingPromotion] = await db.query(
+      'SELECT * FROM promotions WHERE id = ?',
+      [id]
+    );
 
-    // For restaurant owners, verify they can update this promotion
-    if (req.user.role === 'restaurant') {
-      const restaurant = await Restaurant.findOne({ where: { userId: req.user.id } });
-      if (!restaurant) {
-        return next(new AppError('Restaurant not found', 404));
-      }
-
-      // Check if promotion is linked to this restaurant's products
-      const productPromotions = await ProductPromotion.findAll({
-        where: { promotionId: promotion.id },
-        include: [
-          {
-            model: Product,
-            where: { restaurantId: restaurant.id }
-          }
-        ]
+    if (!existingPromotion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promotion not found'
       });
-
-      if (productPromotions.length === 0) {
-        return next(new AppError('You are not authorized to update this promotion', 403));
-      }
     }
 
-    // If code is being changed, check if new code already exists
-    if (code && code !== promotion.code) {
-      const existingPromotion = await Promotion.findOne({ where: { code } });
-      if (existingPromotion) {
-        return next(new AppError('Promotion code already exists', 400));
+    // Start transaction
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Update promotion
+      await connection.query(
+        `UPDATE promotions SET
+          name = ?,
+          description = ?,
+          discount_type = ?,
+          discount_value = ?,
+          min_order_amount = ?,
+          max_discount = ?,
+          start_date = ?,
+          end_date = ?,
+          isActive = ?,
+          usage_limit = ?,
+          per_user_limit = ?,
+          restaurantId = ?,
+          categoryId = ?,
+          campaign_id = ?,
+          updated_at = ?
+         WHERE id = ?`,
+        [
+          name || existingPromotion.name,
+          description || existingPromotion.description,
+          discountType || existingPromotion.discount_type,
+          discountValue || existingPromotion.discount_value,
+          minOrderAmount || existingPromotion.min_order_amount,
+          maxDiscount || existingPromotion.max_discount,
+          startDate || existingPromotion.start_date,
+          endDate || existingPromotion.end_date,
+          isActive !== undefined ? isActive : existingPromotion.isActive,
+          usageLimit || existingPromotion.usage_limit,
+          perUserLimit || existingPromotion.per_user_limit,
+          restaurantId || existingPromotion.restaurantId,
+          categoryId || existingPromotion.categoryId,
+          campaignId || existingPromotion.campaign_id,
+          new Date(),
+          id
+        ]
+      );
+
+      // Update product associations if provided
+      if (productIds) {
+        // Delete existing associations
+        await connection.query(
+          'DELETE FROM product_promotions WHERE promotion_id = ?',
+          [id]
+        );
+
+        // Add new associations
+        if (productIds.length > 0) {
+          const productPromotions = productIds.map(productId => [
+            id,
+            productId
+          ]);
+
+          await connection.query(
+            `INSERT INTO product_promotions (promotion_id, product_id) VALUES ?`,
+            [productPromotions]
+          );
+        }
       }
+
+      // Commit transaction
+      await connection.commit();
+
+      res.status(200).json({
+        success: true,
+        message: 'Promotion updated successfully',
+        data: {
+          id,
+          code: existingPromotion.code
+        }
+      });
+    } catch (error) {
+      // Rollback on error
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
-
-    // Update promotion
-    await promotion.update({
-      code: code || promotion.code,
-      description: description !== undefined ? description : promotion.description,
-      discountType: discountType || promotion.discountType,
-      discountValue: discountValue !== undefined ? discountValue : promotion.discountValue,
-      startDate: startDate || promotion.startDate,
-      endDate: endDate || promotion.endDate,
-      minOrderValue: minOrderValue !== undefined ? minOrderValue : promotion.minOrderValue,
-      maxDiscount: maxDiscount !== undefined ? maxDiscount : promotion.maxDiscount,
-      status: status || promotion.status
-    });
-
-    // If product IDs are provided, update product-promotion associations
-    if (productIds) {
-      // Delete existing associations
-      await ProductPromotion.destroy({ where: { promotionId: promotion.id } });
-
-      // Create new associations
-      if (productIds.length > 0) {
-        const productPromotions = productIds.map(productId => ({
-          productId,
-          promotionId: promotion.id
-        }));
-
-        await ProductPromotion.bulkCreate(productPromotions);
-      }
-    }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        promotion
-      }
-    });
   } catch (error) {
-    next(error);
+    logger.error('Error updating promotion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update promotion',
+      error: error.message
+    });
   }
 };
 
@@ -422,51 +595,61 @@ exports.updatePromotion = async (req, res, next) => {
  * @route DELETE /api/promotions/:id
  * @access Private/Admin
  */
-exports.deletePromotion = async (req, res, next) => {
+exports.deletePromotion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Find promotion
-    const promotion = await Promotion.findByPk(id);
-    if (!promotion) {
-      return next(new AppError('Promotion not found', 404));
-    }
+    // Check if promotion exists
+    const [existingPromotion] = await db.query(
+      'SELECT * FROM promotions WHERE id = ?',
+      [id]
+    );
 
-    // For restaurant owners, verify they can delete this promotion
-    if (req.user.role === 'restaurant') {
-      const restaurant = await Restaurant.findOne({ where: { userId: req.user.id } });
-      if (!restaurant) {
-        return next(new AppError('Restaurant not found', 404));
-      }
-
-      // Check if promotion is linked to this restaurant's products
-      const productPromotions = await ProductPromotion.findAll({
-        where: { promotionId: promotion.id },
-        include: [
-          {
-            model: Product,
-            where: { restaurantId: restaurant.id }
-          }
-        ]
+    if (!existingPromotion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promotion not found'
       });
-
-      if (productPromotions.length === 0) {
-        return next(new AppError('You are not authorized to delete this promotion', 403));
-      }
     }
 
-    // Delete product-promotion associations
-    await ProductPromotion.destroy({ where: { promotionId: promotion.id } });
-    
-    // Set status to inactive instead of deleting
-    await promotion.update({ status: 'inactive' });
+    // Start transaction
+    const connection = await db.getConnection();
+    await connection.beginTransaction();
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Promotion deleted successfully'
-    });
+    try {
+      // Delete product associations
+      await connection.query(
+        'DELETE FROM product_promotions WHERE promotion_id = ?',
+        [id]
+      );
+
+      // Delete promotion
+      await connection.query(
+        'DELETE FROM promotions WHERE id = ?',
+        [id]
+      );
+
+      // Commit transaction
+      await connection.commit();
+
+      res.status(200).json({
+        success: true,
+        message: 'Promotion deleted successfully'
+      });
+    } catch (error) {
+      // Rollback on error
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   } catch (error) {
-    next(error);
+    logger.error('Error deleting promotion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete promotion',
+      error: error.message
+    });
   }
 };
 
@@ -484,10 +667,11 @@ exports.getRestaurantPromotions = async (req, res, next) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     // Get restaurant products
-    const products = await Product.findAll({
-      where: { restaurantId },
-      attributes: ['id']
-    });
+    const products = await db.query(`
+      SELECT id
+      FROM products
+      WHERE restaurantId = ?
+    `, [restaurantId]);
 
     if (products.length === 0) {
       return res.status(200).json({
@@ -504,32 +688,31 @@ exports.getRestaurantPromotions = async (req, res, next) => {
     const productIds = products.map(product => product.id);
 
     // Get promotions linked to these products
-    const promotionIds = await ProductPromotion.findAll({
-      where: { productId: { [Op.in]: productIds } },
-      attributes: ['promotionId'],
-      group: ['promotionId']
-    }).then(results => results.map(result => result.promotionId));
+    const promotionIds = await db.query(`
+      SELECT promotion_id
+      FROM product_promotions
+      WHERE product_id IN (${productIds.join(',')})
+    `).then(results => results.map(result => result.promotion_id));
 
     // Get active promotions
-    const promotions = await Promotion.findAndCountAll({
-      where: {
-        id: { [Op.in]: promotionIds },
-        status: 'active',
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      },
-      limit: parseInt(limit),
-      offset,
-      order: [['createdAt', 'DESC']]
-    });
+    const promotions = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE id IN (${promotionIds.join(',')})
+        AND status = 'active'
+        AND startDate <= ?
+        AND endDate >= ?
+      ORDER BY createdAt DESC
+      LIMIT ? OFFSET ?
+    `, [new Date().toISOString().slice(0, 19).replace('T', ' '), new Date().toISOString().slice(0, 19).replace('T', ' '), parseInt(limit), offset]);
 
     res.status(200).json({
       status: 'success',
-      results: promotions.count,
-      totalPages: Math.ceil(promotions.count / parseInt(limit)),
+      results: promotions.length,
+      totalPages: Math.ceil(promotions.length / parseInt(limit)),
       currentPage: parseInt(page),
       data: {
-        promotions: promotions.rows
+        promotions
       }
     });
   } catch (error) {
@@ -547,21 +730,22 @@ exports.getProductPromotions = async (req, res, next) => {
     const { productId } = req.params;
 
     // Get promotions linked to this product
-    const promotionIds = await ProductPromotion.findAll({
-      where: { productId },
-      attributes: ['promotionId']
-    }).then(results => results.map(result => result.promotionId));
+    const promotionIds = await db.query(`
+      SELECT promotion_id
+      FROM product_promotions
+      WHERE product_id = ?
+    `, [productId]).then(results => results.map(result => result.promotion_id));
 
     // Get active promotions
-    const promotions = await Promotion.findAll({
-      where: {
-        id: { [Op.in]: promotionIds },
-        status: 'active',
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      },
-      order: [['createdAt', 'DESC']]
-    });
+    const promotions = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE id IN (${promotionIds.join(',')})
+        AND status = 'active'
+        AND startDate <= ?
+        AND endDate >= ?
+      ORDER BY createdAt DESC
+    `, [new Date().toISOString().slice(0, 19).replace('T', ' '), new Date().toISOString().slice(0, 19).replace('T', ' ')]);
 
     res.status(200).json({
       status: 'success',
@@ -585,8 +769,12 @@ exports.getPromotionStats = async (req, res, next) => {
     const { id } = req.params;
     const { timeRange = 30 } = req.query; // Days to look back
 
-    const promotion = await Promotion.findByPk(id);
-    if (!promotion) {
+    const promotion = await db.query(`
+      SELECT *
+      FROM promotions
+      WHERE id = ?
+    `, [id]);
+    if (promotion.length === 0) {
       return next(new AppError('Promotion not found', 404));
     }
 
@@ -594,19 +782,12 @@ exports.getPromotionStats = async (req, res, next) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - timeRange);
 
-    const usageStats = await UserPromotion.findAll({
-      where: {
-        promotionId: id,
-        createdAt: { [Op.gte]: startDate }
-      },
-      include: [
-        {
-          model: Order,
-          as: 'order',
-          attributes: ['totalAmount']
-        }
-      ]
-    });
+    const usageStats = await db.query(`
+      SELECT *
+      FROM user_promotions
+      WHERE promotionId = ?
+        AND createdAt >= ?
+    `, [id, startDate.toISOString().slice(0, 19).replace('T', ' ')]);
 
     // Calculate daily statistics
     const dailyStats = {};
@@ -634,14 +815,14 @@ exports.getPromotionStats = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       data: {
-        id: promotion.id,
-        code: promotion.code,
-        status: promotion.status,
-        totalRedemptions: promotion.currentRedemptions,
-        totalDiscountAmount: promotion.totalDiscountAmount,
-        totalOrderValue: promotion.totalOrderValue,
-        averageOrderValue: promotion.totalOrderValue / promotion.currentRedemptions || 0,
-        redemptionRate: (promotion.currentRedemptions / promotion.maxRedemptions * 100) || 0,
+        id: promotion[0].id,
+        code: promotion[0].code,
+        status: promotion[0].status,
+        totalRedemptions: promotion[0].currentRedemptions,
+        totalDiscountAmount: promotion[0].totalDiscountAmount,
+        totalOrderValue: promotion[0].totalOrderValue,
+        averageOrderValue: promotion[0].totalOrderValue / promotion[0].currentRedemptions || 0,
+        redemptionRate: (promotion[0].currentRedemptions / promotion[0].maxRedemptions * 100) || 0,
         timeAnalytics
       }
     });
@@ -660,30 +841,37 @@ exports.applyPromotion = async (req, res, next) => {
     const { orderId, promotionId } = req.body;
 
     const [order, promotion] = await Promise.all([
-      Order.findByPk(orderId),
-      Promotion.findByPk(promotionId)
+      db.query(`
+        SELECT *
+        FROM orders
+        WHERE id = ?
+      `, [orderId]),
+      db.query(`
+        SELECT *
+        FROM promotions
+        WHERE id = ?
+      `, [promotionId])
     ]);
 
-    if (!order || !promotion) {
+    if (order.length === 0 || promotion.length === 0) {
       return next(new AppError('Order or promotion not found', 404));
     }
 
     // Record promotion usage
-    await UserPromotion.create({
-      userId: req.user.id,
-      promotionId,
-      orderId,
-      discountAmount: order.discountAmount,
-      orderTotal: order.totalAmount
-    });
+    await db.query(`
+      INSERT INTO user_promotions (userId, promotionId, orderId, discountAmount, orderTotal)
+      VALUES (?, ?, ?, ?, ?)
+    `, [req.user.id, promotion[0].id, order[0].id, order[0].discountAmount, order[0].totalAmount]);
 
     // Update promotion statistics
-    await promotion.update({
-      currentRedemptions: promotion.currentRedemptions + 1,
-      totalDiscountAmount: promotion.totalDiscountAmount + parseFloat(order.discountAmount),
-      totalOrderValue: promotion.totalOrderValue + parseFloat(order.totalAmount),
-      lastUsedAt: new Date()
-    });
+    await db.query(`
+      UPDATE promotions
+      SET currentRedemptions = currentRedemptions + 1,
+          totalDiscountAmount = totalDiscountAmount + ?,
+          totalOrderValue = totalOrderValue + ?,
+          lastUsedAt = ?
+      WHERE id = ?
+    `, [parseFloat(order[0].discountAmount), parseFloat(order[0].totalAmount), new Date(), promotion[0].id]);
 
     res.status(200).json({
       status: 'success',

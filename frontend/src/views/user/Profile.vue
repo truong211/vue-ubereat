@@ -249,11 +249,23 @@
             </v-form>
           </v-card-text>
         </v-card>
+
+        <!-- Notification Settings -->
+        <v-card class="mb-4">
+          <v-card-title>Notification Settings</v-card-title>
+          <v-card-text>
+            <v-list>
+              <v-list-item :to="{ name: 'settings-notifications' }" prepend-icon="mdi-bell-outline">
+                <v-list-item-title>Notification Settings</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-card-text>
+        </v-card>
       </v-col>
 
       <!-- Delivery Addresses -->
       <v-col cols="12" md="4">
-        <delivery-addresses />
+        <delivery-addresses v-if="profile && profile.name" />
       </v-col>
     </v-row>
 
@@ -270,8 +282,9 @@
 
 <script>
 import { ref, reactive, onMounted } from 'vue'
+import { useStore } from 'vuex'
 import { mapState, mapActions } from 'vuex'
-import { validatePhone, validatePassword } from '@/validations/auth'
+import { validatePhone, validatePassword } from '@/validations/auth.ts'
 import AvatarUpload from '@/components/user/AvatarUpload.vue'
 import DeliveryAddresses from '@/components/user/DeliveryAddresses.vue'
 
@@ -284,7 +297,7 @@ export default {
   },
   
   setup() {
-    const store = this.$store
+    const store = useStore()
     const form = ref(null)
     const passwordForm = ref(null)
 

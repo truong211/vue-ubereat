@@ -1,39 +1,39 @@
-import { apiService } from './api.service';
+import { apiClient } from './api.service';
 
 class FavoritesService {
   // Favorite Foods
   async getFavoriteFoods() {
-    return apiService.get('/favorites/foods');
+    return apiClient.get('/favorites/foods');
   }
   
   async addFavoriteFood(foodId) {
-    return apiService.post('/favorites/foods', { foodId });
+    return apiClient.post('/favorites/foods', { foodId });
   }
   
   async removeFavoriteFood(foodId) {
-    return apiService.delete(`/favorites/foods/${foodId}`);
+    return apiClient.delete(`/favorites/foods/${foodId}`);
   }
   
   // Favorite Restaurants
   async getFavoriteRestaurants() {
-    return apiService.get('/favorites/restaurants');
+    return apiClient.get('/favorites/restaurants');
   }
   
   async addFavoriteRestaurant(restaurantId) {
-    return apiService.post('/favorites/restaurants', { restaurantId });
+    return apiClient.post('/favorites/restaurants', { restaurantId });
   }
   
   async removeFavoriteRestaurant(restaurantId) {
-    return apiService.delete(`/favorites/restaurants/${restaurantId}`);
+    return apiClient.delete(`/favorites/restaurants/${restaurantId}`);
   }
   
   // Personalized Recommendations
   async getPersonalizedRecommendations() {
-    return apiService.get('/recommendations/foods');
+    return apiClient.get('/recommendations/foods');
   }
   
   async getRestaurantRecommendations() {
-    return apiService.get('/recommendations/restaurants');
+    return apiClient.get('/recommendations/restaurants');
   }
 }
 

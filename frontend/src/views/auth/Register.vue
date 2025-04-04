@@ -340,18 +340,32 @@ export default {
         }
         
         // Register user
-        await store.dispatch('auth/register', {
+        const response = await store.dispatch('auth/register', {
           name: formData.value.name,
           email: formData.value.email,
           phone: formData.value.phone,
           password: formData.value.password
         });
         
-        // Start resend countdown
-        startResendCountdown();
+        if (response.success) {
+          // Display success message
+          message.value = response.message || 'Đăng ký thành công!';
+          messageType.value = 'success';
+          
+          // If verification is needed, set up OTP verification
+          if (response.verificationRequired) {
+            // Start resend countdown
+            startResendCountdown();
+          } else {
+            // If no verification needed, redirect to login after 2 seconds
+            setTimeout(() => {
+              router.push('/auth/login');
+            }, 2000);
+          }
+        }
         
       } catch (error) {
-        message.value = error || 'Đăng ký thất bại. Vui lòng thử lại.';
+        message.value = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
         messageType.value = 'error';
       }
     };

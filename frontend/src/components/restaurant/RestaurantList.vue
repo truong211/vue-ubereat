@@ -68,13 +68,19 @@
                   <v-select
                     v-model="filters.rating"
                     :items="ratingOptions"
-                    label="Minimum Rating"
+                    label="Rating"
                     variant="outlined"
                     density="comfortable"
                     hide-details
                     @update:model-value="applyFilters"
                     clearable
-                  ></v-select>
+                  >
+                    <template v-slot:append>
+                      <span v-if="filters.rating" class="text-caption mr-2">
+                        {{ filters.rating }} of 5
+                      </span>
+                    </template>
+                  </v-select>
                 </v-col>
                 <v-col cols="12" sm="3">
                   <v-select
@@ -266,7 +272,7 @@
                   size="small"
                   class="font-weight-medium"
                 >
-                  {{ formatDistance(restaurant.distance) }}
+                  {{ formatDistance(restaurant.distance).replace(' ', '') }}
                 </v-chip>
               </div>
             </v-img>
@@ -283,11 +289,12 @@
                   readonly
                   size="small"
                 ></v-rating>
-                <span class="ml-1">{{ restaurant.rating ? restaurant.rating.toFixed(1) : '0.0' }}</span>
+                <span class="ml-1 text-body-2">{{ restaurant.rating ? restaurant.rating.toFixed(1) : '0.0' }}</span>
+                <span class="ml-1 text-caption text-grey">({{ restaurant.reviewCount || 0 }})</span>
                 
                 <!-- Display price range if available -->
                 <v-spacer></v-spacer>
-                <span class="text-caption">
+                <span class="text-body-2 font-weight-medium">
                   {{ getPriceRangeSymbol(restaurant.priceRange) }}
                 </span>
               </div>

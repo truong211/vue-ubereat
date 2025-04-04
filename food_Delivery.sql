@@ -1,141 +1,369 @@
-CREATE DATABASE IF NOT EXISTS food_delivery;
+-- Create database with proper character set
+CREATE DATABASE IF NOT EXISTS food_delivery
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
 
 USE food_delivery;
 
-CREATE TABLE users (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    username VARCHAR(50) UNIQUE NOT NULL,
-    password VARCHAR(255) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    phone VARCHAR(15),
-    address TEXT,
-    role ENUM('admin', 'customer') DEFAULT 'customer',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
--- Create Restaurants table
-CREATE TABLE restaurants (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(100) NOT NULL,
-    address TEXT NOT NULL,
-    phone VARCHAR(15),
-    description TEXT,
-    image_url VARCHAR(255),
-    rating DECIMAL(3,2) DEFAULT 0,
-    status ENUM('active', 'inactive') DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create Categories table
-CREATE TABLE categories (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(50) NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create Products table
-CREATE TABLE products (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    restaurant_id INT,
-    category_id INT,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    price DECIMAL(10,2) NOT NULL,
-    image_url VARCHAR(255),
-    status ENUM('available', 'unavailable') DEFAULT 'available',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (restaurant_id) REFERENCES restaurants(id),
-    FOREIGN KEY (category_id) REFERENCES categories(id)
-);
-
--- Create Orders table
-CREATE TABLE orders (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT,
-    total_amount DECIMAL(10,2) NOT NULL,
-    status ENUM('pending', 'confirmed', 'preparing', 'delivering', 'delivered', 'cancelled') DEFAULT 'pending',
-    payment_method ENUM('cash', 'credit_card', 'e_wallet') NOT NULL,
-    payment_status ENUM('pending', 'paid', 'failed') DEFAULT 'pending',
-    delivery_address TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- Create Order Details table
-CREATE TABLE order_details (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    order_id INT,
-    product_id INT,
-    quantity INT NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
-    notes TEXT,
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
-
--- Create Promotions table
-CREATE TABLE promotions (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    code VARCHAR(50) UNIQUE NOT NULL,
-    description TEXT,
-    discount_type ENUM('percentage', 'fixed_amount') NOT NULL,
-    discount_value DECIMAL(10,2) NOT NULL,
-    start_date TIMESTAMP NOT NULL,
-    end_date TIMESTAMP NOT NULL,
-    min_order_value DECIMAL(10,2),
-    max_discount DECIMAL(10,2),
-    status ENUM('active', 'inactive') DEFAULT 'active',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create Product Promotions table (Many-to-Many relationship)
-CREATE TABLE product_promotions (
-    product_id INT,
-    promotion_id INT,
-    PRIMARY KEY (product_id, promotion_id),
-    FOREIGN KEY (product_id) REFERENCES products(id),
-    FOREIGN KEY (promotion_id) REFERENCES promotions(id)
-);
-
--- Create Cart table
-CREATE TABLE cart (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT,
-    product_id INT,
-    quantity INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
-
--- Create Reviews table
-CREATE TABLE reviews (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id INT,
-    order_id INT,
-    product_id INT,
-    rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    comment TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (order_id) REFERENCES orders(id),
-    FOREIGN KEY (product_id) REFERENCES products(id)
-);
-
--- Create banners table
-CREATE TABLE IF NOT EXISTS banners (
+-- Create users table
+CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  title VARCHAR(255) NOT NULL,
-  image VARCHAR(255) NOT NULL,
-  position ENUM('home_top', 'home_middle', 'sidebar') DEFAULT 'home_top',
-  link VARCHAR(255),
-  active BOOLEAN DEFAULT true,
-  expiryDate DATETIME,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(100) NOT NULL UNIQUE,
+  password VARCHAR(255),
+  fullName VARCHAR(100) NOT NULL,
+  phone VARCHAR(20),
+  address TEXT,
+  role ENUM('admin', 'customer', 'restaurant', 'driver') DEFAULT 'customer',
+  profileImage VARCHAR(255),
+  isActive BOOLEAN DEFAULT TRUE,
+  lastLogin DATETIME,
+  isEmailVerified BOOLEAN DEFAULT FALSE,
+  isPhoneVerified BOOLEAN DEFAULT FALSE,
+  emailVerificationOtp VARCHAR(10),
+  emailVerificationExpires DATETIME,
+  phoneVerificationOtp VARCHAR(10),
+  phoneVerificationExpires DATETIME,
+  resetPasswordOtp VARCHAR(10),
+  resetPasswordExpires DATETIME,
+  socialProvider ENUM('local', 'google', 'facebook', 'apple') DEFAULT 'local',
+  socialId VARCHAR(100),
+  socialToken TEXT,
+  verificationToken VARCHAR(255),
+  verificationExpires DATETIME,
+  resetPasswordToken VARCHAR(255),
+  preferredLanguage VARCHAR(10) DEFAULT 'vi',
+  notificationPreferences JSON,
+  favoriteRestaurants JSON,
+  favoriteDishes JSON,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create restaurants table
+CREATE TABLE IF NOT EXISTS restaurants (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  address TEXT NOT NULL,
+  phone VARCHAR(15),
+  email VARCHAR(100),
+  logo VARCHAR(255),
+  coverImage VARCHAR(255),
+  openingHours JSON,
+  specialHolidays JSON,
+  cuisineType VARCHAR(50),
+  priceRange ENUM('$', '$$', '$$$', '$$$$'),
+  rating DECIMAL(3, 2) DEFAULT 0,
+  deliveryFee DECIMAL(10, 2) DEFAULT 0,
+  minOrderAmount DECIMAL(10, 2) DEFAULT 0,
+  estimatedDeliveryTime INT,
+  isActive BOOLEAN DEFAULT TRUE,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id)
+);
+
+-- Create categories table
+CREATE TABLE IF NOT EXISTS categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT,
+  name VARCHAR(50) NOT NULL,
+  description TEXT,
+  image VARCHAR(255),
+  isActive BOOLEAN DEFAULT TRUE,
+  displayOrder INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+-- Create products table
+CREATE TABLE IF NOT EXISTS products (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT NOT NULL,
+  categoryId INT,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  price DECIMAL(10, 2) NOT NULL,
+  discountPrice DECIMAL(10, 2),
+  image VARCHAR(255),
+  isAvailable BOOLEAN DEFAULT TRUE,
+  ingredients TEXT,
+  allergens TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE,
+  FOREIGN KEY (categoryId) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+-- Create orders table
+CREATE TABLE IF NOT EXISTS orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  restaurantId INT NOT NULL,
+  orderNumber VARCHAR(20) NOT NULL UNIQUE,
+  status ENUM('pending', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled') DEFAULT 'pending',
+  totalAmount DECIMAL(10, 2) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  taxAmount DECIMAL(10, 2) DEFAULT 0,
+  deliveryFee DECIMAL(10, 2) DEFAULT 0,
+  discountAmount DECIMAL(10, 2) DEFAULT 0,
+  paymentMethod ENUM('cash', 'credit_card', 'debit_card', 'e_wallet') DEFAULT 'cash',
+  paymentStatus ENUM('pending', 'paid', 'failed', 'refunded') DEFAULT 'pending',
+  deliveryAddress TEXT NOT NULL,
+  deliveryInstructions TEXT,
+  estimatedDeliveryTime DATETIME,
+  actualDeliveryTime DATETIME,
+  driverId INT,
+  customerNote TEXT,
+  restaurantNote TEXT,
+  cancellationReason TEXT,
+  isRated BOOLEAN DEFAULT FALSE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id),
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id),
+  FOREIGN KEY (driverId) REFERENCES users(id)
+);
+
+-- Create order_items table
+CREATE TABLE IF NOT EXISTS order_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  orderId INT NOT NULL,
+  productId INT,
+  name VARCHAR(100) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unitPrice DECIMAL(10, 2) NOT NULL,
+  totalPrice DECIMAL(10, 2) NOT NULL,
+  options JSON,
+  notes TEXT,
+  isCompleted BOOLEAN DEFAULT FALSE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE SET NULL
+);
+
+-- Create reviews table
+CREATE TABLE IF NOT EXISTS reviews (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  restaurantId INT NOT NULL,
+  orderId INT NOT NULL,
+  rating DECIMAL(3, 2) NOT NULL,
+  comment TEXT,
+  images JSON,
+  response TEXT,
+  responseDate DATETIME,
+  isVisible BOOLEAN DEFAULT TRUE,
+  moderationStatus ENUM('pending', 'approved', 'rejected') DEFAULT 'approved',
+  moderationReason TEXT,
+  moderatedAt DATETIME,
+  moderatedBy INT,
+  likes INT DEFAULT 0,
+  dislikes INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id),
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE,
+  FOREIGN KEY (orderId) REFERENCES orders(id),
+  FOREIGN KEY (moderatedBy) REFERENCES users(id)
+);
+
+-- Create review_votes table
+CREATE TABLE IF NOT EXISTS review_votes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  reviewId INT NOT NULL,
+  isHelpful BOOLEAN NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (reviewId) REFERENCES reviews(id) ON DELETE CASCADE
+);
+
+-- Create addresses table
+CREATE TABLE IF NOT EXISTS addresses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  addressLine1 VARCHAR(255) NOT NULL,
+  addressLine2 VARCHAR(255),
+  city VARCHAR(100) NOT NULL,
+  district VARCHAR(100),
+  ward VARCHAR(100),
+  state VARCHAR(100),
+  postalCode VARCHAR(20) NOT NULL,
+  country VARCHAR(100) NOT NULL DEFAULT 'Vietnam',
+  phone VARCHAR(15),
+  isDefault BOOLEAN DEFAULT FALSE,
+  type ENUM('home', 'work', 'other') DEFAULT 'home',
+  instructions TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  placeId VARCHAR(100),
+  formattedAddress VARCHAR(255),
+  hasElevator BOOLEAN DEFAULT TRUE,
+  floor INT,
+  apartmentNumber VARCHAR(20),
+  deliveryNotes TEXT,
+  contactName VARCHAR(100),
+  contactPhone VARCHAR(15),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_address_user (userId),
+  INDEX idx_address_location (latitude, longitude)
+);
+
+-- Create cart table
+CREATE TABLE IF NOT EXISTS cart (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  productId INT NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  options JSON,
+  notes TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
+  UNIQUE KEY cart_user_product (userId, productId)
+);
+
+-- Create user_favorites table
+CREATE TABLE IF NOT EXISTS user_favorites (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  itemId INT NOT NULL,
+  type ENUM('food', 'restaurant', 'category') NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY favorite_user_item_type (userId, itemId, type)
+);
+
+-- Create promotions table
+CREATE TABLE IF NOT EXISTS promotions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(20) NOT NULL UNIQUE,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  type ENUM('percentage', 'fixed_amount', 'free_delivery') NOT NULL DEFAULT 'percentage',
+  value DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  min_order_amount DECIMAL(10, 2),
+  max_discount DECIMAL(10, 2),
+  start_date DATETIME NOT NULL,
+  end_date DATETIME NOT NULL,
+  max_redemptions INT,
+  current_redemptions INT DEFAULT 0,
+  restaurantId INT,
+  isActive BOOLEAN DEFAULT TRUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+-- Create user_promotions table
+CREATE TABLE IF NOT EXISTS user_promotions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  promotionId INT NOT NULL,
+  isUsed BOOLEAN DEFAULT FALSE,
+  usedAt DATETIME,
+  orderId INT,
+  expiresAt DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (promotionId) REFERENCES promotions(id) ON DELETE CASCADE,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE SET NULL
+);
+
+-- Create loyalty table
+CREATE TABLE IF NOT EXISTS loyalty (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  restaurantId INT,
+  points INT NOT NULL DEFAULT 0,
+  tier ENUM('bronze', 'silver', 'gold', 'platinum') DEFAULT 'bronze',
+  lastPointEarned DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+-- Create loyalty_rewards table
+CREATE TABLE IF NOT EXISTS loyalty_rewards (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  pointsRequired INT NOT NULL,
+  rewardType ENUM('discount', 'free_item', 'delivery_fee', 'special_offer') NOT NULL,
+  rewardValue DECIMAL(10, 2),
+  tier ENUM('bronze', 'silver', 'gold', 'platinum', 'all') DEFAULT 'all',
+  status ENUM('active', 'inactive') DEFAULT 'active',
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE SET NULL
+);
+
+-- Create loyalty_redemptions table
+CREATE TABLE IF NOT EXISTS loyalty_redemptions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  loyaltyId INT NOT NULL,
+  rewardId INT NOT NULL,
+  pointsSpent INT NOT NULL,
+  orderId INT,
+  status ENUM('pending', 'applied', 'expired', 'cancelled') DEFAULT 'pending',
+  expiresAt DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (loyaltyId) REFERENCES loyalty(id) ON DELETE CASCADE,
+  FOREIGN KEY (rewardId) REFERENCES loyalty_rewards(id) ON DELETE CASCADE,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE SET NULL
+);
+
+-- Create review_responses table
+CREATE TABLE IF NOT EXISTS review_responses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  reviewId INT NOT NULL,
+  restaurantId INT NOT NULL,
+  response TEXT NOT NULL,
+  respondedBy INT NOT NULL,
+  isEdited BOOLEAN DEFAULT FALSE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (reviewId) REFERENCES reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE,
+  FOREIGN KEY (respondedBy) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create notifications table
+CREATE TABLE IF NOT EXISTS notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT,
+  title VARCHAR(255) NOT NULL,
+  message TEXT NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'general',
+  data JSON,
+  isRead BOOLEAN DEFAULT FALSE,
+  readAt DATETIME,
+  isSystemWide BOOLEAN DEFAULT FALSE,
+  validUntil DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_notification_user (userId),
+  INDEX idx_notification_type (type)
 );
 
 -- Create static_pages table
@@ -144,9 +372,26 @@ CREATE TABLE IF NOT EXISTS static_pages (
   title VARCHAR(255) NOT NULL,
   slug VARCHAR(255) NOT NULL UNIQUE,
   content TEXT NOT NULL,
-  published BOOLEAN DEFAULT false,
+  published BOOLEAN DEFAULT FALSE,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create delivery_configs table
+CREATE TABLE IF NOT EXISTS delivery_configs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT,
+  maxDeliveryDistance DECIMAL(5, 2) NOT NULL DEFAULT 10.00,
+  minOrderAmountForDelivery DECIMAL(10, 2),
+  baseDeliveryFee DECIMAL(10, 2) NOT NULL DEFAULT 15000.00,
+  useDistanceBasedFee BOOLEAN DEFAULT TRUE,
+  feePerKilometer DECIMAL(10, 2) DEFAULT 5000.00,
+  freeDeliveryThreshold DECIMAL(10, 2),
+  isActive BOOLEAN DEFAULT TRUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE,
+  INDEX idx_delivery_restaurant (restaurantId)
 );
 
 -- Create site_config table
@@ -160,139 +405,332 @@ CREATE TABLE IF NOT EXISTS site_config (
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Add indexes
-CREATE INDEX idx_banner_position ON banners(position);
-CREATE INDEX idx_banner_active ON banners(active);
-CREATE INDEX idx_page_slug ON static_pages(slug);
-CREATE INDEX idx_page_published ON static_pages(published);
+-- Create articles table
+CREATE TABLE IF NOT EXISTS articles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  excerpt TEXT,
+  image VARCHAR(255),
+  authorId INT,
+  categoryId VARCHAR(100),
+  tags JSON,
+  status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
+  viewCount INT DEFAULT 0,
+  isPromoted BOOLEAN DEFAULT FALSE,
+  publishedAt DATETIME,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (authorId) REFERENCES users(id) ON DELETE SET NULL
+);
 
--- Insert sample users with simple plaintext passwords
-INSERT INTO users (username, password, email, full_name, phone, address, role) VALUES
-('john_doe', 'password123', 'john@example.com', 'John Doe', '+1234567890', '123 Main St, City', 'customer'),
-('admin_user', 'admin123', 'admin@system.com', 'Admin User', '+9876543210', '456 Admin St, City', 'admin'),
-('alice_smith', 'alice123', 'alice@example.com', 'Alice Smith', '+1122334455', '789 Oak St, City', 'customer'),
-('bob_wilson', 'bob123', 'bob@example.com', 'Bob Wilson', NULL, NULL, 'customer'),
-('emma_davis', 'emma123', 'emma@example.com', 'Emma Davis', '+5544332211', '321 Pine St, City', 'customer'),
-('support_team', 'support123', 'support@system.com', 'Support Team', '+9988776655', '654 Support St, City', 'admin'),
-('james_brown', 'james123', 'james@example.com', 'James Brown', '+1234567891', '987 Elm St, City', 'customer'),
-('sarah_lee', 'sarah123', 'sarah@example.com', 'Sarah Lee', '', '147 Maple St, City', 'customer'),
-('david_wang', 'david123', 'david@example.com', 'David Wang', '+9876543211', NULL, 'customer'),
-('mary_johnson', 'mary123', 'mary@example.com', 'Mary Johnson', '+5544332212', '258 Cedar St, City', 'customer');
+-- Create review_reports table
+CREATE TABLE IF NOT EXISTS review_reports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  reviewId INT NOT NULL,
+  userId INT NOT NULL,
+  reason ENUM('spam', 'offensive', 'inappropriate', 'false_info', 'other') NOT NULL,
+  description TEXT,
+  status ENUM('pending', 'reviewed', 'actioned', 'dismissed') DEFAULT 'pending',
+  moderatorId INT,
+  moderatorNote TEXT,
+  actionTaken VARCHAR(255),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (reviewId) REFERENCES reviews(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (moderatorId) REFERENCES users(id) ON DELETE SET NULL
+);
 
--- Rest of the INSERT statements remain the same as before
--- Insert sample restaurants
-INSERT INTO restaurants (name, address, phone, description, image_url, rating, status) VALUES
-('Tasty Burger', '123 Food St, City', '+1234567890', 'Best burgers in town', 'burger.jpg', 4.5, 'active'),
-('Pizza Palace', '456 Pizza Ave, City', '+9876543210', 'Authentic Italian pizza', 'pizza.jpg', 4.8, 'active'),
-('Sushi Master', '789 Japanese St, City', '+1122334455', 'Fresh sushi and sashimi', 'sushi.jpg', 4.2, 'active'),
-('Closed Restaurant', '321 Closed St, City', '+5544332211', 'Temporarily closed', 'closed.jpg', 3.5, 'inactive'),
-('Spice Garden', '654 Indian St, City', NULL, 'Authentic Indian cuisine', NULL, 4.0, 'active'),
-('Noodle House', '987 Asian St, City', '+9988776655', 'Various Asian noodles', 'noodles.jpg', 4.6, 'active'),
-('Mexican Grill', '147 Taco St, City', '+1234567891', 'Authentic Mexican food', 'mexican.jpg', 0.0, 'active'),
-('Sweet Tooth', '258 Dessert St, City', '+9876543211', 'Desserts and pastries', 'dessert.jpg', 4.7, 'active'),
-('Veggie Delight', '369 Green St, City', '+5544332212', 'Vegetarian specialties', 'veggie.jpg', 4.1, 'active'),
-('Fast Food Joint', '741 Quick St, City', '+1122334456', 'Quick and tasty meals', 'fastfood.jpg', 3.8, 'active');
+-- Create restaurant_settings table
+CREATE TABLE IF NOT EXISTS restaurant_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT NOT NULL,
+  autoAcceptOrders BOOLEAN DEFAULT TRUE,
+  preparationTimeMinutes INT DEFAULT 30,
+  displayPhoneNumber BOOLEAN DEFAULT TRUE,
+  displayAddress BOOLEAN DEFAULT TRUE,
+  enableReviews BOOLEAN DEFAULT TRUE,
+  enablePromotion BOOLEAN DEFAULT TRUE,
+  allowScheduledOrders BOOLEAN DEFAULT TRUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE
+);
 
--- Insert sample categories
-INSERT INTO categories (name, description) VALUES
-('Burgers', 'Delicious beef and chicken burgers'),
-('Pizza', 'Various pizza styles and toppings'),
-('Sushi', 'Fresh Japanese sushi and rolls'),
-('Desserts', 'Sweet treats and pastries'),
-('Beverages', 'Soft drinks and refreshments'),
-('Appetizers', 'Starters and small plates'),
-('Main Course', 'Principal dishes'),
-('Salads', 'Fresh and healthy salads'),
-('Soups', 'Hot and cold soups'),
-('Special Items', NULL);
+-- Create driver_locations table
+CREATE TABLE IF NOT EXISTS driver_locations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  driverId INT NOT NULL,
+  latitude DECIMAL(10, 8) NOT NULL,
+  longitude DECIMAL(11, 8) NOT NULL,
+  accuracy DECIMAL(10, 2),
+  speed DECIMAL(10, 2),
+  heading INT,
+  locationTimestamp DATETIME NOT NULL,
+  isAvailable BOOLEAN DEFAULT TRUE,
+  isActive BOOLEAN DEFAULT TRUE,
+  deviceInfo JSON,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (driverId) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_driver_location (latitude, longitude),
+  INDEX idx_driver_availability (isAvailable, isActive)
+);
 
--- Insert sample products
-INSERT INTO products (restaurant_id, category_id, name, description, price, image_url, status) VALUES
-(1, 1, 'Classic Burger', 'Beef patty with lettuce and tomato', 9.99, 'classic_burger.jpg', 'available'),
-(2, 2, 'Margherita Pizza', 'Classic tomato and mozzarella', 14.99, 'margherita.jpg', 'available'),
-(3, 3, 'California Roll', 'Crab, avocado, cucumber', 12.99, 'california_roll.jpg', 'available'),
-(4, 1, 'Unavailable Burger', 'Temporarily unavailable', 11.99, 'unavailable.jpg', 'unavailable'),
-(5, 7, 'Butter Chicken', 'Creamy Indian curry', 16.99, NULL, 'available'),
-(6, 7, 'Pad Thai', 'Thai style noodles', 13.99, 'padthai.jpg', 'available'),
-(7, 6, 'Nachos', 'Tortilla chips with toppings', 8.99, 'nachos.jpg', 'available'),
-(8, 4, 'Chocolate Cake', 'Rich chocolate layer cake', 7.99, 'chocolate_cake.jpg', 'available'),
-(9, 8, 'Garden Salad', 'Fresh mixed vegetables', 6.99, 'salad.jpg', 'available'),
-(10, 5, 'Fresh Lemonade', 'Homemade lemonade', 3.99, 'lemonade.jpg', 'available');
+-- Create order_status_logs table
+CREATE TABLE IF NOT EXISTS order_status_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  orderId INT NOT NULL,
+  status VARCHAR(50) NOT NULL,
+  comment TEXT,
+  userId INT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+);
 
--- Insert sample orders
-INSERT INTO orders (user_id, total_amount, status, payment_method, payment_status, delivery_address) VALUES
-(1, 29.99, 'delivered', 'credit_card', 'paid', '123 Main St, City'),
-(2, 45.99, 'pending', 'cash', 'pending', '456 Admin St, City'),
-(3, 32.99, 'preparing', 'e_wallet', 'paid', '789 Oak St, City'),
-(4, 15.99, 'cancelled', 'credit_card', 'failed', 'Invalid Address'),
-(5, 25.99, 'delivering', 'cash', 'pending', '321 Pine St, City'),
-(6, 55.99, 'confirmed', 'e_wallet', 'paid', '654 Support St, City'),
-(7, 42.99, 'delivered', 'credit_card', 'paid', '987 Elm St, City'),
-(8, 18.99, 'pending', 'cash', 'pending', '147 Maple St, City'),
-(9, 22.99, 'cancelled', 'credit_card', 'failed', 'No Address Provided'),
-(10, 33.99, 'delivered', 'e_wallet', 'paid', '258 Cedar St, City');
+-- Create marketing_content table
+CREATE TABLE IF NOT EXISTS marketing_content (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  content TEXT,
+  image VARCHAR(255),
+  type ENUM('promotion', 'announcement', 'newsletter', 'event') NOT NULL,
+  startDate DATETIME,
+  endDate DATETIME,
+  targetAudience JSON,
+  status ENUM('draft', 'published', 'archived') DEFAULT 'draft',
+  createdBy INT,
+  priority INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (createdBy) REFERENCES users(id) ON DELETE SET NULL
+);
 
--- Insert sample order details
-INSERT INTO order_details (order_id, product_id, quantity, price, notes) VALUES
-(1, 1, 2, 19.98, 'Extra cheese'),
-(1, 5, 1, 16.99, NULL),
-(2, 2, 3, 44.97, 'Well done'),
-(3, 3, 2, 25.98, 'No wasabi'),
-(4, 4, 1, 11.99, 'Cancelled order'),
-(5, 6, 2, 27.98, 'Spicy'),
-(6, 7, 4, 35.96, 'Extra sauce'),
-(7, 8, 3, 23.97, 'Birthday message'),
-(8, 9, 2, 13.98, 'No dressing'),
-(9, 10, 3, 11.97, 'With ice');
+-- Create banners table
+CREATE TABLE IF NOT EXISTS banners (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  image VARCHAR(255) NOT NULL,
+  link VARCHAR(255),
+  startDate DATETIME NOT NULL,
+  endDate DATETIME NOT NULL,
+  position VARCHAR(50) DEFAULT 'home_top',
+  priority INT DEFAULT 0,
+  isActive BOOLEAN DEFAULT TRUE,
+  clickCount INT DEFAULT 0,
+  impressionCount INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
--- Insert sample promotions
-INSERT INTO promotions (code, description, discount_type, discount_value, start_date, end_date, min_order_value, max_discount, status) VALUES
-('WELCOME10', 'Welcome discount', 'percentage', 10.00, '2024-01-01', '2024-12-31', 20.00, 50.00, 'active'),
-('SUMMER25', 'Summer sale', 'percentage', 25.00, '2024-06-01', '2024-08-31', 30.00, 100.00, 'inactive'),
-('FLAT5', 'Flat discount', 'fixed_amount', 5.00, '2024-02-01', '2024-02-28', NULL, NULL, 'active'),
-('SPECIAL50', 'Special discount', 'percentage', 50.00, '2024-03-01', '2024-03-07', 100.00, 200.00, 'active'),
-('INVALID', 'Invalid promotion', 'percentage', 0.00, '2024-01-01', '2023-12-31', 0.00, 0.00, 'inactive'),
-('FREE10', 'Free delivery', 'fixed_amount', 10.00, '2024-04-01', '2024-04-30', 25.00, 10.00, 'active'),
-('HOLIDAY20', 'Holiday special', 'percentage', 20.00, '2024-12-24', '2024-12-26', 50.00, 150.00, 'active'),
-('WEEKEND15', 'Weekend offer', 'percentage', 15.00, '2024-01-01', '2024-12-31', 40.00, 75.00, 'active'),
-('FLASH30', 'Flash sale', 'percentage', 30.00, '2024-05-01', '2024-05-02', 60.00, 120.00, 'active'),
-('NEWUSER', 'New user discount', 'percentage', 20.00, '2024-01-01', '2024-12-31', 15.00, 40.00, 'active');
+-- Create faqs table
+CREATE TABLE IF NOT EXISTS faqs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  category VARCHAR(100),
+  isActive BOOLEAN DEFAULT TRUE,
+  displayOrder INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
--- Insert sample product promotions
-INSERT INTO product_promotions (product_id, promotion_id) VALUES
-(1, 1),
-(2, 1),
-(3, 2),
-(4, 3),
-(5, 4),
-(6, 5),
-(7, 6),
-(8, 7),
-(9, 8),
-(10, 9);
+-- Create staff_permissions table
+CREATE TABLE IF NOT EXISTS staff_permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  restaurantId INT NOT NULL,
+  role ENUM('manager', 'staff', 'kitchen', 'cashier', 'waiter') NOT NULL,
+  permissions JSON,
+  isActive BOOLEAN DEFAULT TRUE,
+  createdBy INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE,
+  FOREIGN KEY (createdBy) REFERENCES users(id),
+  UNIQUE KEY staff_restaurant_unique (userId, restaurantId)
+);
 
--- Insert sample cart items
-INSERT INTO cart (user_id, product_id, quantity) VALUES
-(1, 1, 2),
-(2, 2, 1),
-(3, 3, 3),
-(4, 4, 1),
-(5, 5, 2),
-(6, 6, 1),
-(7, 7, 4),
-(8, 8, 2),
-(9, 9, 1),
-(10, 10, 3);
+-- Create delivery_fee_tiers table
+CREATE TABLE IF NOT EXISTS delivery_fee_tiers (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  deliveryConfigId INT NOT NULL,
+  minDistance DECIMAL(5, 2) NOT NULL,
+  maxDistance DECIMAL(5, 2) NOT NULL,
+  fee DECIMAL(10, 2) NOT NULL,
+  displayOrder INT DEFAULT 0,
+  isActive BOOLEAN DEFAULT TRUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (deliveryConfigId) REFERENCES delivery_configs(id) ON DELETE CASCADE
+);
 
--- Insert sample reviews
-INSERT INTO reviews (user_id, order_id, product_id, rating, comment) VALUES
-(1, 1, 1, 5, 'Excellent burger!'),
-(2, 2, 2, 4, 'Good pizza, but a bit pricey'),
-(3, 3, 3, 5, 'Fresh and delicious'),
-(4, 4, 4, 1, 'Order was cancelled'),
-(5, 5, 5, 4, 'Tasty but spicy'),
-(6, 6, 6, 5, 'Best noodles ever'),
-(7, 7, 7, 3, 'Average taste'),
-(8, 8, 8, 5, 'Perfect dessert'),
-(9, 9, 9, 2, 'Not fresh enough'),
-(10, 10, 10, 4, 'Refreshing drink');
+-- Create notification_tracking table
+CREATE TABLE IF NOT EXISTS notification_tracking (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  notificationId INT NOT NULL,
+  actionType VARCHAR(50) NOT NULL,
+  actionTime DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deviceInfo JSON,
+  ipAddress VARCHAR(50),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (notificationId) REFERENCES notifications(id) ON DELETE CASCADE
+);
+
+-- Create promotion_categories table
+CREATE TABLE IF NOT EXISTS promotion_categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Create promotion_campaigns table
+CREATE TABLE IF NOT EXISTS promotion_campaigns (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  startDate DATETIME NOT NULL,
+  endDate DATETIME NOT NULL,
+  budget DECIMAL(10, 2),
+  status ENUM('draft', 'active', 'paused', 'completed', 'cancelled') DEFAULT 'draft',
+  targetAudience JSON,
+  metrics JSON,
+  createdBy INT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (createdBy) REFERENCES users(id)
+);
+
+-- Create api_performance_logs table
+CREATE TABLE IF NOT EXISTS api_performance_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  endpoint VARCHAR(255) NOT NULL,
+  method VARCHAR(10) NOT NULL,
+  responseTime INT NOT NULL,
+  statusCode INT NOT NULL,
+  requestIP VARCHAR(50),
+  userId INT,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Create user_activity_logs table
+CREATE TABLE IF NOT EXISTS user_activity_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  details JSON,
+  ipAddress VARCHAR(50),
+  userAgent TEXT,
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create payment_history table
+CREATE TABLE IF NOT EXISTS payment_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  orderId INT NOT NULL,
+  userId INT NOT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  paymentMethod VARCHAR(50) NOT NULL,
+  transactionId VARCHAR(255),
+  status ENUM('pending', 'completed', 'failed', 'refunded', 'partially_refunded') DEFAULT 'pending',
+  paymentDetails JSON,
+  refundAmount DECIMAL(10, 2) DEFAULT 0,
+  refundReason TEXT,
+  refundDate DATETIME,
+  gatewayResponse JSON,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Create product_promotions table
+CREATE TABLE IF NOT EXISTS product_promotions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  productId INT NOT NULL,
+  promotionId INT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (promotionId) REFERENCES promotions(id) ON DELETE CASCADE
+);
+
+-- Create menu_items table
+CREATE TABLE IF NOT EXISTS menu_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  restaurantId INT NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  price DECIMAL(10, 2) NOT NULL,
+  category VARCHAR(100),
+  image VARCHAR(255),
+  isAvailable BOOLEAN DEFAULT TRUE,
+  options JSON,
+  nutritionInfo JSON,
+  isVegetarian BOOLEAN DEFAULT FALSE,
+  isVegan BOOLEAN DEFAULT FALSE,
+  isGlutenFree BOOLEAN DEFAULT FALSE,
+  spicyLevel INT DEFAULT 0,
+  preparationTime INT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (restaurantId) REFERENCES restaurants(id) ON DELETE CASCADE
+);
+
+-- Create order_details table
+CREATE TABLE IF NOT EXISTS order_details (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  orderId INT NOT NULL,
+  deliveryTime INT,
+  orderNotes TEXT,
+  paymentDetails JSON,
+  specialInstructions TEXT,
+  giftWrapping BOOLEAN DEFAULT FALSE,
+  giftMessage TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE
+);
+
+-- Insert admin user
+INSERT INTO users (username, email, password, fullName, role, isActive, isEmailVerified)
+VALUES ('admin', 'admin@fooddelivery.com', '$2a$10$5i8F2VW9AW6JpOnYtDm0aO6OmvYt8PKa3h0dzTFztp/aw9OXqj3lG', 'System Administrator', 'admin', TRUE, TRUE);
+
+-- Add initial site configuration
+INSERT INTO site_config (name, description, contactEmail, supportPhone)
+VALUES ('Food Delivery', 'Online food delivery platform', 'support@fooddelivery.com', '+84123456789');
+
+-- Create indexes for frequent queries to improve performance
+CREATE INDEX idx_product_restaurant ON products(restaurantId);
+CREATE INDEX idx_product_category ON products(categoryId);
+CREATE INDEX idx_order_user ON orders(userId);
+CREATE INDEX idx_order_restaurant ON orders(restaurantId);
+CREATE INDEX idx_order_status ON orders(status);
+CREATE INDEX idx_order_payment ON orders(paymentStatus);
+CREATE INDEX idx_review_restaurant ON reviews(restaurantId);
+CREATE INDEX idx_review_rating ON reviews(rating);
+CREATE INDEX idx_promotion_code ON promotions(code);
+CREATE INDEX idx_promotion_date ON promotions(start_date, end_date);
+CREATE INDEX idx_loyalty_user ON loyalty(userId);
+CREATE INDEX idx_notification_read ON notifications(isRead);
+
+-- Insert test data for users (add this at the end of the file)
+INSERT INTO users (username, email, password, fullName, phone, role, profileImage, isActive, createdAt, updatedAt) 
+VALUES 
+('admin', 'admin@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Admin User', '1234567890', 'admin', NULL, 1, NOW(), NOW()),
+('customer1', 'customer1@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Customer One', '0987654321', 'customer', NULL, 1, NOW(), NOW()),
+('restaurant1', 'restaurant1@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Restaurant One', '5556667777', 'restaurant', NULL, 1, NOW(), NOW()),
+('driver1', 'driver1@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Driver One', '1112223333', 'driver', NULL, 1, NOW(), NOW());
+-- Password for all accounts is 'password123'

@@ -9,7 +9,7 @@ import { useStore } from 'vuex';
 
 class PushNotificationService {
   constructor() {
-    this.publicKey = process.env.VUE_APP_VAPID_PUBLIC_KEY;
+    this.publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     this.supported = 'Notification' in window && 'serviceWorker' in navigator;
     this.notificationClickHandlers = new Map();
     this.serviceWorkerRegistration = null;
@@ -123,6 +123,11 @@ class PushNotificationService {
       console.error('Error checking subscription status:', error);
       return false;
     }
+  }
+
+  // Alias for getPermissionStatus for backward compatibility
+  checkPermission() {
+    return this.getPermissionStatus();
   }
 
   handlePushReceived(notification) {

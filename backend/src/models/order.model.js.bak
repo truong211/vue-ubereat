@@ -1,0 +1,135 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const User = require('./user.model');
+const Restaurant = require('./restaurant.model');
+
+/**
+ * Order Model
+ * Represents food orders in the system
+ */
+const Order = sequelize.define('Order', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  restaurantId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: Restaurant,
+      key: 'id'
+    }
+  },
+  orderNumber: {
+    type: DataTypes.STRING(20),
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM(
+      'pending',
+      'confirmed',
+      'preparing',
+      'ready',
+      'out_for_delivery',
+      'delivered',
+      'cancelled'
+    ),
+    defaultValue: 'pending'
+  },
+  totalAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
+  },
+  subtotal: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false
+  },
+  taxAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+  deliveryFee: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+  discountAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+  paymentMethod: {
+    type: DataTypes.ENUM('cash', 'credit_card', 'debit_card', 'e_wallet'),
+    defaultValue: 'cash'
+  },
+  paymentStatus: {
+    type: DataTypes.ENUM('pending', 'paid', 'failed', 'refunded'),
+    defaultValue: 'pending'
+  },
+  deliveryAddress: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  deliveryInstructions: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  estimatedDeliveryTime: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  actualDeliveryTime: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  driverId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  customerNote: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  restaurantNote: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  cancellationReason: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  isRated: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
+}, {
+  timestamps: true,
+  tableName: 'orders',
+  indexes: [
+    {
+      unique: true,
+      fields: ['orderNumber']
+    }
+  ]
+});
+
+// Define associations
+Order.belongsTo(User, { foreignKey: 'userId', as: 'customer' });
+Order.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
+Order.belongsTo(User, { foreignKey: 'driverId', as: 'driver' });
+User.hasMany(Order, { foreignKey: 'userId', as: 'orders' });
+Restaurant.hasMany(Order, { foreignKey: 'restaurantId', as: 'orders' });
+User.hasMany(Order, { foreignKey: 'driverId', as: 'deliveries' });
+
+module.exports = Order; 

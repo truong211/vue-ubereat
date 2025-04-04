@@ -33,6 +33,6 @@ onMounted(() => {
 // Handle new review submission
 const handleReviewSubmitted = () => {
   // Refresh restaurant data to update rating
-  store.dispatch('restaurants/fetchRestaurantDetails', restaurantId.value)
+  store.dispatch('restaurants/fetchRestaurantById', { id: restaurantId.value })
 }
 </script>

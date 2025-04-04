@@ -1,5 +1,5 @@
 // Chat module for Vuex store
-import { api } from '@/services/api';
+import api from '@/services/api';
 
 const state = {
   chatDialogOpen: false,

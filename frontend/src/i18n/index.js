@@ -7,8 +7,8 @@ const i18n = createI18n({
   locale: localStorage.getItem('locale') || 'en', // Default locale
   fallbackLocale: 'en', // Fallback locale
   messages: {
-    en,
-    vi
+    en: en.translations,
+    vi: vi.translations
   },
   // Date time formats
   datetimeFormats: {

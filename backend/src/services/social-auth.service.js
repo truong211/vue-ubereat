@@ -3,6 +3,10 @@ const { User } = require('../models');
 const { Op } = require('sequelize');
 const { AppError } = require('../middleware/error.middleware');
 const config = require('../config/config');
+const db = require('../config/database');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 /**
  * Verify Google ID token and extract user information
@@ -118,10 +122,109 @@ const loginWithFacebook = async (accessToken) => {
   return await handleSocialAuth('facebook', userData);
 };
 
-module.exports = {
-  verifyGoogleToken,
-  verifyFacebookToken,
-  handleSocialAuth,
-  loginWithGoogle,
-  loginWithFacebook
-}; 
+class SocialAuthService {
+  constructor() {}
+
+  async handleSocialAuth(profile, provider) {
+    try {
+      // Check if user exists by social ID
+      const [existingUser] = await db.query(
+        'SELECT * FROM users WHERE socialProvider = ? AND socialId = ?',
+        [provider, profile.id]
+      );
+
+      if (existingUser) {
+        // Update token if needed
+        if (profile.token && profile.token !== existingUser.socialToken) {
+          await db.query(
+            'UPDATE users SET socialToken = ?, lastLogin = NOW() WHERE id = ?',
+            [profile.token, existingUser.id]
+          );
+        }
+        
+        return this.generateTokenResponse(existingUser);
+      }
+
+      // Check if email already exists
+      if (profile.email) {
+        const [emailUser] = await db.query(
+          'SELECT * FROM users WHERE email = ?',
+          [profile.email]
+        );
+
+        if (emailUser) {
+          // Link social account to existing email account
+          await db.query(
+            'UPDATE users SET socialProvider = ?, socialId = ?, socialToken = ?, lastLogin = NOW() WHERE id = ?',
+            [provider, profile.id, profile.token, emailUser.id]
+          );
+          
+          return this.generateTokenResponse(emailUser);
+        }
+      }
+
+      // Create new user if not exists
+      const newUser = {
+        username: this.generateUsername(profile),
+        fullName: profile.displayName || profile.name || 'Social User',
+        email: profile.email || `${profile.id}@${provider}.user`,
+        profileImage: profile.picture || profile.photos?.[0]?.value || null,
+        socialProvider: provider,
+        socialId: profile.id,
+        socialToken: profile.token,
+        isEmailVerified: !!profile.email, // Auto-verify if email provided by provider
+        password: await this.generateRandomPassword(),
+        role: 'customer',
+        isActive: true,
+        lastLogin: new Date()
+      };
+
+      const result = await db.query(
+        `INSERT INTO users SET ?`,
+        [newUser]
+      );
+
+      newUser.id = result.insertId;
+      return this.generateTokenResponse(newUser);
+    } catch (error) {
+      console.error('Social auth error:', error);
+      throw error;
+    }
+  }
+
+  generateUsername(profile) {
+    const baseName = profile.displayName || profile.name || 'user';
+    const sanitizedName = baseName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const randomString = crypto.randomBytes(4).toString('hex');
+    return `${sanitizedName}_${randomString}`;
+  }
+
+  async generateRandomPassword() {
+    // Generate random password and hash it
+    const password = crypto.randomBytes(10).toString('hex');
+    const salt = await bcrypt.genSalt(10);
+    return await bcrypt.hash(password, salt);
+  }
+
+  generateTokenResponse(user) {
+    const accessToken = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
+    );
+
+    return {
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        profileImage: user.profileImage
+      },
+      accessToken
+    };
+  }
+}
+
+module.exports = new SocialAuthService(); 

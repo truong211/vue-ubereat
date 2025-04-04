@@ -337,7 +337,10 @@
 <script>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useStore } from 'vuex';
 import RestaurantMap from '@/components/restaurant/RestaurantMap.vue';
+import restaurantAPI from '@/services/restaurantAPI';
+import { useToast } from 'vue-toastification';
 
 export default {
   name: 'RestaurantDetails',
@@ -349,13 +352,20 @@ export default {
   setup() {
     const route = useRoute();
     const router = useRouter();
+    const store = useStore();
+    const toast = useToast();
     
     const loading = ref(true);
     const error = ref(null);
     const restaurant = ref(null);
     const activeTab = ref('menu');
-    const cartItems = ref([]);
     const userLocation = ref(null); // Will be populated with user's location
+    
+    // Use computed values from store for cart
+    const cartItems = computed(() => store.getters['cart/cartItems']);
+    const cartSubtotal = computed(() => store.getters['cart/cartSubtotal']);
+    const cartTotal = computed(() => store.getters['cart/cartTotal']);
+    const cartLoading = computed(() => store.getters['cart/isLoading']);
     
     // Fetch restaurant details
     const fetchRestaurantDetails = async () => {
@@ -365,13 +375,22 @@ export default {
       try {
         const restaurantId = route.params.id;
         
-        // In a real app, this would be an API call
-        // const response = await axios.get(`/api/restaurants/${restaurantId}`);
-        // restaurant.value = response.data;
+        // Call the restaurant API to get details
+        const response = await restaurantAPI.getRestaurantById(restaurantId);
+        restaurant.value = response.data;
         
-        // For demo, use mock data
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
-        restaurant.value = generateMockRestaurantDetails(restaurantId);
+        // Fetch menu items for this restaurant
+        const menuResponse = await restaurantAPI.getRestaurantMenu(restaurantId);
+        if (menuResponse.data && restaurant.value) {
+          restaurant.value.menu = menuResponse.data;
+        }
+        
+        // Fetch reviews for this restaurant
+        const reviewsResponse = await restaurantAPI.getRestaurantReviews(restaurantId);
+        if (reviewsResponse.data && restaurant.value) {
+          restaurant.value.reviews = reviewsResponse.data.reviews;
+          restaurant.value.reviewCount = reviewsResponse.data.total;
+        }
         
         // Try to get user location for the map
         getUserLocation();
@@ -379,7 +398,8 @@ export default {
         loading.value = false;
       } catch (err) {
         console.error('Error fetching restaurant details:', err);
-        error.value = 'Failed to load restaurant details. Please try again.';
+        error.value = 'Could not load restaurant details. Please try again later.';
+      } finally {
         loading.value = false;
       }
     };
@@ -402,52 +422,77 @@ export default {
       }
     };
     
+    // Fetch user's cart
+    const fetchCart = async () => {
+      try {
+        await store.dispatch('cart/fetchCart');
+      } catch (err) {
+        console.error('Error fetching cart:', err);
+      }
+    };
+    
     // Add item to cart
-    const addToCart = (item) => {
-      // Check if item already exists in cart
-      const existingItemIndex = cartItems.value.findIndex(cartItem => cartItem.id === item.id);
-      
-      if (existingItemIndex >= 0) {
-        // Increment quantity if already in cart
-        cartItems.value[existingItemIndex].quantity += 1;
-      } else {
-        // Add new item to cart
-        cartItems.value.push({
-          ...item,
+    const addToCart = async (item) => {
+      try {
+        await store.dispatch('cart/addToCart', {
+          productId: item.id,
           quantity: 1
         });
+        toast.success(`${item.name} added to cart`);
+      } catch (err) {
+        toast.error('Failed to add item to cart');
       }
     };
     
     // Increment item quantity
-    const incrementItem = (index) => {
-      cartItems.value[index].quantity += 1;
+    const incrementItem = async (index) => {
+      try {
+        const item = cartItems.value[index];
+        await store.dispatch('cart/updateCartItem', {
+          itemId: item.id,
+          quantity: item.quantity + 1
+        });
+      } catch (err) {
+        toast.error('Failed to update cart');
+      }
     };
     
     // Decrement item quantity
-    const decrementItem = (index) => {
-      if (cartItems.value[index].quantity > 1) {
-        cartItems.value[index].quantity -= 1;
-      } else {
-        removeItem(index);
+    const decrementItem = async (index) => {
+      try {
+        const item = cartItems.value[index];
+        if (item.quantity > 1) {
+          await store.dispatch('cart/updateCartItem', {
+            itemId: item.id,
+            quantity: item.quantity - 1
+          });
+        } else {
+          await store.dispatch('cart/removeFromCart', item.id);
+        }
+      } catch (err) {
+        toast.error('Failed to update cart');
       }
     };
     
     // Remove item from cart
-    const removeItem = (index) => {
-      cartItems.value.splice(index, 1);
+    const removeItem = async (index) => {
+      try {
+        const item = cartItems.value[index];
+        await store.dispatch('cart/removeFromCart', item.id);
+        toast.success('Item removed from cart');
+      } catch (err) {
+        toast.error('Failed to remove item from cart');
+      }
     };
     
-    // Calculate subtotal
+    // Calculate subtotal - now using store computed value
     const calculateSubtotal = () => {
-      return cartItems.value.reduce((total, item) => {
-        return total + (item.price * item.quantity);
-      }, 0);
+      return cartSubtotal.value;
     };
     
-    // Calculate total
+    // Calculate total - now using store computed value
     const calculateTotal = () => {
-      return calculateSubtotal() + (restaurant.value ? restaurant.value.deliveryFee : 0);
+      return cartTotal.value;
     };
     
     // Proceed to checkout
@@ -463,117 +508,10 @@ export default {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     };
     
-    // Generate mock restaurant details
-    const generateMockRestaurantDetails = (id) => {
-      // Restaurant location (Manhattan, NYC area)
-      const restaurantLat = 40.7128 + (Math.random() * 0.02 - 0.01);
-      const restaurantLng = -74.0060 + (Math.random() * 0.02 - 0.01);
-      
-      return {
-        id: id,
-        name: 'Delicious Restaurant',
-        category: 'Italian',
-        rating: 4.7,
-        reviewCount: 253,
-        deliveryTime: 25,
-        deliveryFee: 3.99,
-        minimumOrder: 15.00,
-        address: '123 Example Street, New York, NY 10001',
-        phone: '+1 (555) 123-4567',
-        location: {
-          lat: restaurantLat,
-          lng: restaurantLng
-        },
-        hours: {
-          'Monday': '11:00 AM - 10:00 PM',
-          'Tuesday': '11:00 AM - 10:00 PM',
-          'Wednesday': '11:00 AM - 10:00 PM',
-          'Thursday': '11:00 AM - 10:00 PM',
-          'Friday': '11:00 AM - 11:00 PM',
-          'Saturday': '11:00 AM - 11:00 PM',
-          'Sunday': '12:00 PM - 9:00 PM'
-        },
-        paymentMethods: ['Credit Card', 'PayPal', 'Cash'],
-        menu: [
-          {
-            id: 1,
-            name: 'Appetizers',
-            items: [
-              {
-                id: 101,
-                name: 'Bruschetta',
-                description: 'Toasted bread topped with fresh tomatoes, garlic, and basil',
-                price: 8.99
-              },
-              {
-                id: 102,
-                name: 'Mozzarella Sticks',
-                description: 'Breaded mozzarella sticks with marinara sauce',
-                price: 7.99
-              }
-            ]
-          },
-          {
-            id: 2,
-            name: 'Pasta',
-            items: [
-              {
-                id: 201,
-                name: 'Spaghetti Carbonara',
-                description: 'Spaghetti with eggs, cheese, bacon, and black pepper',
-                price: 14.99
-              },
-              {
-                id: 202,
-                name: 'Fettuccine Alfredo',
-                description: 'Fettuccine tossed with parmesan cream sauce',
-                price: 13.99
-              }
-            ]
-          },
-          {
-            id: 3,
-            name: 'Pizza',
-            items: [
-              {
-                id: 301,
-                name: 'Margherita Pizza',
-                description: 'Tomato sauce, mozzarella, and fresh basil',
-                price: 12.99
-              },
-              {
-                id: 302,
-                name: 'Pepperoni Pizza',
-                description: 'Tomato sauce, mozzarella, and pepperoni',
-                price: 14.99
-              }
-            ]
-          }
-        ],
-        reviews: [
-          {
-            id: 1,
-            userName: 'John D.',
-            userAvatar: null,
-            rating: 5,
-            date: '2023-06-15',
-            comment: 'Amazing food and quick delivery! Will definitely order again.'
-          },
-          {
-            id: 2,
-            userName: 'Sarah M.',
-            userAvatar: null,
-            rating: 4,
-            date: '2023-05-22',
-            comment: 'Food was great. Delivery was a bit delayed but still good overall.'
-          }
-        ]
-      };
-    };
-    
     // Lifecycle hooks
     onMounted(() => {
       fetchRestaurantDetails();
+      fetchCart();
     });
     
     return {

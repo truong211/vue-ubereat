@@ -1,3 +1,4 @@
+const db = require('../config/database');
 const { Review, Restaurant, User, OrderItem, ReviewVote, ReviewReport, ItemRating, Product } = require('../models');
 const { Op } = require('sequelize');
 const NotificationService = require('./notification.service');
@@ -434,6 +435,145 @@ class ReviewService {
     }
     
     return false;
+  }
+
+  /**
+   * Get average rating for a restaurant
+   * @param {number} restaurantId - Restaurant ID
+   * @returns {Promise<number>} - Average rating
+   */
+  async getAverageRating(restaurantId) {
+    try {
+      const [result] = await db.query(
+        'SELECT AVG(rating) as averageRating FROM reviews WHERE restaurantId = ? AND isVisible = true',
+        [restaurantId]
+      );
+      
+      return result?.averageRating || 0;
+    } catch (error) {
+      console.error('Error getting average rating:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Update restaurant rating
+   * @param {number} restaurantId - Restaurant ID
+   * @returns {Promise<boolean>} - Success status
+   */
+  async updateRestaurantRating(restaurantId) {
+    try {
+      const [averageRating] = await db.query(
+        'SELECT AVG(rating) as avg FROM reviews WHERE restaurantId = ? AND isVisible = true',
+        [restaurantId]
+      );
+      
+      if (averageRating) {
+        await db.query(
+          'UPDATE restaurants SET rating = ? WHERE id = ?',
+          [averageRating.avg || 0, restaurantId]
+        );
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error updating restaurant rating:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get rating distribution for a restaurant
+   * @param {number} restaurantId - Restaurant ID
+   * @returns {Promise<Object>} - Rating distribution
+   */
+  async getRatingDistribution(restaurantId) {
+    try {
+      const results = await db.query(`
+        SELECT 
+          rating, 
+          COUNT(*) as count 
+        FROM 
+          reviews 
+        WHERE 
+          restaurantId = ? 
+          AND isVisible = true 
+        GROUP BY 
+          rating 
+        ORDER BY 
+          rating DESC
+      `, [restaurantId]);
+      
+      // Create a distribution object with all possible ratings
+      const distribution = {
+        5: 0, 4: 0, 3: 0, 2: 0, 1: 0
+      };
+      
+      // Fill in actual counts
+      results.forEach(row => {
+        const rating = Math.floor(row.rating); // Handle decimal ratings
+        if (rating >= 1 && rating <= 5) {
+          distribution[rating] = row.count;
+        }
+      });
+      
+      return distribution;
+    } catch (error) {
+      console.error('Error getting rating distribution:', error);
+      return { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    }
+  }
+
+  /**
+   * Check if user has already reviewed an order
+   * @param {number} userId - User ID
+   * @param {number} orderId - Order ID
+   * @returns {Promise<boolean>} - True if already reviewed
+   */
+  async hasUserReviewedOrder(userId, orderId) {
+    try {
+      const [result] = await db.query(
+        'SELECT COUNT(*) as count FROM reviews WHERE userId = ? AND orderId = ?',
+        [userId, orderId]
+      );
+      
+      return result.count > 0;
+    } catch (error) {
+      console.error('Error checking if user reviewed order:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get recent reviews for a restaurant
+   * @param {number} restaurantId - Restaurant ID
+   * @param {number} limit - Max number of reviews to return
+   * @returns {Promise<Array>} - List of reviews
+   */
+  async getRecentReviews(restaurantId, limit = 5) {
+    try {
+      const reviews = await db.query(`
+        SELECT 
+          r.*,
+          u.fullName,
+          u.profileImage
+        FROM 
+          reviews r
+        JOIN 
+          users u ON r.userId = u.id
+        WHERE 
+          r.restaurantId = ? 
+          AND r.isVisible = true
+        ORDER BY 
+          r.createdAt DESC
+        LIMIT ?
+      `, [restaurantId, limit]);
+      
+      return reviews;
+    } catch (error) {
+      console.error('Error getting recent reviews:', error);
+      return [];
+    }
   }
 }
 

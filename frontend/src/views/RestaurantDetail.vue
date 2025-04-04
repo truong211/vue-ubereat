@@ -16,7 +16,7 @@
       >
         <v-container>
           <div class="restaurant-header-content text-white">
-            <h1 class="text-h3 font-weight-bold mb-2">{{ restaurant.name }}</h1>
+            <h1 class="text-h3 font-weight-bold mb-2">{{ restaurant.name || 'Restaurant' }}</h1>
             <div class="d-flex align-center mb-2">
               <v-rating
                 :model-value="restaurant.rating"
@@ -28,7 +28,7 @@
               ></v-rating>
               <span class="ml-2">{{ restaurant.rating }} ({{ restaurant.reviewCount }} reviews)</span>
               <v-divider vertical class="mx-3"></v-divider>
-              <span>{{ restaurant.categories.join(', ') }}</span>
+              <span>{{ Array.isArray(restaurant.categories) ? restaurant.categories.join(', ') : '' }}</span>
             </div>
             <div class="d-flex align-center mb-4">
               <v-icon size="small" color="white">mdi-clock-outline</v-icon>
@@ -50,7 +50,7 @@
               v-if="restaurant.promotion"
               color="primary"
               size="small"
-              class="ml-2"
+              class="promotion-chip ml-2"
             >
               {{ restaurant.promotion }}
             </v-chip>
@@ -149,7 +149,12 @@
                       </v-row>
                     </v-card>
                     
-                    <v-divider v-if="category.id !== restaurant.menuCategories[restaurant.menuCategories.length - 1].id" class="my-6"></v-divider>
+                    <v-divider 
+                      v-if="restaurant.menuCategories && 
+                            restaurant.menuCategories.length > 0 && 
+                            category.id !== restaurant.menuCategories[restaurant.menuCategories.length - 1].id" 
+                      class="my-6">
+                    </v-divider>
                   </div>
                 </v-window-item>
                 
@@ -194,7 +199,7 @@
                     
                     <v-divider class="my-4"></v-divider>
                     
-                    <h3 class="text-h6 mb-3">About {{ restaurant.name }}</h3>
+                    <h3 class="text-h6 mb-3">About {{ restaurant.name || 'Restaurant' }}</h3>
                     <p class="text-body-1 mb-4">{{ restaurant.description }}</p>
                     
                     <v-chip-group>
@@ -219,7 +224,7 @@
             <v-card class="cart-sidebar pa-4" variant="outlined">
               <h2 class="text-h5 mb-4">Your Order</h2>
 
-              <div v-if="cart.items.length === 0" class="text-center py-6">
+              <div v-if="!cart.items || cart.items.length === 0" class="text-center py-6">
                 <v-icon size="64" color="grey">mdi-cart-outline</v-icon>
                 <p class="mt-4 text-body-1">Your cart is empty</p>
               </div>
@@ -232,7 +237,7 @@
                         <div class="item-quantity mr-2">{{ item.quantity }}×</div>
                         <div>
                           <div class="text-subtitle-1">{{ item.name }}</div>
-                          <div v-if="item.options && item.options.length" class="text-caption text-grey">
+                          <div v-if="item.options && Array.isArray(item.options) && item.options.length" class="text-caption text-grey">
                             {{ item.options.join(', ') }}
                           </div>
                         </div>
@@ -342,7 +347,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, reactive, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useRoute, useRouter } from 'vue-router';
 import RestaurantReviews from '@/views/restaurant/Reviews.vue';
@@ -360,14 +365,53 @@ export default {
     const router = useRouter();
     
     // Restaurant and menu state
-    const restaurant = ref({});
+    const restaurant = ref({
+      name: '',
+      coverImage: '',
+      address: '',
+      phone: '',
+      rating: 0,
+      reviewCount: 0,
+      categories: [],
+      deliveryTime: 0,
+      distance: 0,
+      deliveryFee: '$0.00',
+      isOpen: false,
+      promotion: '',
+      menuCategories: [],
+      hours: {},
+      description: '',
+      features: [],
+      dietaryOptions: [],
+      reviews: []
+    });
     const isLoading = ref(true);
     const menuSearch = ref('');
     const activeTab = ref('menu');
     const activeCategoryId = ref(null);
     
     // Cart state
-    const cart = computed(() => store.state.cart);
+    const cart = computed(() => {
+      const cartState = store.state.cart;
+      // Handle the case where cart might be null or undefined
+      if (!cartState) {
+        return {
+          items: [],
+          subtotal: 0,
+          deliveryFee: 0,
+          tax: 0,
+          total: 0
+        };
+      }
+      return {
+        ...cartState,
+        items: Array.isArray(cartState.items) ? cartState.items : [],
+        subtotal: cartState.subtotal || 0,
+        deliveryFee: cartState.deliveryFee || 0,
+        tax: cartState.tax || 0,
+        total: cartState.total || 0
+      };
+    });
     
     // Item dialog
     const itemDialog = ref(false);
@@ -406,14 +450,36 @@ export default {
       v => v.length <= 500 || 'Review cannot exceed 500 characters'
     ];
     
+    // Restaurant ID from route params
+    const restaurantId = computed(() => route.params.id);
+    
     // Fetch restaurant data
     onMounted(async () => {
       const restaurantId = route.params.id;
       isLoading.value = true;
       
       try {
-        const restaurantData = await store.dispatch('fetchRestaurantDetails', restaurantId);
+        // Use the namespaced action with correct parameter format
+        const restaurantData = await store.dispatch('restaurants/fetchRestaurantById', { 
+          id: restaurantId
+        });
         restaurant.value = restaurantData;
+        
+        // Ensure menuCategories exists
+        if (!restaurant.value.menuCategories) {
+          // Initialize with empty array if not present
+          restaurant.value.menuCategories = [];
+          
+          try {
+            // Try to fetch menu data separately
+            const menuData = await store.dispatch('restaurants/fetchRestaurantMenu', restaurantId);
+            if (menuData && Array.isArray(menuData)) {
+              restaurant.value.menuCategories = menuData;
+            }
+          } catch (menuError) {
+            console.error('Failed to load restaurant menu:', menuError);
+          }
+        }
         
         // Set active category to first category
         if (restaurant.value.menuCategories && restaurant.value.menuCategories.length > 0) {
@@ -508,7 +574,7 @@ export default {
         });
       }
       
-      store.dispatch('addToCart', {
+      store.dispatch('cart/addToCart', {
         item: cartItem,
         restaurantId: restaurant.value.id
       });
@@ -554,7 +620,7 @@ export default {
       isSubmittingReview.value = true;
       
       try {
-        await store.dispatch('submitReview', {
+        await store.dispatch('reviews/submitReview', {
           restaurantId: restaurant.value.id,
           rating: userReview.rating,
           comment: userReview.comment
@@ -565,7 +631,9 @@ export default {
         userReview.comment = '';
         
         // Refresh reviews
-        restaurant.value.reviews = await store.dispatch('fetchRestaurantReviews', restaurant.value.id);
+        restaurant.value.reviews = await store.dispatch('restaurants/fetchRestaurantReviews', { 
+          id: restaurant.value.id 
+        });
         
         // Update restaurant rating
         const ratingSum = restaurant.value.reviews.reduce((sum, review) => sum + review.rating, 0);
@@ -596,8 +664,8 @@ export default {
       if (reviewFilters.search.trim()) {
         const search = reviewFilters.search.toLowerCase();
         filtered = filtered.filter(review => 
-          review.comment.toLowerCase().includes(search) ||
-          review.userName.toLowerCase().includes(search)
+          (review.comment || '').toLowerCase().includes(search) ||
+          (review.userName || '').toLowerCase().includes(search)
         );
       }
       
@@ -715,14 +783,52 @@ export default {
       if (newId) {
         isLoading.value = true;
         try {
-          const restaurantData = await store.dispatch('fetchRestaurantDetails', newId);
+          const restaurantData = await store.dispatch('restaurants/fetchRestaurantById', { 
+            id: newId
+          });
           restaurant.value = restaurantData;
+          
+          // Ensure menuCategories exists
+          if (!restaurant.value.menuCategories) {
+            // Initialize with empty array if not present
+            restaurant.value.menuCategories = [];
+            
+            try {
+              // Try to fetch menu data separately
+              const menuData = await store.dispatch('restaurants/fetchRestaurantMenu', newId);
+              if (menuData && Array.isArray(menuData)) {
+                restaurant.value.menuCategories = menuData;
+              }
+            } catch (menuError) {
+              console.error('Failed to load restaurant menu:', menuError);
+            }
+          }
+          
+          // Set active category to first category if available
+          if (restaurant.value.menuCategories && restaurant.value.menuCategories.length > 0) {
+            activeCategoryId.value = restaurant.value.menuCategories[0].id;
+          }
+          
           isLoading.value = false;
         } catch (error) {
           console.error('Failed to load restaurant:', error);
           router.push('/restaurants');
         }
       }
+    });
+    
+    // Remove item from cart
+    const removeFromCart = (index) => {
+      if (!Array.isArray(cart.value?.items) || index >= cart.value.items.length) return;
+      const item = cart.value.items[index];
+      store.dispatch('cart/removeCartItem', item.id);
+    };
+    
+    // Clean up resources before unmounting
+    onBeforeUnmount(() => {
+      // Clear any resources that might cause unmounting issues
+      selectedItem.value = null;
+      itemDialog.value = false;
     });
     
     return {
@@ -758,7 +864,9 @@ export default {
       getRatingPercentage,
       likeReview,
       dislikeReview,
-      formatDate
+      formatDate,
+      restaurantId,
+      removeFromCart
     };
   }
 };
@@ -805,5 +913,9 @@ export default {
   .cart-sidebar {
     position: static;
   }
+}
+
+.promotion-chip {
+  font-weight: bold;
 }
 </style>

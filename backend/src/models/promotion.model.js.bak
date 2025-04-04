@@ -1,0 +1,144 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const Restaurant = require('./restaurant.model');
+const PromotionCampaign = require('./promotionCampaign.model');
+
+/**
+ * Promotion Model
+ * Represents discount codes and promotions
+ */
+const Promotion = sequelize.define('Promotion', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  code: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    unique: true
+  },
+  name: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  type: {
+    type: DataTypes.ENUM('percentage', 'fixed_amount', 'free_delivery'),
+    allowNull: false,
+    defaultValue: 'percentage'
+  },
+  value: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Discount percentage or fixed amount'
+  },
+  min_order_amount: { // Renamed from minOrderAmount
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Minimum order amount required to apply the promotion'
+  },
+  max_discount: { // Renamed from maxDiscount
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Maximum discount amount for percentage discounts'
+  },
+  start_date: { // Renamed from startDate
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  end_date: { // Renamed from endDate
+    type: DataTypes.DATE,
+    allowNull: false
+  }, // Added comma
+  max_redemptions: { // Renamed from maxRedemptions
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'Maximum number of times this promotion can be used'
+  }, // Added comma
+  current_redemptions: { // Renamed from currentRedemptions
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Current number of times this promotion has been used'
+  }, // Added comma
+  max_per_user: { // Renamed from maxPerUser
+    type: DataTypes.INTEGER,
+    defaultValue: 1,
+    comment: 'Maximum times a single user can use this promotion'
+  }, // Added comma
+  status: {
+    type: DataTypes.ENUM('active', 'paused', 'expired'),
+    defaultValue: 'active'
+  }, // Added comma
+  applicable_to: { // Renamed from applicableTo
+    type: DataTypes.ENUM('all', 'selected_restaurants', 'categories'),
+    defaultValue: 'all'
+  }, // Added comma
+  user_type: { // Renamed from userType
+    type: DataTypes.ENUM('all', 'new', 'existing'),
+    defaultValue: 'all'
+  }, // Added comma
+  // Analytics fields - already snake_case
+  total_discount_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+    comment: 'Total discount amount given through this promotion'
+  }, // Added comma
+  total_order_value: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0,
+    comment: 'Total order value of orders using this promotion'
+  }, // Added comma
+  last_used_at: { // Renamed from lastUsedAt
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'Last time this promotion was used'
+  }, // Added comma
+  restaurant_id: { // Renamed from restaurantId
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'restaurants', // Use table name string
+      key: 'id'
+    },
+    comment: 'If null, promotion applies to all restaurants'
+  }, // Added comma
+}, { // Added comma
+  timestamps: true,
+  underscored: true, // Added underscored: true
+  tableName: 'promotions', // Already snake_case
+  indexes: [
+    {
+      fields: ['code'],
+      unique: true
+    },
+    {
+      fields: ['status', 'start_date', 'end_date'] // Updated index fields
+    },
+    {
+      fields: ['restaurant_id'] // Updated index fields
+    }
+  ]
+});
+
+// Define associations
+Promotion.associate = function(models) {
+  Promotion.belongsTo(models.Restaurant, {
+    foreignKey: 'restaurant_id',
+    as: 'restaurant',
+    constraints: false
+  });
+  
+  Promotion.belongsTo(models.PromotionCampaign, {
+    foreignKey: 'campaign_id',
+    as: 'campaign',
+    constraints: false
+  });
+};
+
+
+module.exports = Promotion;

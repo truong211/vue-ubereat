@@ -347,10 +347,10 @@ export default {
       
       try {
         const response = await store.dispatch('user/fetchPaymentMethods');
-        paymentMethods.value = response?.data || [];
+        paymentMethods.value = response?.data?.paymentMethods || [];
       } catch (err) {
-        console.error('Error fetching payment methods:', err);
-        error.value = 'Failed to load payment methods. Please try again.';
+        console.error('Failed to load payment methods:', err);
+        error.value = err?.response?.data?.message || 'Failed to load payment methods. Please try again.';
       } finally {
         loading.value = false;
       }

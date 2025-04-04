@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const addressController = require('../controllers/address.controller');
-const { authenticate } = require('../middleware/auth.middleware');
+const { authMiddleware } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
 // All routes require authentication
-router.use(authenticate);
+router.use(authMiddleware);
 
 /**
  * @route GET /api/addresses
@@ -83,4 +83,4 @@ router.get('/places/search', addressController.getPlaces);
  */
 router.get('/places/:placeId', addressController.getPlaceDetails);
 
-module.exports = router; 
+module.exports = router;

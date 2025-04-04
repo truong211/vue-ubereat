@@ -163,11 +163,11 @@ export default {
         pushSupported.value = 'Notification' in window && 'serviceWorker' in navigator
 
         // Get current notification settings
-        const settings = await store.dispatch('notifications/getPreferences')
-        pushEnabled.value = settings.push
-        emailEnabled.value = settings.email
-        smsEnabled.value = settings.sms
-        enabledTypes.value = settings.enabledTypes || []
+        const settings = await store.dispatch('notifications/getPreferences') || {}
+        pushEnabled.value = settings?.push || false
+        emailEnabled.value = settings?.email || false
+        smsEnabled.value = settings?.sms || false
+        enabledTypes.value = settings?.enabledTypes || []
 
         // Check phone verification status
         const user = store.state.auth.user

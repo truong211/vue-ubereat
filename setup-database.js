@@ -1,59 +1,68 @@
-/**
- * Database Setup Script for Uber Eats Clone
- * 
- * This script assists in setting up the MySQL database for the application.
- * It creates the database if it doesn't exist and imports the schema.
- * 
- * Usage:
- * 1. Make sure MySQL is installed and running
- * 2. Update the config object with your MySQL credentials
- * 3. Run: node setup-database.js
- */
+#!/usr/bin/env node
 
 const mysql = require('mysql2/promise');
 const fs = require('fs').promises;
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, 'backend', '.env') });
+const dotenv = require('dotenv');
 
 async function setupDatabase() {
+  let connection;
   try {
-    // Create connection
-    const connection = await mysql.createConnection({
+    // Load environment variables
+    dotenv.config({ path: path.join(__dirname, 'backend/.env') });
+    
+    // Read configuration
+    const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || ''
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME || 'food_delivery'
+    };
+
+    console.log('Starting database setup...');
+
+    // Create connection without database selected
+    connection = await mysql.createConnection({
+      host: dbConfig.host,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      multipleStatements: true
     });
 
     console.log('Connected to MySQL server');
 
+    // Drop and recreate database
+    await connection.query(`DROP DATABASE IF EXISTS ${dbConfig.database}`);
+    await connection.query(`CREATE DATABASE ${dbConfig.database} 
+      CHARACTER SET utf8mb4 
+      COLLATE utf8mb4_unicode_ci`);
+    console.log(`Database ${dbConfig.database} recreated`);
+
+    // Select the database
+    await connection.query(`USE ${dbConfig.database}`);
+
     // Read SQL file
-    const sqlFile = await fs.readFile(path.join(__dirname, 'food_Delivery.sql'), 'utf8');
+    const sqlFile = path.join(__dirname, 'food_Delivery.sql');
+    const sql = await fs.readFile(sqlFile, 'utf8');
+    
+    console.log('Executing SQL schema...');
+    await connection.query(sql);
+    console.log('Database schema created successfully');
 
-    // Split SQL file into individual statements
-    const statements = sqlFile.split(';').filter(statement => statement.trim());
+    console.log('\nSetup completed successfully!');
+    console.log(`Database: ${dbConfig.database}`);
+    console.log('Default admin credentials:');
+    console.log('Email: admin@fooddelivery.com');
+    console.log('Password: admin123 (hashed in database)');
 
-    // Execute each statement
-    for (const statement of statements) {
-      if (statement.trim()) {
-        await connection.execute(statement);
-        console.log('Executed SQL statement successfully');
-      }
-    }
-
-    // Create upload directories if they don't exist
-    const uploadDirs = ['categories', 'banners', 'products', 'restaurants', 'profiles'];
-    for (const dir of uploadDirs) {
-      const dirPath = path.join(__dirname, 'backend', 'uploads', dir);
-      await fs.mkdir(dirPath, { recursive: true });
-      console.log(`Created upload directory: ${dir}`);
-    }
-
-    console.log('Database setup completed successfully');
-    await connection.end();
   } catch (error) {
     console.error('Error setting up database:', error);
     process.exit(1);
+  } finally {
+    if (connection) {
+      await connection.end();
+    }
   }
 }
 
-setupDatabase();
+setupDatabase().catch(console.error);

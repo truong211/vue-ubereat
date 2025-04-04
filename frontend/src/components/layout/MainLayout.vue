@@ -4,19 +4,19 @@
     <v-app-bar
       color="white"
       elevation="1"
-      class="px-2"
+      class="px-1"
     >
-      <v-container class="d-flex align-center py-0 px-2">
+      <v-container class="d-flex align-center py-0 px-1 px-sm-2" fluid>
         <!-- Logo -->
         <router-link to="/" class="text-decoration-none d-flex align-center">
           <v-img
             src="/images/logo.png"
             alt="UberEat Logo"
-            width="40"
-            height="40"
-            class="mr-2"
+            width="36"
+            height="36"
+            class="mr-1 mr-sm-2"
           ></v-img>
-          <span class="text-h5 font-weight-bold primary--text">UberEat</span>
+          <span class="text-h6 font-weight-bold primary--text d-none d-sm-inline">UberEat</span>
         </router-link>
 
         <!-- Quick Search Button -->
@@ -24,7 +24,8 @@
           to="/search"
           icon
           variant="text"
-          class="ml-4"
+          class="ml-1 ml-sm-2"
+          density="comfortable"
           title="Search"
         >
           <v-icon>mdi-magnify</v-icon>
@@ -44,10 +45,36 @@
             {{ item.title }}
           </v-btn>
 
+          <!-- Admin Button (only shown for admin users) -->
+          <v-btn
+            v-if="isAdmin"
+            to="/admin"
+            variant="text"
+            color="primary"
+            class="mx-1"
+            prepend-icon="mdi-shield-account"
+          >
+            Admin Panel
+          </v-btn>
+
           <v-divider vertical class="mx-4"></v-divider>
 
           <!-- Notifications Center (Desktop) -->
           <notification-center v-if="isLoggedIn" class="mr-2"></notification-center>
+
+          <!-- Profile Button - Moved before cart button -->
+          <v-btn
+            v-if="isLoggedIn"
+            to="/profile"
+            color="primary"
+            variant="tonal"
+            class="mr-2"
+            prepend-icon="mdi-account"
+            density="comfortable"
+          >
+            <span class="d-none d-md-inline d-lg-none">Me</span>
+            <span class="d-none d-lg-inline">Profile</span>
+          </v-btn>
 
           <!-- Cart Button -->
           <v-btn
@@ -107,6 +134,15 @@
 
                   <v-divider></v-divider>
 
+                  <!-- Admin Panel Link for admin users (in dropdown) -->
+                  <v-list-item
+                    v-if="isAdmin"
+                    to="/admin"
+                    prepend-icon="mdi-shield-account"
+                    title="Admin Panel"
+                    @click="userMenu = false"
+                  ></v-list-item>
+
                   <v-list-item
                     v-for="item in userMenuItems"
                     :key="item.title"
@@ -146,15 +182,49 @@
           </div>
         </div>
 
-        <!-- Mobile Menu Button -->
-        <v-btn
-          icon
-          variant="text"
-          class="d-md-none"
-          @click="drawer = !drawer"
-        >
-          <v-icon>mdi-menu</v-icon>
-        </v-btn>
+        <!-- Mobile Navigation Button and Mobile Notification Center -->
+        <div class="d-flex d-md-none align-center">
+          <!-- Mobile Notification Center -->
+          <notification-center v-if="isLoggedIn" class="mr-2"></notification-center>
+          
+          <!-- Mobile Profile Button - Moved before cart button -->
+          <v-btn
+            v-if="isLoggedIn"
+            to="/profile"
+            color="primary"
+            variant="tonal"
+            class="mr-2"
+            density="comfortable"
+            prepend-icon="mdi-account"
+          >
+            <span class="d-none d-sm-inline">Profile</span>
+          </v-btn>
+          
+          <!-- Mobile Cart Button -->
+          <v-btn
+            to="/cart"
+            icon
+            variant="text"
+            class="mr-2"
+          >
+            <v-badge
+              :content="cartItemCount"
+              :model-value="cartItemCount > 0"
+              color="primary"
+            >
+              <v-icon>mdi-cart</v-icon>
+            </v-badge>
+          </v-btn>
+          
+          <!-- Mobile Menu Button -->
+          <v-btn
+            icon
+            variant="text"
+            @click="drawer = !drawer"
+          >
+            <v-icon>mdi-menu</v-icon>
+          </v-btn>
+        </div>
       </v-container>
     </v-app-bar>
 
@@ -179,6 +249,15 @@
           :key="item.title"
           :to="item.to"
           :title="item.title"
+          @click="drawer = false"
+        ></v-list-item>
+
+        <!-- Admin Button in mobile menu (only for admin users) -->
+        <v-list-item
+          v-if="isAdmin"
+          to="/admin"
+          prepend-icon="mdi-shield-account"
+          title="Admin Panel"
           @click="drawer = false"
         ></v-list-item>
 
@@ -487,11 +566,27 @@ export default {
   },
 
   async created() {
+    // Fetch static pages for footer
     try {
       const response = await axios.get('/api/pages');
-      this.staticPages = response.data.data.pages.filter(page => page.published);
+      
+      // Check if response data is in expected format
+      if (response?.data?.data?.pages) {
+        this.staticPages = response.data.data.pages.filter(page => page.published);
+      } else if (response?.data?.pages) {
+        // Alternative format sometimes used
+        this.staticPages = response.data.pages.filter(page => page.published);
+      } else if (Array.isArray(response?.data)) {
+        // Direct array in response
+        this.staticPages = response.data.filter(page => page.published);
+      } else {
+        // Use fallback data if response format is unexpected
+        this.useStaticPagesFallback();
+      }
     } catch (error) {
       console.error('Error fetching static pages:', error);
+      // Fallback for static pages if API is unavailable
+      this.useStaticPagesFallback();
     }
 
     // Initialize push notifications if user is logged in
@@ -516,7 +611,12 @@ export default {
     
     userName() {
       if (!this.user) return '';
-      return `${this.user.firstName} ${this.user.lastName}`;
+      const firstName = this.user.firstName || '';
+      const lastName = this.user.lastName || '';
+      if (!firstName && !lastName) {
+        return this.user.username || this.user.email || 'User';
+      }
+      return `${firstName} ${lastName}`.trim();
     },
     
     userEmail() {
@@ -534,6 +634,10 @@ export default {
 
     unreadNotificationCount() {
       return this.unreadCount;
+    },
+
+    isAdmin() {
+      return this.user?.role === 'admin';
     }
   },
   
@@ -557,6 +661,15 @@ export default {
         this.$toast.error('Failed to logout');
         console.error('Logout error:', error);
       }
+    },
+    
+    useStaticPagesFallback() {
+      this.staticPages = [
+        { title: 'About Us', slug: 'about', published: true },
+        { title: 'Terms of Service', slug: 'terms', published: true },
+        { title: 'Privacy Policy', slug: 'privacy', published: true },
+        { title: 'Contact', slug: 'contact', published: true }
+      ];
     }
   },
 

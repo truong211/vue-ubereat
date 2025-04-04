@@ -41,6 +41,42 @@ This project is a food delivery website that connects restaurants with customers
 - JWT for authentication
 - Socket.io for real-time communication
 
+## Database Migration
+
+The project is currently transitioning from using Sequelize ORM to direct SQL queries. This migration offers the following benefits:
+
+- Improved performance by eliminating ORM overhead
+- Greater control over the exact SQL queries being executed
+- Reduced dependencies and simplified codebase
+- Enhanced flexibility for complex queries and database operations
+
+### Migrated Models:
+- User
+- Restaurant
+- Article
+- Order
+- OrderDetail
+- Review
+- ReviewVote
+- ReviewReport
+- PaymentHistory
+- UserPromotion
+- Promotion
+- ProductPromotion
+- Banner
+- StaticPage
+- SiteConfig
+- FAQ
+- NotificationTracking
+- StaffPermission
+- DeliveryConfig
+
+### Migration Strategy:
+1. Each model is being refactored to maintain the same interface as the Sequelize models
+2. Models include methods like `findAll()`, `findByPk()`, `create()`, `update()`, and `destroy()`
+3. The migration is being done incrementally to ensure system stability
+4. The models provide compatibility with existing code that expects Sequelize behavior
+
 ## Project Structure
 
 ```

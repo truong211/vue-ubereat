@@ -1,0 +1,90 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const User = require('./user.model');
+const Promotion = require('./promotion.model');
+const Order = require('./order.model');
+
+/**
+ * UserPromotion Model
+ * Tracks promotion usage by users
+ */
+const UserPromotion = sequelize.define('UserPromotion', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  promotionId: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  orderId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'The order where this promotion was applied'
+  },
+  usedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  discountAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    comment: 'The actual discount amount applied'
+  },
+  orderTotal: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    comment: 'The order total before discount'
+  }
+}, {
+  timestamps: true,
+  tableName: 'user_promotions',
+  indexes: [],
+  sync: {
+    alter: false,
+    force: false
+  },
+  schema: 'food_delivery',
+  freezeTableName: true
+});
+
+// Define associations without constraint enforcement
+UserPromotion.belongsTo(User, {
+  foreignKey: 'userId',
+  as: 'user',
+  constraints: false
+});
+UserPromotion.belongsTo(Promotion, {
+  foreignKey: 'promotionId',
+  as: 'promotion',
+  constraints: false
+});
+UserPromotion.belongsTo(Order, {
+  foreignKey: 'orderId',
+  as: 'order',
+  constraints: false
+});
+
+User.hasMany(UserPromotion, {
+  foreignKey: 'userId',
+  as: 'usedPromotions',
+  constraints: false
+});
+Promotion.hasMany(UserPromotion, {
+  foreignKey: 'promotionId',
+  as: 'usages',
+  constraints: false
+});
+Order.hasOne(UserPromotion, {
+  foreignKey: 'orderId',
+  as: 'appliedPromotion',
+  constraints: false
+});
+
+module.exports = UserPromotion;

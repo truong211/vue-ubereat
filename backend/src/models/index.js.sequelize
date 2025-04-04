@@ -1,0 +1,91 @@
+const fs = require('fs');
+const path = require('path');
+const Sequelize = require('sequelize');
+const sequelize = require('../config/database');
+
+// Import models
+const UserModel = require('./user.model');
+const RestaurantModel = require('./restaurant.model');
+const CategoryModel = require('./category.model');
+const ProductModel = require('./product.model');
+const OrderModel = require('./order.model');
+const OrderDetailModel = require('./orderDetail.model');
+const ReviewModel = require('./review.model');
+const ReviewVoteModel = require('./reviewVote.model');
+const ReviewReportModel = require('./reviewReport.model');
+const AddressModel = require('./address.model');
+const CartModel = require('./cart.model');
+const PaymentHistoryModel = require('./paymentHistory.model');
+const PromotionModel = require('./promotion.model');
+const PromotionCategoryModel = require('./promotionCategory.model');
+const PromotionCampaignModel = require('./promotionCampaign.model');
+const UserPromotionModel = require('./userPromotion.model'); // Added import
+const ProductPromotionModel = require('./productPromotion.model');
+const BannerModel = require('./banner.model');
+const StaticPageModel = require('./staticPage.model');
+const SiteConfigModel = require('./siteConfig.model');
+const UserActivityLogModel = require('./userActivityLog.model');
+const ApiPerformanceLogModel = require('./apiPerformanceLog.model');
+const MarketingContentModel = require('./marketingContent.model');
+const FAQModel = require('./faq.model');
+const NotificationModel = require('./notification.model')(sequelize, Sequelize.DataTypes);
+const NotificationTrackingModel = require('./notificationTracking.model');
+
+// Import models that use the function pattern
+const LoyaltyModel = require('./Loyalty')(sequelize, Sequelize.DataTypes);
+const LoyaltyRewardModel = require('./LoyaltyReward')(sequelize, Sequelize.DataTypes);
+const LoyaltyRedemptionModel = require('./LoyaltyRedemption')(sequelize, Sequelize.DataTypes);
+const ReviewResponseModel = require('./ReviewResponse')(sequelize, Sequelize.DataTypes);
+const StaffPermissionModel = require('./staffPermission.model');
+const DeliveryConfigModel = require('./deliveryConfig.model');
+const DeliveryFeeTierModel = require('./deliveryFeeTier.model');
+
+// Create db object with all models
+const db = {
+  User: UserModel,
+  Restaurant: RestaurantModel,
+  Category: CategoryModel,
+  Product: ProductModel,
+  Order: OrderModel,
+  OrderDetail: OrderDetailModel,
+  Review: ReviewModel,
+  ReviewVote: ReviewVoteModel,
+  ReviewReport: ReviewReportModel,
+  Address: AddressModel,
+  Cart: CartModel,
+  PaymentHistory: PaymentHistoryModel,
+  Promotion: PromotionModel,
+  PromotionCategory: PromotionCategoryModel,
+  PromotionCampaign: PromotionCampaignModel,
+  UserPromotion: UserPromotionModel,
+  ProductPromotion: ProductPromotionModel,
+  Banner: BannerModel,
+  StaticPage: StaticPageModel,
+  SiteConfig: SiteConfigModel,
+  UserActivityLog: UserActivityLogModel,
+  ApiPerformanceLog: ApiPerformanceLogModel,
+  MarketingContent: MarketingContentModel,
+  FAQ: FAQModel,
+  Notification: NotificationModel,
+  NotificationTracking: NotificationTrackingModel,
+  Loyalty: LoyaltyModel,
+  LoyaltyReward: LoyaltyRewardModel,
+  LoyaltyRedemption: LoyaltyRedemptionModel,
+  ReviewResponse: ReviewResponseModel,
+  StaffPermission: StaffPermissionModel,
+  DeliveryConfig: DeliveryConfigModel,
+  DeliveryFeeTier: DeliveryFeeTierModel
+};
+
+// Set up all associations
+Object.keys(db).forEach(modelName => {
+  if (db[modelName].associate) {
+    db[modelName].associate(db);
+  }
+});
+
+// Add Sequelize instance and Sequelize class to db
+db.sequelize = sequelize;
+db.Sequelize = Sequelize;
+
+module.exports = db;

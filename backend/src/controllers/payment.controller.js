@@ -55,13 +55,14 @@ class PaymentController {
   async generateReceipt(req, res, next) {
     try {
       const { id } = req.params;
-      const payment = await PaymentHistory.findByPk(id, {
-        include: [{ model: Order, as: 'order' }]
-      });
+      const payment = await PaymentHistory.findByPk(id);
 
       if (!payment) {
         return next(new AppError('Payment not found', 404));
       }
+
+      const order = payment.orderId ? await Order.findByPk(payment.orderId) : null;
+      payment.order = order;
 
       if (payment.status !== 'succeeded' && payment.status !== 'completed') {
         return next(new AppError('Cannot generate receipt for incomplete payment', 400));
@@ -71,17 +72,21 @@ class PaymentController {
       const fileName = `receipt-${payment.id}.pdf`;
       const filePath = path.join(__dirname, '..', '..', 'uploads', 'receipts', fileName);
 
+      const dir = path.join(__dirname, '..', '..', 'uploads', 'receipts');
+      if (!fs.existsSync(dir)){
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
       doc.pipe(fs.createWriteStream(filePath));
 
-      // Add receipt content
       doc.fontSize(25).text('Payment Receipt', { align: 'center' });
       doc.moveDown();
       doc.fontSize(12);
       doc.text(`Receipt Number: REC-${payment.id}`);
-      doc.text(`Order Number: ${payment.order.id}`);
-      doc.text(`Date: ${payment.created_at.toLocaleString()}`);
+      doc.text(`Order Number: ${order ? order.id : 'N/A'}`);
+      doc.text(`Date: ${new Date(payment.createdAt).toLocaleString()}`);
       doc.text(`Amount: ${payment.amount.toFixed(2)} VND`);
-      doc.text(`Payment Method: ${payment.payment_method.toUpperCase()}`);
+      doc.text(`Payment Method: ${payment.paymentMethod.toUpperCase()}`);
       doc.text(`Status: ${payment.status}`);
 
       doc.end();
@@ -118,11 +123,11 @@ class PaymentController {
 
       const payments = await PaymentHistory.findAll({
         where: {
-          created_at: {
-            [Op.between]: [startDate, endDate]
+          createdAt: {
+            gte: startDate,
+            lte: endDate
           }
-        },
-        include: [{ model: Order, as: 'order' }]
+        }
       });
 
       const reconciliationResults = await Promise.all(
@@ -130,8 +135,8 @@ class PaymentController {
           if (payment.status === 'pending') {
             try {
               const result = await PaymentService.verifyPayment(
-                payment.payment_method,
-                payment.transaction_ref
+                payment.paymentMethod,
+                payment.transactionId
               );
               return {
                 payment_id: payment.id,

@@ -1,239 +1,163 @@
 <template>
-  <v-card class="alerts-panel">
-    <v-card-title class="d-flex align-center">
-      System Alerts
-      <v-spacer></v-spacer>
-      <v-chip
-        v-if="totalAlerts > 0"
-        color="error"
-        size="small"
-      >
-        {{ totalAlerts }} new
-      </v-chip>
-    </v-card-title>
-
-    <v-card-text>
-      <v-tabs v-model="activeTab" grow>
-        <v-tab value="delayed">Delayed Orders</v-tab>
-        <v-tab value="complaints">Complaints</v-tab>
-      </v-tabs>
-
-      <v-window v-model="activeTab" class="mt-4">
-        <!-- Delayed Orders Tab -->
-        <v-window-item value="delayed">
-          <div v-if="isLoading" class="d-flex justify-center py-4">
-            <v-progress-circular indeterminate color="primary"></v-progress-circular>
-          </div>
-          <template v-else>
-            <v-list v-if="delayedOrders.length > 0" class="alerts-list">
-              <v-list-item
-                v-for="order in delayedOrders"
-                :key="order.id"
-                :value="order"
-                :class="`priority-${order.priority}`"
+  <div class="alerts-panel">
+    <v-card v-if="alerts.length > 0">
+      <v-card-title class="d-flex align-center">
+        System Alerts
+        <v-spacer></v-spacer>
+        <v-btn
+          icon
+          @click="dismissAll"
+          title="Dismiss all alerts"
+        >
+          <v-icon>mdi-close-circle-multiple</v-icon>
+        </v-btn>
+      </v-card-title>
+      
+      <v-list>
+        <v-list-item
+          v-for="(alert, index) in alerts"
+          :key="index"
+          :class="{'high-priority': alert.priority === 'high'}"
+        >
+          <template v-slot:prepend>
+            <v-avatar :color="getAlertColor(alert.type)" size="36">
+              <v-icon>{{ getAlertIcon(alert.type) }}</v-icon>
+            </v-avatar>
+          </template>
+          
+          <v-list-item-title class="font-weight-bold">{{ alert.title }}</v-list-item-title>
+          <v-list-item-subtitle>{{ alert.message }}</v-list-item-subtitle>
+          
+          <template v-slot:append>
+            <div class="d-flex align-center">
+              <span class="text-caption text-grey mr-4">{{ formatDate(alert.timestamp) }}</span>
+              <v-btn 
+                icon 
+                size="small" 
+                @click="dismissAlert(index)"
+                title="Dismiss alert"
               >
-                <template v-slot:prepend>
-                  <v-avatar :color="getPriorityColor(order.priority)" size="36">
-                    <v-icon color="white">mdi-clock-alert</v-icon>
-                  </v-avatar>
-                </template>
-
-                <v-list-item-title>Order #{{ order.id }}</v-list-item-title>
-                <v-list-item-subtitle>
-                  {{ order.restaurant }} • {{ order.customer }}
-                </v-list-item-subtitle>
-
-                <template v-slot:append>
-                  <div class="d-flex flex-column align-end">
-                    <v-chip
-                      :color="getPriorityColor(order.priority)"
-                      size="small"
-                      text-color="white"
-                    >
-                      {{ order.currentDelay }}min delay
-                    </v-chip>
-                    <span class="text-caption text-medium-emphasis mt-1">
-                      Expected: {{ formatTime(order.expectedTime) }}
-                    </span>
-                  </div>
-                </template>
-              </v-list-item>
-            </v-list>
-            <div v-else class="text-center py-4">
-              <v-icon size="48" color="success">mdi-check-circle</v-icon>
-              <div class="text-h6 mt-2">No Delayed Orders</div>
+                <v-icon>mdi-close</v-icon>
+              </v-btn>
             </div>
           </template>
-        </v-window-item>
-
-        <!-- Complaints Tab -->
-        <v-window-item value="complaints">
-          <div v-if="isLoading" class="d-flex justify-center py-4">
-            <v-progress-circular indeterminate color="primary"></v-progress-circular>
-          </div>
-          <template v-else>
-            <v-list v-if="complaints.length > 0" class="alerts-list">
-              <v-list-item
-                v-for="complaint in complaints"
-                :key="complaint.id"
-                :value="complaint"
-                :class="`priority-${complaint.priority}`"
-              >
-                <template v-slot:prepend>
-                  <v-avatar :color="getPriorityColor(complaint.priority)" size="36">
-                    <v-icon color="white">mdi-alert</v-icon>
-                  </v-avatar>
-                </template>
-
-                <v-list-item-title>
-                  {{ getComplaintTypeText(complaint.type) }}
-                </v-list-item-title>
-                <v-list-item-subtitle>
-                  Order #{{ complaint.orderId }} • {{ complaint.customer }}
-                </v-list-item-subtitle>
-
-                <template v-slot:append>
-                  <div class="d-flex flex-column align-end">
-                    <v-chip
-                      :color="getPriorityColor(complaint.priority)"
-                      size="small"
-                      text-color="white"
-                    >
-                      {{ complaint.priority }}
-                    </v-chip>
-                    <span class="text-caption text-medium-emphasis mt-1">
-                      {{ formatTimeAgo(complaint.timestamp) }}
-                    </span>
-                  </div>
-                </template>
-              </v-list-item>
-            </v-list>
-            <div v-else class="text-center py-4">
-              <v-icon size="48" color="success">mdi-check-circle</v-icon>
-              <div class="text-h6 mt-2">No Active Complaints</div>
-            </div>
-          </template>
-        </v-window-item>
-      </v-window>
-    </v-card-text>
-  </v-card>
+        </v-list-item>
+      </v-list>
+    </v-card>
+  </div>
 </template>
 
 <script>
-import { format } from 'date-fns'
-import alertService from '@/services/alert.service'
+import { ref, onMounted } from 'vue';
+import { format } from 'date-fns';
+import axios from 'axios';
 
 export default {
   name: 'AlertsPanel',
-
-  data() {
-    return {
-      activeTab: 'delayed',
-      isLoading: true,
-      delayedOrders: [],
-      complaints: [],
-      refreshInterval: null
-    }
-  },
-
-  computed: {
-    totalAlerts() {
-      return this.delayedOrders.length + this.complaints.length
-    }
-  },
-
-  mounted() {
-    this.fetchAlerts()
-    // Refresh alerts every minute
-    this.refreshInterval = setInterval(this.fetchAlerts, 60000)
-  },
-
-  beforeUnmount() {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval)
-    }
-  },
-
-  methods: {
-    async fetchAlerts() {
-      try {
-        this.isLoading = true
-        const [delayedOrders, complaints] = await Promise.all([
-          alertService.getDelayedOrders(),
-          alertService.getComplaints()
-        ])
-        this.delayedOrders = delayedOrders
-        this.complaints = complaints
-      } catch (error) {
-        console.error('Failed to fetch alerts:', error)
-      } finally {
-        this.isLoading = false
+  
+  setup() {
+    const alerts = ref([]);
+    
+    // Mock alerts for development environment
+    const mockAlerts = [
+      {
+        id: 1,
+        type: 'warning',
+        title: 'Server Performance',
+        message: 'API response times are above threshold',
+        timestamp: new Date(),
+        priority: 'medium'
+      },
+      {
+        id: 2,
+        type: 'info',
+        title: 'System Update',
+        message: 'A new update will be deployed in 24 hours',
+        timestamp: new Date(),
+        priority: 'low'
       }
-    },
-
-    getPriorityColor(priority) {
+    ];
+    
+    const getAlertColor = (type) => {
       const colors = {
-        critical: 'error',
-        high: 'error',
-        medium: 'warning',
-        low: 'info'
+        error: 'error',
+        warning: 'warning',
+        info: 'info',
+        success: 'success'
+      };
+      return colors[type] || 'primary';
+    };
+    
+    const getAlertIcon = (type) => {
+      const icons = {
+        error: 'mdi-alert-circle',
+        warning: 'mdi-alert',
+        info: 'mdi-information',
+        success: 'mdi-check-circle'
+      };
+      return icons[type] || 'mdi-bell';
+    };
+    
+    const formatDate = (date) => {
+      try {
+        return format(new Date(date), 'MMM d, h:mm a');
+      } catch (error) {
+        return '';
       }
-      return colors[priority] || 'grey'
-    },
-
-    getComplaintTypeText(type) {
-      const types = {
-        food_quality: 'Food Quality Issue',
-        delivery_time: 'Delivery Delay',
-        missing_items: 'Missing Items',
-        wrong_order: 'Wrong Order',
-        driver_behavior: 'Driver Behavior',
-        app_issues: 'App Technical Issue'
+    };
+    
+    const dismissAlert = (index) => {
+      // In a real app, you would send a request to mark the alert as dismissed
+      alerts.value.splice(index, 1);
+    };
+    
+    const dismissAll = () => {
+      // In a real app, you would send a request to mark all alerts as dismissed
+      alerts.value = [];
+    };
+    
+    const loadAlerts = async () => {
+      try {
+        // In development, use mock data
+        if (import.meta.env.DEV) {
+          alerts.value = mockAlerts;
+          return;
+        }
+        
+        // In production, fetch real alerts
+        const response = await axios.get('/api/admin/alerts');
+        if (response.data && Array.isArray(response.data.alerts)) {
+          alerts.value = response.data.alerts;
+        }
+      } catch (error) {
+        console.error('Failed to load alerts:', error);
+        // Use mock data as fallback in case of error
+        alerts.value = mockAlerts;
       }
-      return types[type] || 'Other Issue'
-    },
-
-    formatTime(date) {
-      return format(new Date(date), 'HH:mm')
-    },
-
-    formatTimeAgo(date) {
-      const now = new Date()
-      const minutes = Math.floor((now - new Date(date)) / 60000)
-
-      if (minutes < 60) {
-        return `${minutes}m ago`
-      } else if (minutes < 1440) {
-        const hours = Math.floor(minutes / 60)
-        return `${hours}h ago`
-      } else {
-        const days = Math.floor(minutes / 1440)
-        return `${days}d ago`
-      }
-    }
+    };
+    
+    onMounted(() => {
+      loadAlerts();
+    });
+    
+    return {
+      alerts,
+      getAlertColor,
+      getAlertIcon,
+      formatDate,
+      dismissAlert,
+      dismissAll
+    };
   }
-}
+};
 </script>
 
 <style scoped>
-.alerts-list {
-  max-height: 400px;
-  overflow-y: auto;
+.alerts-panel {
+  margin-bottom: 24px;
 }
 
-.priority-critical {
-  background-color: rgba(244, 67, 54, 0.1);
-}
-
-.priority-high {
-  background-color: rgba(255, 152, 0, 0.1);
-}
-
-.priority-medium {
-  background-color: rgba(255, 193, 7, 0.1);
-}
-
-.priority-low {
-  background-color: rgba(33, 150, 243, 0.1);
+.high-priority {
+  border-left: 4px solid var(--v-error-base);
 }
 </style>

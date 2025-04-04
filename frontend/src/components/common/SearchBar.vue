@@ -119,17 +119,24 @@
                 :step="0.5"
                 thumb-label
                 :label="value => `${value}km`"
-              ></v-slider>
+              >
+                <template v-slot:append>
+                  <div class="text-caption mt-1">{{ filters.distance }}km</div>
+                </template>
+              </v-slider>
             </v-col>
 
             <!-- Rating filter -->
             <v-col cols="12" md="6">
               <v-list-subheader>{{ $t('search.filters.rating') }}</v-list-subheader>
-              <v-rating
-                v-model="filters.rating"
-                hover
-                half-increments
-              ></v-rating>
+              <div class="d-flex align-center">
+                <v-rating
+                  v-model="filters.rating"
+                  hover
+                  half-increments
+                ></v-rating>
+                <span class="ml-2 text-caption">{{ filters.rating ? `${filters.rating} of 5` : 'Any rating' }}</span>
+              </div>
             </v-col>
 
             <!-- Price range -->

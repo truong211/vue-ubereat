@@ -28,22 +28,31 @@
             thumb-label
             color="primary"
             :hide-details="false"
-            :details="`${filters.distance} km`"
-          ></v-slider>
+            :details="`${filters.distance}km`"
+          >
+            <template v-slot:append>
+              <div class="text-caption mt-1">{{ filters.distance }}km</div>
+            </template>
+          </v-slider>
         </v-col>
 
         <!-- Đánh giá -->
         <v-col cols="12">
           <div class="text-subtitle-2 mb-2">Đánh giá tối thiểu</div>
-          <v-rating
-            v-model="filters.rating"
-            color="amber"
-            active-color="amber"
-            hover
-            half-increments
-            length="5"
-            size="small"
-          ></v-rating>
+          <div class="d-flex align-center">
+            <v-rating
+              v-model="filters.rating"
+              color="amber"
+              active-color="amber"
+              hover
+              half-increments
+              length="5"
+              size="small"
+            ></v-rating>
+            <span class="ml-2 text-caption">
+              {{ filters.rating ? `${filters.rating} của 5` : 'Bất kỳ' }}
+            </span>
+          </div>
         </v-col>
 
         <!-- Khoảng giá -->

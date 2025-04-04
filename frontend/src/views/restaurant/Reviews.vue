@@ -294,7 +294,7 @@ import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useStore } from 'vuex';
 import { format } from 'date-fns';
-import { viVN } from 'date-fns/locale';
+import { vi } from 'date-fns/locale';
 import reviewService from '@/services/review.service';
 
 export default {
@@ -538,7 +538,7 @@ export default {
     };
 
     const formatDate = (date) => {
-      return format(new Date(date), 'dd MMMM yyyy', { locale: viVN });
+      return format(new Date(date), 'dd MMMM yyyy', { locale: vi });
     };
 
     // Watchers

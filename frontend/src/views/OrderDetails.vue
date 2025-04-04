@@ -460,7 +460,7 @@ export default {
   
   computed: {
     ...mapState({
-      order: state => state.order.currentOrder
+      order: state => state.orders.currentOrder
     }),
     
     orderId() {
@@ -474,9 +474,9 @@ export default {
   
   methods: {
     ...mapActions({
-      fetchOrderById: 'order/fetchOrderById',
-      rateOrderAction: 'order/rateOrder',
-      cancelOrderAction: 'order/cancelOrder'
+      fetchOrderById: 'orders/fetchOrderDetails',
+      rateOrderAction: 'orders/submitReview',
+      cancelOrderAction: 'orders/cancelOrder'
     }),
     
     async loadOrderDetails() {

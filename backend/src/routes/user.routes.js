@@ -1,11 +1,18 @@
 const express = require('express');
 const { body } = require('express-validator');
 const userController = require('../controllers/user.controller');
-const { authMiddleware } = require('../middleware/auth.middleware');
+const { protect, authMiddleware } = require('../middleware/auth.middleware');
 const multer = require('multer');
 const path = require('path');
 
 const router = express.Router();
+
+/**
+ * @route GET /api/users
+ * @desc Get users (filtered by roles if specified)
+ * @access Public with optional auth
+ */
+router.get('/', authMiddleware, userController.getUsers);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -37,7 +44,7 @@ const upload = multer({
 });
 
 // Apply auth middleware to all routes
-router.use(authMiddleware);
+router.use(protect);
 
 /**
  * @route GET /api/users/profile
@@ -167,5 +174,72 @@ router.get('/orders', userController.getOrders);
  * @access Private
  */
 router.get('/orders/:id', userController.getOrderDetails);
+
+/**
+ * @route GET /api/users/payment-methods
+ * @desc Get user payment methods
+ * @access Private
+ */
+router.get('/payment-methods', (req, res) => {
+  // Return empty array for now as this is a placeholder
+  res.status(200).json({
+    status: 'success',
+    data: {
+      paymentMethods: []
+    }
+  });
+});
+
+/**
+ * @route POST /api/users/payment-methods
+ * @desc Add new payment method
+ * @access Private
+ */
+router.post(
+  '/payment-methods',
+  [
+    body('type')
+      .notEmpty()
+      .withMessage('Payment method type is required')
+      .isIn(['credit_card', 'debit_card', 'paypal'])
+      .withMessage('Invalid payment method type'),
+    body('cardNumber')
+      .optional()
+      .isCreditCard()
+      .withMessage('Invalid card number'),
+    body('expiryDate')
+      .optional()
+      .matches(/^(0[1-9]|1[0-2])\/([0-9]{2})$/)
+      .withMessage('Expiry date should be in MM/YY format')
+  ],
+  (req, res) => {
+    // Return success for now as this is a placeholder
+    res.status(201).json({
+      status: 'success',
+      data: {
+        paymentMethod: {
+          id: Date.now(),
+          userId: req.user.id,
+          type: req.body.type,
+          cardNumber: req.body.cardNumber ? `xxxx-xxxx-xxxx-${req.body.cardNumber.slice(-4)}` : null,
+          expiryDate: req.body.expiryDate || null,
+          isDefault: req.body.isDefault || false,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    });
+  }
+);
+
+/**
+ * @route DELETE /api/users/payment-methods/:id
+ * @desc Delete payment method
+ * @access Private
+ */
+router.delete('/payment-methods/:id', (req, res) => {
+  // Return success for now as this is a placeholder
+  res.status(204).send();
+});
 
 module.exports = router; 

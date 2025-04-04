@@ -1,12 +1,6 @@
 <template>
   <v-app>
-    <v-app-bar>
-      <!-- Existing app bar content -->
-      <v-spacer></v-spacer>
-      
-      <!-- Add NotificationCenter to the app bar -->
-      <notification-center></notification-center>
-    </v-app-bar>
+    <!-- Remove the entire app bar since it's redundant with MainLayout -->
 
     <!-- Main content -->
     <v-main>

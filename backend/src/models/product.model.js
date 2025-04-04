@@ -1,111 +1,151 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const Restaurant = require('./restaurant.model');
-const Category = require('./category.model');
+const db = require('../config/database');
 
 /**
- * Product Model
- * Represents food items in the system
+ * Product model with direct SQL implementation
  */
-const Product = sequelize.define('Product', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  restaurantId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: Restaurant,
-      key: 'id'
+const Product = {
+  tableName: 'products',
+  
+  findByPk: async (id) => {
+    try {
+      const results = await db.query('SELECT * FROM products WHERE id = ?', [id]);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Product.findByPk:', error);
+      throw error;
     }
   },
-  categoryId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: Category,
-      key: 'id'
+  
+  findOne: async (where) => {
+    try {
+      const whereClause = Object.entries(where)
+        .map(([key, value]) => `${key} = ?`)
+        .join(' AND ');
+      const values = Object.values(where);
+      
+      const results = await db.query(`SELECT * FROM products WHERE ${whereClause} LIMIT 1`, values);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Product.findOne:', error);
+      throw error;
     }
   },
-  name: {
-    type: DataTypes.STRING(100),
-    allowNull: false
-  },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
-  },
-  discountPrice: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: true
-  },
-  image: {
-    type: DataTypes.STRING(255),
-    allowNull: true
-  },
-  isVegetarian: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  isVegan: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  isGlutenFree: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  spicyLevel: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0,
-    validate: {
-      min: 0,
-      max: 5
+  
+  findAll: async (options = {}) => {
+    try {
+      let sql = 'SELECT * FROM products';
+      const values = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(options.where));
+      }
+      
+      if (options.order) {
+        sql += ` ORDER BY ${options.order}`;
+      }
+      
+      if (options.limit) {
+        sql += ` LIMIT ${parseInt(options.limit)}`;
+      }
+      
+      if (options.offset) {
+        sql += ` OFFSET ${parseInt(options.offset)}`;
+      }
+      
+      return await db.query(sql, values);
+    } catch (error) {
+      console.error('Error in Product.findAll:', error);
+      throw error;
     }
   },
-  preparationTime: {
-    type: DataTypes.INTEGER, // in minutes
-    allowNull: true
+  
+  create: async (data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['nutritionalInfo', 'options'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const columns = Object.keys(processedData).join(', ');
+      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
+      const values = Object.values(processedData);
+      
+      const result = await db.query(
+        `INSERT INTO products (${columns}) VALUES (${placeholders})`, 
+        values
+      );
+      
+      return { id: result.insertId, ...data };
+    } catch (error) {
+      console.error('Error in Product.create:', error);
+      throw error;
+    }
   },
-  status: {
-    type: DataTypes.ENUM('available', 'unavailable'),
-    defaultValue: 'available'
+  
+  update: async (id, data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['nutritionalInfo', 'options'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const setClauses = Object.keys(processedData)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      const values = [...Object.values(processedData), id];
+      
+      const result = await db.query(
+        `UPDATE products SET ${setClauses} WHERE id = ?`,
+        values
+      );
+      
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Product.update:', error);
+      throw error;
+    }
   },
-  isPopular: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+  
+  destroy: async (id) => {
+    try {
+      const result = await db.query('DELETE FROM products WHERE id = ?', [id]);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Product.destroy:', error);
+      throw error;
+    }
   },
-  isRecommended: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
-  },
-  nutritionalInfo: {
-    type: DataTypes.JSON,
-    allowNull: true
-  },
-  ingredients: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  allergens: {
-    type: DataTypes.TEXT,
-    allowNull: true
+  
+  count: async (where = {}) => {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM products';
+      const values = [];
+      
+      if (Object.keys(where).length > 0) {
+        const whereClause = Object.entries(where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(where));
+      }
+      
+      const results = await db.query(sql, values);
+      return results[0].count;
+    } catch (error) {
+      console.error('Error in Product.count:', error);
+      throw error;
+    }
   }
-}, {
-  timestamps: true,
-  tableName: 'products'
-});
-
-// Define associations
-Product.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
-Product.belongsTo(Category, { foreignKey: 'categoryId', as: 'category' });
-Restaurant.hasMany(Product, { foreignKey: 'restaurantId', as: 'products' });
-Category.hasMany(Product, { foreignKey: 'categoryId', as: 'products' });
+};
 
 module.exports = Product; 

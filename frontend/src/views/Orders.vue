@@ -7,7 +7,7 @@
       <p class="mt-4">Loading your orders...</p>
     </div>
     
-    <div v-else-if="orders.length === 0" class="empty-orders-container text-center py-12">
+    <div v-else-if="!orders || orders.length === 0" class="empty-orders-container text-center py-12">
       <v-icon size="100" color="grey">mdi-receipt</v-icon>
       <h2 class="text-h5 mt-6 mb-2">No Orders Yet</h2>
       <p class="text-body-1 mb-8">You haven't placed any orders yet</p>
@@ -253,8 +253,8 @@ export default {
   
   computed: {
     ...mapState({
-      orders: state => state.order.orders,
-      error: state => state.order.error
+      orders: state => state.orders.orders,
+      error: state => state.orders.error
     }),
     
     totalPages() {
@@ -262,6 +262,11 @@ export default {
     },
     
     filteredOrders() {
+      // Handle case where orders may be undefined
+      if (!this.orders || !Array.isArray(this.orders)) {
+        return [];
+      }
+      
       if (this.activeTab === 'all') {
         return this.orders;
       }
@@ -297,8 +302,8 @@ export default {
   
   methods: {
     ...mapActions({
-      fetchOrders: 'order/fetchOrders',
-      cancelOrderAction: 'order/cancelOrder'
+      fetchOrders: 'orders/fetchOrders',
+      cancelOrderAction: 'orders/cancelOrder'
     }),
     
     async loadOrders() {
@@ -319,10 +324,16 @@ export default {
           status: statusFilter
         });
         
-        this.totalOrders = response.meta.total;
+        // Handle the case where response might be undefined or missing total property
+        this.totalOrders = response?.total || 0;
       } catch (error) {
         console.error('Failed to load orders:', error);
-        this.$toast.error('Failed to load your orders. Please try again.');
+        // Set empty orders if there's an error
+        this.totalOrders = 0;
+        // Use toast if available, otherwise fallback to console
+        if (this.$toast) {
+          this.$toast.error('Failed to load your orders. Please try again.');
+        }
       } finally {
         this.isLoading = false;
       }

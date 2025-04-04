@@ -1,64 +1,65 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const User = require('./user.model');
-const Product = require('./product.model');
 
 /**
  * Cart Model
  * Represents user shopping carts in the system
  */
-const Cart = sequelize.define('Cart', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: User,
-      key: 'id'
+module.exports = (sequelize, DataTypes) => {
+  const Cart = sequelize.define('Cart', {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    user_id: { // Renamed from userId
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'users', // Use table name string
+        key: 'id'
+      }
+    },
+    product_id: { // Renamed from productId
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'products', // Use table name string
+        key: 'id'
+      }
+    },
+    quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
+      validate: {
+        min: 1
+      }
+    },
+    options: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
-  },
-  productId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: Product,
-      key: 'id'
-    }
-  },
-  quantity: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 1,
-    validate: {
-      min: 1
-    }
-  },
-  options: {
-    type: DataTypes.JSON,
-    allowNull: true
-  },
-  notes: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  }
-}, {
-  timestamps: true,
-  tableName: 'cart',
-  indexes: [
-    {
-      unique: true,
-      fields: ['userId', 'productId']
-    }
-  ]
-});
+  }, {
+    timestamps: true,
+    underscored: true, // Added underscored
+    tableName: 'cart', // Table name is already snake_case
+    indexes: [
+      {
+        unique: true,
+        fields: ['user_id', 'product_id'] // Updated fields
+      }
+    ]
+  });
 
-// Define associations
-Cart.belongsTo(User, { foreignKey: 'userId', as: 'user' });
-Cart.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
-User.hasMany(Cart, { foreignKey: 'userId', as: 'cartItems' });
+  // Define associations with an associate method
+  Cart.associate = function(models) {
+    Cart.belongsTo(models.user, { foreignKey: 'user_id', as: 'user' });
+    Cart.belongsTo(models.product, { foreignKey: 'product_id', as: 'product' });
+  };
 
-module.exports = Cart; 
+  return Cart;
+};

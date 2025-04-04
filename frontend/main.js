@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
-import App from './App.vue'
-import router from './src/router'
-import store from './src/store'
+import App from '@/App.vue'
+import router from '@/router'
+import store from '@/store'
 
 // Vuetify
 import 'vuetify/styles'
@@ -16,13 +16,13 @@ import axios from 'axios'
 
 // VeeValidate for form validation
 import { defineRule } from 'vee-validate'
-import { required, email, min } from '@vueuse/validators'
+import { required, email, min } from 'vee-validate/rules'
 
 // Custom styles
 import './style.css'
 
 // Configure Axios
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 axios.interceptors.request.use(config => {
   const token = localStorage.getItem('token')
   if (token) {

@@ -1,5 +1,19 @@
 const { body, validationResult } = require('express-validator');
-const { Order, Restaurant, OrderItem } = require('../models');
+const { Order, Restaurant, OrderItem, Review } = require('../models');
+
+// Simple mock profanity filter class
+class ProfanityFilter {
+  constructor() {
+    this.profaneWords = ['badword1', 'badword2', 'badword3'];
+  }
+
+  isProfane(text) {
+    if (!text) return false;
+    return this.profaneWords.some(word => 
+      new RegExp(`\\b${word}\\b`, 'i').test(text)
+    );
+  }
+}
 
 const validateCreateReview = [
   body('restaurantId')
@@ -54,7 +68,7 @@ const validateRestaurantResponse = [
     .withMessage('Phản hồi phải từ 10 đến 1000 ký tự'),
 ];
 
-exports.validateReview = [
+const validateReviewMiddleware = [
   body('rating')
     .isInt({ min: 1, max: 5 })
     .withMessage('Đánh giá phải từ 1 đến 5 sao'),
@@ -196,5 +210,5 @@ module.exports = {
   validateUpdateReview,
   validateReportReview,
   validateRestaurantResponse,
-  validateReview,
+  validateReview: validateReviewMiddleware
 };

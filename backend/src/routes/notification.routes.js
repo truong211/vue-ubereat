@@ -1,17 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const notifications = require('../controllers/notification.controller');
-const { authJwt } = require('../middleware');
+const { isAdmin } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
 // Subscription management routes
-router.post('/subscribe', authJwt.verifyToken, notifications.subscribe);
-router.post('/unsubscribe', authJwt.verifyToken, notifications.unsubscribe);
+router.post('/subscribe', notifications.subscribe);
+router.post('/unsubscribe', notifications.unsubscribe);
 
 // Preference management routes
-router.get('/preferences', authJwt.verifyToken, notifications.getPreferences);
+router.get('/preferences', notifications.getPreferences);
 router.put('/preferences', [
-  authJwt.verifyToken,
   body('orderUpdates').optional().isBoolean(),
   body('promotions').optional().isBoolean(),
   body('driverLocation').optional().isBoolean(),
@@ -22,33 +21,31 @@ router.put('/preferences', [
 ], notifications.updatePreferences);
 
 // Notification management routes
-router.get('/', authJwt.verifyToken, notifications.getUserNotifications);
-router.get('/unread/count', authJwt.verifyToken, notifications.getUnreadCount);
-router.get('/counts', authJwt.verifyToken, notifications.getNotificationCounts);
-router.patch('/read', authJwt.verifyToken, notifications.markAsRead);
-router.patch('/read-all', authJwt.verifyToken, notifications.markAllAsRead);
-router.delete('/:id', authJwt.verifyToken, notifications.deleteNotification);
+router.get('/', notifications.getUserNotifications);
+router.get('/unread/count', notifications.getUnreadCount);
+router.get('/counts', notifications.getNotificationCounts);
+router.patch('/read', notifications.markAsRead);
+router.patch('/read-all', notifications.markAllAsRead);
+router.delete('/:id', notifications.delete);
 
 // Tracking routes
 router.post('/:notificationId/track-delivery', [
-  authJwt.verifyToken,
   body('status').isIn(['sent', 'delivered', 'failed', 'clicked']).withMessage('Invalid status'),
   body('deviceInfo').optional().isObject(),
   body('errorDetails').optional().isString()
 ], notifications.trackDelivery);
 
-router.post('/:notificationId/track-click', authJwt.verifyToken, notifications.trackClick);
+router.post('/:notificationId/track-click', notifications.trackClick);
 
 // Analytics routes
-router.get('/delivery-stats', [authJwt.verifyToken, authJwt.isAdmin], notifications.getDeliveryStats);
-router.get('/performance-by-type', [authJwt.verifyToken, authJwt.isAdmin], notifications.getPerformanceByType);
-router.get('/best-performing-time-slots', [authJwt.verifyToken, authJwt.isAdmin], notifications.getBestPerformingTimeSlots);
-router.get('/:userId/engagement', [authJwt.verifyToken, authJwt.isAdmin], notifications.getUserEngagement);
+router.get('/delivery-stats', [isAdmin], notifications.getDeliveryStats);
+router.get('/performance-by-type', [isAdmin], notifications.getPerformanceByType);
+router.get('/best-performing-time-slots', [isAdmin], notifications.getBestPerformingTimeSlots);
+router.get('/:userId/engagement', [isAdmin], notifications.getUserEngagement);
 
 // Admin only routes
 router.post('/', [
-  authJwt.verifyToken,
-  authJwt.isAdmin,
+  isAdmin,
   body('title').notEmpty().withMessage('Title is required'),
   body('message').notEmpty().withMessage('Message is required'),
   body('type').notEmpty().withMessage('Notification type is required'),
@@ -59,11 +56,8 @@ router.post('/', [
 ], notifications.create);
 
 router.patch('/:id/status', [
-  authJwt.verifyToken,
-  authJwt.isAdmin,
+  isAdmin,
   body('active').isBoolean()
 ], notifications.updateStatus);
 
-module.exports = app => {
-  app.use('/api/notifications', router);
-};
+module.exports = router;

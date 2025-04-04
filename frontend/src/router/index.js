@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import store from '@/store'
-import HomeView from '../views/HomeView.vue'
+import HomeView from '../views/Home.vue'
 import SearchPage from '../views/SearchPage.vue'
 
 // Auth routes
@@ -9,13 +9,13 @@ const Register = () => import('@/views/auth/Register.vue')
 const ForgotPassword = () => import('@/views/auth/ForgotPassword.vue')
 const VerifyEmail = () => import('@/views/auth/VerifyEmail.vue')
 const VerifyOTP = () => import('@/views/auth/VerifyOTP.vue')
+const ClearTokens = () => import('@/views/ClearTokens.vue')
 
 // Payment methods route
 const PaymentMethods = () => import('@/views/payment/PaymentMethods.vue')
 
 // Admin routes
-import adminRoutes from './admin.routes';
-import Analytics from '@/views/admin/Analytics.vue';
+import { adminRoutes } from './admin.js';
 
 const routes = [
   // Auth routes
@@ -56,6 +56,37 @@ const routes = [
     ]
   },
   
+  // Direct login and register routes
+  {
+    path: '/login',
+    name: 'DirectLogin',
+    component: Login,
+    meta: { guest: true }
+  },
+  {
+    path: '/register',
+    name: 'DirectRegister',
+    component: Register,
+    meta: { guest: true }
+  },
+  
+  // Static pages
+  {
+    path: '/about',
+    name: 'About',
+    component: () => import('@/views/static/About.vue')
+  },
+  {
+    path: '/contact',
+    name: 'Contact',
+    component: () => import('@/views/static/Contact.vue')
+  },
+  {
+    path: '/promotions',
+    name: 'Promotions',
+    component: () => import('@/views/static/Promotions.vue')
+  },
+  
   // Protected routes that require authentication
   {
     path: '/profile',
@@ -66,6 +97,12 @@ const routes = [
         path: '',
         name: 'Profile',
         component: () => import('@/views/user/Profile.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'notifications',
+        name: 'UserNotifications',
+        component: () => import('@/views/user/UserNotifications.vue'),
         meta: { requiresAuth: true }
       },
       {
@@ -175,35 +212,25 @@ const routes = [
       }
     ]
   },
-  
-  // Admin routes
   {
-    path: '/admin',
-    component: () => import('@/layouts/AdminLayout.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true },
+    path: '/restaurants',
+    component: () => import('@/layouts/MainLayout.vue'),
     children: [
       {
         path: '',
-        redirect: '/admin/dashboard'
-      },
-      {
-        path: 'dashboard',
-        name: 'AdminDashboard',
-        component: () => import('@/views/admin/Dashboard.vue')
-      },
-      {
-        path: 'users',
-        name: 'AdminUsers',
-        component: () => import('@/views/admin/Users.vue')
-      },
-      {
-        path: 'analytics',
-        name: 'AdminAnalytics',
-        component: Analytics,
-        meta: { title: 'System Analytics' }
+        name: 'Restaurants',
+        component: () => import('@/views/Restaurants.vue'),
+        props: (route) => ({ 
+          category: route.query.category,
+          address: route.query.address,
+          sort: route.query.sort
+        })
       }
     ]
   },
+  
+  // Import the admin routes
+  adminRoutes,
 
   // Other routes...
   {
@@ -220,6 +247,57 @@ const routes = [
     }
   },
   
+  // Clear tokens utility page
+  {
+    path: '/clear-tokens',
+    name: 'ClearTokens',
+    component: ClearTokens,
+    meta: { guest: true }
+  },
+  
+  // Add settings routes after other main routes and before the 404 route
+  {
+    path: '/settings',
+    component: () => import('@/views/settings/Settings.vue'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        redirect: { name: 'settings-account' }
+      },
+      {
+        path: 'account',
+        name: 'settings-account',
+        component: () => import('@/views/user/AccountSettings.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'notifications',
+        name: 'settings-notifications',
+        component: () => import('@/views/settings/NotificationSettings.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'security',
+        name: 'settings-security',
+        component: () => import('@/components/user/SecuritySettings.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'payment-methods',
+        name: 'settings-payment-methods',
+        component: () => import('@/views/payment/PaymentMethods.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'addresses',
+        name: 'settings-addresses',
+        component: () => import('@/views/user/Addresses.vue'),
+        meta: { requiresAuth: true }
+      }
+    ]
+  },
+  
   // 404 Not Found
   {
     path: '/:pathMatch(.*)*',
@@ -229,7 +307,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes
 })
 

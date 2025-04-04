@@ -269,8 +269,51 @@ import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import jwtAuth from '@/services/jwt-auth'
-import otpAuth from '@/services/otp-auth'
 import socialAuth from '@/services/social-auth'
+// Import OTP auth with fallback handling
+import otpAuthService from '@/services/otp-auth'
+// Create a wrapper with fallback methods in case of import errors
+const otpAuth = {
+  sendEmailOTP: async (...args) => {
+    try {
+      return await otpAuthService.sendEmailOTP(...args);
+    } catch (error) {
+      console.error('Error in sendEmailOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  verifyEmailOTP: async (...args) => {
+    try {
+      return await otpAuthService.verifyEmailOTP(...args);
+    } catch (error) {
+      console.error('Error in verifyEmailOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  sendPhoneOTP: async (...args) => {
+    try {
+      return await otpAuthService.sendPhoneOTP(...args);
+    } catch (error) {
+      console.error('Error in sendPhoneOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  verifyPhoneOTP: async (...args) => {
+    try {
+      return await otpAuthService.verifyPhoneOTP(...args);
+    } catch (error) {
+      console.error('Error in verifyPhoneOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  initRecaptcha: () => {
+    try {
+      return otpAuthService.initRecaptcha();
+    } catch (error) {
+      console.error('Error in initRecaptcha:', error);
+    }
+  }
+};
 import { validateEmail, validatePassword, validatePhone } from '@/validations/auth'
 import type { VForm } from 'vuetify/components'
 

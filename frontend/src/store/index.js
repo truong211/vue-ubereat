@@ -2,6 +2,7 @@ import { createStore } from 'vuex'
 import auth from './modules/auth'
 import cart from './modules/cart'
 import orders from './modules/orders'
+import order from './modules/order'
 import restaurantAdmin from './modules/restaurantAdmin'
 import admin from './modules/admin'
 import ui from './modules/ui'
@@ -17,9 +18,10 @@ import analytics from './modules/analytics'
 import users from './modules/users'
 import disputes from './modules/disputes'
 import favorites from './modules/favorites'
+import user from './modules/user'
 
 // Create a new store instance.
-export default createStore({
+const store = createStore({
   state: {
     loading: false,
     error: null,
@@ -27,7 +29,7 @@ export default createStore({
       status: 'disconnected', // 'connected', 'disconnected', 'error'
       lastMessage: null
     },
-    notifications: []
+    systemNotifications: []
   },
 
   mutations: {
@@ -47,7 +49,7 @@ export default createStore({
       state.webSocket.lastMessage = message
     },
     addNotification(state, notification) {
-      state.notifications.unshift({
+      state.systemNotifications.unshift({
         id: Date.now(),
         timestamp: new Date(),
         read: false,
@@ -55,16 +57,16 @@ export default createStore({
       })
     },
     markNotificationAsRead(state, notificationId) {
-      const notification = state.notifications.find(n => n.id === notificationId)
+      const notification = state.systemNotifications.find(n => n.id === notificationId)
       if (notification) {
         notification.read = true
       }
     },
     markAllNotificationsAsRead(state) {
-      state.notifications.forEach(n => n.read = true)
+      state.systemNotifications.forEach(n => n.read = true)
     },
     clearNotifications(state) {
-      state.notifications = []
+      state.systemNotifications = []
     }
   },
 
@@ -78,22 +80,23 @@ export default createStore({
     clearError({ commit }) {
       commit('clearError')
     },
-    initWebSocket({ commit, dispatch }) {
+    initWebSocket({ commit, dispatch, state }) {
       // Initialize WebSocket service
       websocketService.init(this)
 
-      // Set up auth change listener to reconnect WebSocket
-      this.watch(
-        (state) => state.auth.user,
-        (newUser) => {
-          if (newUser) {
-            websocketService.connect()
+      // Watch for auth state changes manually instead of using this.watch
+      let prevUser = state.auth.user;
+      this.subscribe((mutation, state) => {
+        if (mutation.type.startsWith('auth/') && state.auth.user !== prevUser) {
+          prevUser = state.auth.user;
+          if (state.auth.user) {
+            websocketService.connect();
           } else {
-            websocketService.disconnect()
-            commit('setWebSocketStatus', 'disconnected')
+            websocketService.disconnect();
+            commit('setWebSocketStatus', 'disconnected');
           }
         }
-      )
+      });
     },
     setWebSocketStatus({ commit }, status) {
       commit('setWebSocketStatus', status)
@@ -142,14 +145,15 @@ export default createStore({
     getError: state => state.error,
     isWebSocketConnected: state => state.webSocket.status === 'connected',
     webSocketStatus: state => state.webSocket.status,
-    unreadNotifications: state => state.notifications.filter(n => !n.read),
-    allNotifications: state => state.notifications
+    unreadNotifications: state => state.systemNotifications.filter(n => !n.read),
+    allNotifications: state => state.systemNotifications
   },
 
   modules: {
     auth,
     cart,
     orders,
+    order,
     restaurantAdmin,
     admin,
     ui,
@@ -163,6 +167,14 @@ export default createStore({
     analytics,
     users,
     disputes,
-    favorites
+    favorites,
+    user
   }
 })
+
+// Provide useStore composable for Composition API
+export function useStore() {
+  return store
+}
+
+export default store

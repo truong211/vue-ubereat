@@ -1,6 +1,7 @@
 <template>
   <v-dialog
-    v-model="isOpen"
+    :model-value="isOpen"
+    @update:model-value="$emit('update:isOpen', $event)"
     max-width="500px"
     persistent
   >
@@ -148,7 +149,7 @@ export default {
     }
   },
   
-  emits: ['close'],
+  emits: ['close', 'update:isOpen'],
   
   setup(props, { emit }) {
     const store = useStore();

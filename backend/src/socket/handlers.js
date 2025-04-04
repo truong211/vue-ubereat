@@ -4,13 +4,28 @@ const config = require('../config/database');
 const { userSockets, orderRooms, setIO, getIO } = require('./socketState');
 const { handleAdminEvents } = require('./adminHandlers');
 
+// Get JWT secrets from environment variables with fallbacks
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-jwt-secret-key-for-development-only';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-jwt-refresh-secret-key-for-development-only';
+
+// Add a timestamp for when the JWT secret was last updated
+// Any tokens issued before this time will be rejected
+const JWT_ISSUED_AFTER = Math.floor(Date.now() / 1000);
+
 function initializeSocketIO(server) {
   const io = new Server(server, {
     cors: {
       origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-      methods: ['GET', 'POST'],
-      credentials: true
-    }
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    },
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    connectTimeout: 45000,
+    allowEIO3: true
   });
 
   // Store io instance
@@ -19,17 +34,79 @@ function initializeSocketIO(server) {
   // Middleware to authenticate socket connections
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token;
+      // Try to get token from different sources
+      const token = 
+        socket.handshake.auth?.token || 
+        socket.handshake.headers?.authorization?.replace('Bearer ', '') ||
+        socket.handshake.query?.token;
+
       if (!token) {
-        return next(new Error('Authentication token required'));
+        // Allow connection as guest
+        socket.user = { id: 'guest', role: 'guest' };
+        return next();
       }
 
-      const decoded = jwt.verify(token, config.jwtSecret);
-      socket.user = decoded;
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Check if token was issued after our JWT_ISSUED_AFTER timestamp
+        if (decoded.iat && decoded.iat < JWT_ISSUED_AFTER) {
+          console.log('Socket token was issued before the secret update. Treating as guest...');
+          socket.user = { id: 'guest', role: 'guest' };
+          return next();
+        }
+        
+        socket.user = {
+          id: decoded.id || decoded.userId,
+          role: decoded.role || 'customer',
+          email: decoded.email
+        };
+      } catch (error) {
+        console.warn('Invalid socket auth token:', error.message);
+        // Allow connection as guest even with invalid token
+        socket.user = { id: 'guest', role: 'guest' };
+      }
       next();
     } catch (error) {
-      next(new Error('Invalid authentication token'));
+      console.error('Socket authentication error:', error);
+      // Allow connection as guest on error
+      socket.user = { id: 'guest', role: 'guest' };
+      next();
     }
+  });
+
+  // Main namespace connection handler
+  io.on('connection', (socket) => {
+    const userId = socket.user?.id || 'guest';
+    console.log(`User connected: ${userId}, role: ${socket.user?.role}`);
+    
+    // Store socket in userSockets map
+    if (userId !== 'guest') {
+      userSockets.set(userId, socket);
+    }
+
+    // Handle reconnection
+    socket.on('reconnect_attempt', () => {
+      console.log(`Reconnection attempt by user: ${userId}`);
+    });
+
+    // Handle disconnection
+    socket.on('disconnect', (reason) => {
+      console.log(`User ${userId} disconnected. Reason: ${reason}`);
+      if (userId !== 'guest') {
+        userSockets.delete(userId);
+      }
+    });
+
+    // Handle errors
+    socket.on('error', (error) => {
+      console.error(`Socket error for user ${userId}:`, error);
+    });
+    
+    // Handle connection errors
+    socket.on('connect_error', (error) => {
+      console.error(`Socket connection error for user ${userId}:`, error);
+    });
   });
 
   // Admin namespace with role check middleware
@@ -50,21 +127,24 @@ function initializeSocketIO(server) {
   // Customer namespace
   const customerIo = io.of('/customer');
   customerIo.on('connection', (socket) => {
-    console.log(`Customer connected: ${socket.user.id}`);
+    const userId = socket.user?.id || 'guest';
+    console.log(`Customer connected: ${userId}`);
     handleCustomerEvents(socket, customerIo);
   });
 
   // Restaurant namespace
   const restaurantIo = io.of('/restaurant');
   restaurantIo.on('connection', (socket) => {
-    console.log(`Restaurant connected: ${socket.user.id}`);
+    const userId = socket.user?.id || 'guest';
+    console.log(`Restaurant connected: ${userId}`);
     handleRestaurantEvents(socket, restaurantIo);
   });
 
   // Driver namespace
   const driverIo = io.of('/driver');
   driverIo.on('connection', (socket) => {
-    console.log(`Driver connected: ${socket.user.id}`);
+    const userId = socket.user?.id || 'guest';
+    console.log(`Driver connected: ${userId}`);
     handleDriverEvents(socket, driverIo);
   });
 
@@ -73,7 +153,7 @@ function initializeSocketIO(server) {
 
 // Handle customer events
 function handleCustomerEvents(socket, io) {
-  const userId = socket.user.id;
+  const userId = socket.user?.id || 'guest';
   userSockets.set(userId, socket);
 
   // Join order tracking room
@@ -115,7 +195,7 @@ function handleCustomerEvents(socket, io) {
 
 // Handle restaurant events
 function handleRestaurantEvents(socket, io) {
-  const restaurantId = socket.user.id;
+  const restaurantId = socket.user?.id || 'guest';
   userSockets.set(restaurantId, socket);
 
   // Update order status
@@ -166,7 +246,7 @@ function handleRestaurantEvents(socket, io) {
 
 // Handle driver events
 function handleDriverEvents(socket, io) {
-  const driverId = socket.user.id;
+  const driverId = socket.user?.id || 'guest';
   userSockets.set(driverId, socket);
 
   // Update driver location

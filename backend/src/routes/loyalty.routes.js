@@ -4,7 +4,7 @@ const express = require('express');
 const router = express.Router();
 const loyaltyController = require('../controllers/loyalty.controller');
 const auth = require('../middleware/auth');
-const { checkRole } = require('../middleware/role');
+const { checkRole } = require('../middleware/role.middleware');
 
 // Get user's loyalty account
 router.get('/user/:userId', 
@@ -58,4 +58,4 @@ router.get('/analytics',
   loyaltyController.getLoyaltyAnalytics
 );
 
-module.exports = router; 
+module.exports = router;

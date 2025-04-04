@@ -1,21 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const analyticsController = require('../controllers/analytics.controller');
+const path = require('path');
+const controllerPath = path.resolve(__dirname, '../controllers/analytics.controller.js');
+console.log('Controller path:', controllerPath);
+console.log('File exists:', require('fs').existsSync(controllerPath));
+const analyticsController = require(controllerPath);
+console.log('Analytics Controller keys:', Object.keys(analyticsController || {}));
 const { protect, restrictTo } = require('../middleware/auth.middleware');
 
-// Admin Analytics Routes
-router.get('/', protect, restrictTo('admin'), analyticsController.getAnalytics);
-router.post('/export', protect, restrictTo('admin'), analyticsController.exportAnalytics);
+// Admin Analytics Overview (redirect to dashboard)
+router.get('/', protect, restrictTo('admin'), (req, res) => {
+  res.redirect('/api/analytics/dashboard/1'); // Redirect to main dashboard
+});
 
 // Restaurant Analytics Routes
 router.get('/revenue/:restaurantId', protect, analyticsController.getRevenueAnalytics);
 router.get('/menu/:restaurantId', protect, analyticsController.getMenuAnalytics);
 router.get('/customers/:restaurantId', protect, analyticsController.getCustomerAnalytics);
+router.get('/orders/:restaurantId', protect, analyticsController.getOrderAnalytics);
 
-// Dashboard Statistics
-router.get('/revenue-stats/:restaurantId', protect, analyticsController.getRevenueStats);
-router.get('/popular-items/:restaurantId', protect, analyticsController.getPopularItems);
-router.get('/order-statistics/:restaurantId', protect, analyticsController.getOrderStatistics);
-router.get('/customer-analytics/:restaurantId', protect, analyticsController.getCustomerAnalytics);
+// Dashboard Overview
+router.get('/dashboard/:restaurantId', protect, analyticsController.getDashboardOverview);
 
 module.exports = router;

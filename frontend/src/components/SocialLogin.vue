@@ -26,7 +26,7 @@
 </template>
 
 <script>
-import config from '@/config';
+import { API_URL } from '@/config';
 export default {
   name: 'SocialLogin',
   props: {
@@ -52,12 +52,12 @@ export default {
     loginWithGoogle() {
       this.loading = true;
       // Open Google OAuth login page in a new window
-      window.location.href = `${config.apiBaseUrl}/auth/google`;
+      window.location.href = `${API_URL}/auth/google`;
     },
     loginWithFacebook() {
       this.loading = true;
       // Open Facebook OAuth login page in a new window
-      window.location.href = `${config.apiBaseUrl}/auth/facebook`;
+      window.location.href = `${API_URL}/auth/facebook`;
     }
   }
 };

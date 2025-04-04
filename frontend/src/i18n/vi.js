@@ -1,20 +1,58 @@
 export default {
   translations: {
     common: {
-      welcome: 'Chào mừng đến UberEat',
+      welcome: 'Chào mừng đến với UberEat',
       loading: 'Đang tải...',
       error: 'Đã xảy ra lỗi',
       retry: 'Thử lại',
       cancel: 'Hủy',
       save: 'Lưu',
       delete: 'Xóa',
-      edit: 'Chỉnh sửa',
+      edit: 'Sửa',
       search: 'Tìm kiếm',
       filter: 'Lọc',
       sort: 'Sắp xếp',
       view: 'Xem',
-      addToCart: 'Thêm vào giỏ',
+      addToCart: 'Thêm vào giỏ hàng',
       min: 'phút'
+    },
+    home: {
+      hero: {
+        title: 'Đồ ăn ngon được giao đến tận cửa',
+        subtitle: 'Đặt hàng từ nhà hàng yêu thích của bạn chỉ với vài cú nhấp chuột',
+        title2: 'Giao hàng nhanh chóng, mọi lúc',
+        subtitle2: 'Nhận đồ ăn trong vòng 30 phút hoặc ít hơn',
+        title3: 'Khám phá hương vị mới',
+        subtitle3: 'Thử những món ăn mới từ nhiều nhà hàng đa dạng',
+        searchPlaceholder: 'Tìm kiếm nhà hàng hoặc món ăn'
+      },
+      howItWorks: {
+        title: 'Cách Thức Hoạt Động',
+        step1: {
+          title: 'Chọn món ăn',
+          description: 'Duyệt qua hàng trăm nhà hàng và chọn món ăn yêu thích của bạn'
+        },
+        step2: {
+          title: 'Đặt hàng',
+          description: 'Xác nhận đơn hàng và thanh toán an toàn trực tuyến'
+        },
+        step3: {
+          title: 'Thưởng thức bữa ăn',
+          description: 'Theo dõi đơn hàng theo thời gian thực và thưởng thức khi đồ ăn được giao đến'
+        }
+      },
+      categories: {
+        title: 'Danh Mục Món Ăn',
+        viewAll: 'Xem Tất Cả Danh Mục'
+      },
+      promotions: {
+        title: 'Ưu Đãi Đặc Biệt',
+        useCode: 'Sử dụng mã'
+      },
+      app: {
+        title: 'Tải Ứng Dụng UberEat',
+        description: 'Tải ứng dụng di động của chúng tôi để có trải nghiệm tốt hơn'
+      }
     },
     auth: {
       login: 'Đăng nhập',

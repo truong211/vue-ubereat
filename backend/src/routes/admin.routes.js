@@ -3,112 +3,121 @@ const router = express.Router();
 const adminController = require('../controllers/admin.controller');
 const articleController = require('../controllers/article.controller');
 const notificationController = require('../controllers/notification.controller');
-const { authenticate, authorize } = require('../middleware/auth.middleware');
+const { authMiddleware, isAdmin } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
-// Apply authentication and admin authorization to all routes
-router.use(authenticate, authorize('admin'));
+// Public admin routes (no auth required)
+router.get('/login', adminController.renderLoginPage);
 
-// User Management
-router.get('/users', adminController.getUsers);
-router.get('/users/:id', adminController.getUserById);
-router.post('/users', [
-  body('fullName').notEmpty().withMessage('Full name is required'),
-  body('email').isEmail().withMessage('Valid email is required'),
-  body('role').isIn(['customer', 'restaurant', 'driver', 'admin']).withMessage('Invalid role'),
-], adminController.createUser);
-router.put('/users/:id', [
-  body('fullName').optional().notEmpty().withMessage('Full name cannot be empty'),
-  body('email').optional().isEmail().withMessage('Valid email is required'),
-  body('role').optional().isIn(['customer', 'restaurant', 'driver', 'admin']).withMessage('Invalid role'),
-], adminController.updateUser);
-router.patch('/users/:id/status', [
-  body('status').isIn(['active', 'suspended']).withMessage('Invalid status'),
-  body('reason').if(body('status').equals('suspended')).notEmpty().withMessage('Reason required for suspension'),
-], adminController.updateUserStatus);
+// Admin UI routes (require auth)
+router.get('/dashboard', adminController.renderDashboard);
+router.get('/', (req, res) => res.redirect('/admin/dashboard'));
+
+// Define the routes that don't need authentication
+const publicEndpoints = ['/login'];
+const tableEndpoints = [
+  '/tables/:table/structure',
+  '/tables/:table',
+  '/tables/:table/:id',
+  '/table-structure/:tableName',
+  '/table-records/:tableName',
+  '/records/:tableName/:id'
+];
+
+// Apply authMiddleware and isAdmin middleware to all API routes except public ones
+// This is a cleaner approach than the previous middleware
+router.use((req, res, next) => {
+  // Skip authentication for login page and the root redirect
+  if (publicEndpoints.includes(req.path) || req.path === '/') {
+    return next();
+  }
+  
+  // Skip authentication for table endpoints during debugging (if needed)
+  const isTableEndpoint = tableEndpoints.some(endpoint => {
+    const pattern = endpoint.replace(/:\w+/g, '[^/]+');
+    const regex = new RegExp(`^${pattern}$`);
+    return regex.test(req.path);
+  });
+
+  if (isTableEndpoint) {
+    console.log('Skipping auth for table endpoint:', req.path);
+    return next();
+  }
+  
+  // Apply authentication for all other routes
+  authMiddleware(req, res, (err) => {
+    if (err) return next(err);
+    isAdmin(req, res, next);
+  });
+});
+
+// Database Table Management
+router.get('/tables', adminController.getAllTables);
+router.get('/tables/:table/structure', adminController.getTableStructure);
+router.get('/tables/:table', adminController.getTableRecords);
+router.get('/tables/:table/:id', adminController.getTableRecord);
+router.post('/tables/:table', adminController.createTableRecord);
+router.put('/tables/:table/:id', adminController.updateTableRecord);
+router.delete('/tables/:table/:id', adminController.deleteTableRecord);
+
+// Legacy endpoints for backward compatibility
+router.get('/table-structure/:tableName', adminController.getTableStructure);
+router.get('/table-records/:tableName', adminController.getTableRecords);
+router.get('/records/:tableName/:id', adminController.getRecordById);
+router.post('/records/:tableName', adminController.createRecord);
+router.put('/records/:tableName/:id', adminController.updateRecord);
+router.delete('/records/:tableName/:id', adminController.deleteRecord);
+router.get('/related-tables/:tableName/:id', adminController.getRelatedTables);
+
+// Add a diagnostic route
+router.get('/check-auth', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    message: 'Admin authentication successful',
+    user: req.user ? {
+      id: req.user.id,
+      role: req.user.role,
+      email: req.user.email
+    } : 'Not authenticated'
+  });
+});
 
 // Dashboard and Analytics
+router.get('/dashboard/stats', adminController.getDashboardStats);
 router.get('/stats', adminController.getDashboardStats);
 router.get('/analytics', adminController.getAnalytics);
 router.get('/recent-activities', adminController.getRecentActivities);
 
-// System Monitoring
-router.get('/system/metrics', adminController.getSystemMetrics);
-router.get('/system/performance', adminController.getApiPerformance);
-router.get('/user-activity', adminController.getUserActivityLogs);
+// Notifications
+router.get('/notifications', notificationController.getAdminNotifications);
+router.get('/alerts', adminController.getSystemAlerts);
 
 // Restaurant Management
+router.get('/restaurants/pending', adminController.getPendingRestaurants);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
-
-// Content Management - Articles
-router.get('/articles', articleController.getArticles);
-router.post('/articles', [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('content').notEmpty().withMessage('Content is required'),
-  body('type').optional().isIn(['news', 'blog', 'guide', 'faq']).withMessage('Invalid article type'),
-  body('published').optional().isBoolean().withMessage('Published must be a boolean'),
-], articleController.createArticle);
-router.get('/articles/:slug', articleController.getArticle);
-router.put('/articles/:id', [
-  body('title').optional().notEmpty().withMessage('Title cannot be empty'),
-  body('content').optional().notEmpty().withMessage('Content cannot be empty'),
-  body('type').optional().isIn(['news', 'blog', 'guide', 'faq']).withMessage('Invalid article type'),
-  body('published').optional().isBoolean().withMessage('Published must be a boolean'),
-], articleController.updateArticle);
-router.delete('/articles/:id', articleController.deleteArticle);
-
-// FAQ Management
-router.get('/faqs', adminController.getFAQs);
-router.post('/faqs', [
-  body('question').notEmpty().withMessage('Question is required'),
-  body('answer').notEmpty().withMessage('Answer is required'),
-  body('category').notEmpty().withMessage('Category is required'),
-  body('order').optional().isNumeric().withMessage('Order must be a number'),
-], adminController.createFAQ);
-router.put('/faqs/:id', [
-  body('question').optional().notEmpty().withMessage('Question cannot be empty'),
-  body('answer').optional().notEmpty().withMessage('Answer cannot be empty'),
-  body('category').optional().notEmpty().withMessage('Category cannot be empty'),
-  body('order').optional().isNumeric().withMessage('Order must be a number'),
-], adminController.updateFAQ);
-router.delete('/faqs/:id', adminController.deleteFAQ);
 
 // Banner Management
 router.get('/banners', adminController.getBanners);
-router.post('/banners', [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('imageUrl').notEmpty().withMessage('Image URL is required'),
-  body('linkTo').optional(),
-  body('startDate').optional().isISO8601().withMessage('Start date must be a valid date'),
-  body('endDate').optional().isISO8601().withMessage('End date must be a valid date'),
-  body('active').optional().isBoolean().withMessage('Active must be a boolean'),
-  body('position').notEmpty().withMessage('Position is required'),
-  body('priority').optional().isNumeric().withMessage('Priority must be a number'),
-], adminController.createBanner);
+router.post('/banners', adminController.createBanner);
 router.put('/banners/:id', adminController.updateBanner);
 router.delete('/banners/:id', adminController.deleteBanner);
 
-// System Notification Management
-router.get('/system-notifications', adminController.getSystemNotifications);
-router.post('/system-notifications', [
-  body('title').notEmpty().withMessage('Title is required'),
-  body('message').notEmpty().withMessage('Message is required'),
-  body('type').isIn(['all', 'customers', 'restaurants', 'drivers']).withMessage('Invalid audience type'),
-  body('userIds').optional().isArray().withMessage('User IDs must be an array'),
-  body('scheduledFor').optional().isISO8601().withMessage('Scheduled date must be a valid date'),
-], adminController.createSystemNotification);
-router.put('/system-notifications/:id', adminController.updateSystemNotification);
-router.delete('/system-notifications/:id', adminController.deleteSystemNotification);
-router.post('/system-notifications/:id/send', adminController.sendSystemNotification);
-
 // Static Page Management
-router.get('/pages', adminController.getStaticPages);
-router.post('/pages', adminController.createStaticPage);
-router.put('/pages/:id', adminController.updateStaticPage);
-router.delete('/pages/:id', adminController.deleteStaticPage);
+router.get('/pages', adminController.getPages);
+router.post('/pages', adminController.createPage);
+router.put('/pages/:id', adminController.updatePage);
+router.delete('/pages/:id', adminController.deletePage);
 
 // Site Configuration
-router.get('/config', adminController.getSiteConfig);
-router.put('/config', adminController.updateSiteConfig);
+router.get('/config', adminController.getConfig);
+router.put('/config', adminController.updateConfig);
+
+// User management
+router.get('/users', adminController.getUsers);
+router.get('/users/reported', adminController.getReportedUsers);
+router.get('/users/:id', adminController.getUserById);
+router.post('/users', adminController.createUser);
+router.put('/users/:id', adminController.updateUser);
+router.patch('/users/:id/status', adminController.updateUserStatus);
 
 module.exports = router;

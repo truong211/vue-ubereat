@@ -16,15 +16,15 @@ const PromotionCampaign = sequelize.define('PromotionCampaign', {
     type: DataTypes.TEXT,
     allowNull: true
   },
-  startDate: {
+  start_date: {
     type: DataTypes.DATE,
     allowNull: false
   },
-  endDate: {
+  end_date: {
     type: DataTypes.DATE,
     allowNull: false
   },
-  categoryId: {
+  category_id: {
     type: DataTypes.INTEGER,
     allowNull: true,
     references: {
@@ -37,7 +37,7 @@ const PromotionCampaign = sequelize.define('PromotionCampaign', {
     allowNull: true,
     comment: 'Maximum budget allocated for this campaign'
   },
-  spentAmount: {
+  spent_amount: {
     type: DataTypes.DECIMAL(10, 2),
     defaultValue: 0,
     comment: 'Total amount spent on discounts in this campaign'
@@ -62,7 +62,20 @@ const PromotionCampaign = sequelize.define('PromotionCampaign', {
 });
 
 // Define associations
-PromotionCampaign.belongsTo(PromotionCategory, { foreignKey: 'categoryId', as: 'category' });
-PromotionCategory.hasMany(PromotionCampaign, { foreignKey: 'categoryId', as: 'campaigns' });
+PromotionCampaign.associate = function(models) {
+  if (models.PromotionCategory) {
+    PromotionCampaign.belongsTo(models.PromotionCategory, {
+      foreignKey: 'category_id',
+      as: 'category',
+      constraints: false
+    });
+  }
+  
+  PromotionCampaign.hasMany(models.Promotion, {
+    foreignKey: 'campaign_id',
+    as: 'promotions',
+    constraints: false
+  });
+};
 
 module.exports = PromotionCampaign;

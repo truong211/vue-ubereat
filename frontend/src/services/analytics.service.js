@@ -1,4 +1,4 @@
-import { api } from '@/services/api';
+import api from '@/services/api';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
 class AnalyticsService {
@@ -361,22 +361,3 @@ class AnalyticsService {
 }
 
 export default new AnalyticsService()
-
-import api from './api';
-
-export const analyticsService = {
-  async getRevenueAnalytics(restaurantId, params = {}) {
-    const { data } = await api.get(`/analytics/revenue/${restaurantId}`, { params });
-    return data;
-  },
-
-  async getMenuAnalytics(restaurantId, params = {}) {
-    const { data } = await api.get(`/analytics/menu/${restaurantId}`, { params });
-    return data;
-  },
-
-  async getCustomerAnalytics(restaurantId, params = {}) {
-    const { data } = await api.get(`/analytics/customers/${restaurantId}`, { params });
-    return data;
-  }
-};

@@ -3,6 +3,8 @@ import type { RouteRecordRaw } from 'vue-router'
 import store from '@/store'
 import authRoutes from './auth'
 import './types'
+// Import the admin routes from admin.js
+import { adminRoutes } from './admin.js'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -31,6 +33,12 @@ const routes: RouteRecordRaw[] = [
         path: 'profile',
         name: 'Profile',
         component: () => import('@/views/user/Profile.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'profile/notifications',
+        name: 'UserNotifications',
+        component: () => import('@/views/user/UserNotifications.vue'),
         meta: { requiresAuth: true }
       },
       {
@@ -73,7 +81,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'orders/:id',
         name: 'OrderDetail',
-        component: () => import('@/views/OrderDetail.vue'),
+        component: () => import('@/views/OrderDetails.vue'),
         meta: { requiresAuth: true },
         props: true
       },
@@ -103,18 +111,10 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
-  {
-    path: '/admin',
-    component: () => import('@/layouts/MainLayout.vue'),
-    meta: { requiresAuth: true, roles: ['admin'] },
-    children: [
-      {
-        path: 'dashboard',
-        name: 'AdminDashboard',
-        component: () => import('@/views/admin/Dashboard.vue')
-      }
-    ]
-  },
+  
+  // Use the admin routes imported from admin.js
+  adminRoutes,
+  
   {
     path: '/auth',
     component: () => import('@/layouts/AuthLayout.vue'),

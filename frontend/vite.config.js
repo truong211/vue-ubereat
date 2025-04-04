@@ -5,11 +5,11 @@ import path from 'path'
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 3002,
+    port: 5173,
     strictPort: true,
     hmr: {
       host: 'localhost',
-      port: 3002,
+      port: 5173,
       overlay: false
     },
     watch: {

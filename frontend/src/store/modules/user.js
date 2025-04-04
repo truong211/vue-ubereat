@@ -6,45 +6,6 @@
 import axios from 'axios'
 import { API_URL } from '@/config'
 
-// Types for TypeScript support
-export interface DeliveryAddress {
-  id: string;
-  name: string;
-  address: string;
-  city: string;
-  state: string;
-  zipcode?: string;
-  isDefault: boolean;
-  lat?: number;
-  lng?: number;
-}
-
-export interface PaymentMethod {
-  id: string;
-  type: string;
-  provider?: string;
-  cardNumber?: string;
-  cardName?: string;
-  expiryMonth?: string;
-  expiryYear?: string;
-  brand?: string;
-  isDefault: boolean;
-  email?: string;
-  phone?: string;
-}
-
-export interface Voucher {
-  id: string;
-  code: string;
-  description: string;
-  type: 'percentage' | 'fixed' | 'free_delivery';
-  value: number;
-  minOrderAmount?: number;
-  startDate: string;
-  endDate: string;
-  restrictions?: string[];
-}
-
 export default {
   namespaced: true,
   
@@ -80,30 +41,42 @@ export default {
     
     // Address getters
     defaultAddress: (state) => {
-      return state.addresses.find(address => address.isDefault) || null;
+      return Array.isArray(state.addresses) 
+        ? state.addresses.find(address => address.isDefault) || null
+        : null;
     },
     
     otherAddresses: (state) => {
-      return state.addresses.filter(address => !address.isDefault);
+      return Array.isArray(state.addresses)
+        ? state.addresses.filter(address => !address.isDefault)
+        : [];
     },
     
     // Payment method getters
     defaultPaymentMethod: (state) => {
-      return state.paymentMethods.find(method => method.isDefault) || null;
+      return Array.isArray(state.paymentMethods) 
+        ? state.paymentMethods.find(method => method.isDefault) || null
+        : null;
     },
     
     cardPaymentMethods: (state) => {
-      return state.paymentMethods.filter(method => 
-        method.type === 'card' || method.type === 'credit_card' || method.type === 'debit_card'
-      );
+      return Array.isArray(state.paymentMethods)
+        ? state.paymentMethods.filter(method => 
+            method.type === 'card' || method.type === 'credit_card' || method.type === 'debit_card'
+          )
+        : [];
     },
     
     eWalletPaymentMethods: (state) => {
-      return state.paymentMethods.filter(method => method.type === 'ewallet');
+      return Array.isArray(state.paymentMethods)
+        ? state.paymentMethods.filter(method => method.type === 'ewallet')
+        : [];
     },
     
     // Voucher getters
     activeVouchers: (state) => {
+      if (!Array.isArray(state.vouchers)) return [];
+      
       const now = new Date();
       return state.vouchers.filter(voucher => {
         const endDate = new Date(voucher.endDate);
@@ -112,6 +85,8 @@ export default {
     },
     
     expiredVouchers: (state) => {
+      if (!Array.isArray(state.vouchers)) return [];
+      
       const now = new Date();
       return state.vouchers.filter(voucher => {
         const endDate = new Date(voucher.endDate);
@@ -126,10 +101,15 @@ export default {
     },
     
     SET_ADDRESSES(state, addresses) {
-      state.addresses = addresses;
+      state.addresses = Array.isArray(addresses) ? addresses : [];
     },
     
     ADD_ADDRESS(state, address) {
+      // Ensure addresses is an array
+      if (!Array.isArray(state.addresses)) {
+        state.addresses = [];
+      }
+      
       // If the new address is default, unset default on all others
       if (address.isDefault) {
         state.addresses.forEach(addr => {
@@ -140,6 +120,12 @@ export default {
     },
     
     UPDATE_ADDRESS(state, updatedAddress) {
+      // Ensure addresses is an array
+      if (!Array.isArray(state.addresses)) {
+        state.addresses = [];
+        return;
+      }
+      
       const index = state.addresses.findIndex(addr => addr.id === updatedAddress.id);
       if (index !== -1) {
         // If the updated address is default, unset default on all others
@@ -153,20 +139,33 @@ export default {
     },
     
     REMOVE_ADDRESS(state, addressId) {
+      if (!Array.isArray(state.addresses)) {
+        state.addresses = [];
+        return;
+      }
       state.addresses = state.addresses.filter(addr => addr.id !== addressId);
     },
     
     SET_DEFAULT_ADDRESS(state, addressId) {
+      if (!Array.isArray(state.addresses)) {
+        state.addresses = [];
+        return;
+      }
       state.addresses.forEach(address => {
         address.isDefault = address.id === addressId;
       });
     },
     
     SET_PAYMENT_METHODS(state, methods) {
-      state.paymentMethods = methods;
+      state.paymentMethods = Array.isArray(methods) ? methods : [];
     },
     
     ADD_PAYMENT_METHOD(state, method) {
+      // Ensure paymentMethods is an array
+      if (!Array.isArray(state.paymentMethods)) {
+        state.paymentMethods = [];
+      }
+      
       // If the new method is default, unset default on all others of same type
       if (method.isDefault) {
         state.paymentMethods.forEach(m => {
@@ -179,6 +178,12 @@ export default {
     },
     
     UPDATE_PAYMENT_METHOD(state, updatedMethod) {
+      // Ensure paymentMethods is an array
+      if (!Array.isArray(state.paymentMethods)) {
+        state.paymentMethods = [];
+        return;
+      }
+      
       const index = state.paymentMethods.findIndex(m => m.id === updatedMethod.id);
       if (index !== -1) {
         // If the updated method is default, unset default on all others of same type
@@ -194,10 +199,18 @@ export default {
     },
     
     REMOVE_PAYMENT_METHOD(state, methodId) {
+      if (!Array.isArray(state.paymentMethods)) {
+        state.paymentMethods = [];
+        return;
+      }
       state.paymentMethods = state.paymentMethods.filter(m => m.id !== methodId);
     },
     
     SET_DEFAULT_PAYMENT_METHOD(state, { methodId, type }) {
+      if (!Array.isArray(state.paymentMethods)) {
+        state.paymentMethods = [];
+        return;
+      }
       state.paymentMethods.forEach(method => {
         if (method.type === type) {
           method.isDefault = method.id === methodId;
@@ -207,14 +220,21 @@ export default {
 
     // Voucher mutations
     SET_VOUCHERS(state, vouchers) {
-      state.vouchers = vouchers;
+      state.vouchers = Array.isArray(vouchers) ? vouchers : [];
     },
     
     ADD_VOUCHER(state, voucher) {
+      if (!Array.isArray(state.vouchers)) {
+        state.vouchers = [];
+      }
       state.vouchers.push(voucher);
     },
     
     REMOVE_VOUCHER(state, voucherId) {
+      if (!Array.isArray(state.vouchers)) {
+        state.vouchers = [];
+        return;
+      }
       state.vouchers = state.vouchers.filter(v => v.id !== voucherId);
     },
     
@@ -238,6 +258,15 @@ export default {
     // Error mutation
     SET_ERROR(state, error) {
       state.error = error;
+    },
+    
+    UPDATE_AVATAR(state, avatarUrl) {
+      if (state.profile) {
+        state.profile = {
+          ...state.profile,
+          avatar: avatarUrl
+        };
+      }
     }
   },
   
@@ -478,6 +507,23 @@ export default {
         throw error;
       } finally {
         commit('SET_LOADING_VOUCHERS', false);
+      }
+    },
+    
+    // Avatar actions
+    async updateAvatar({ commit }, avatarUrl) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        // Update the profile with the new avatar URL
+        commit('UPDATE_AVATAR', avatarUrl);
+        return avatarUrl;
+      } catch (error) {
+        commit('SET_ERROR', error.response?.data?.message || 'Failed to update avatar');
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
       }
     }
   }

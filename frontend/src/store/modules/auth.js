@@ -1,8 +1,10 @@
 import axios from 'axios'
 import router from '@/router'
+import { clearAuthStorage } from '@/config'
 
 const state = {
   token: localStorage.getItem('token') || '',
+  refreshToken: localStorage.getItem('refresh_token') || '',
   user: JSON.parse(localStorage.getItem('user')) || null,
   verificationId: null,
   loading: false,
@@ -46,7 +48,12 @@ const mutations = {
   },
   
   UPDATE_USER_PROFILE(state, userData) {
-    state.user = { ...state.user, ...userData }
+    state.user = { 
+      ...state.user, 
+      ...userData 
+    }
+    
+    localStorage.setItem('user', JSON.stringify(state.user))
   },
   
   LOGOUT(state) {
@@ -59,6 +66,25 @@ const mutations = {
       phone: null
     }
     state.verificationStep = 1
+  },
+
+  CLEAR_AUTH(state) {
+    state.token = ''
+    state.user = null
+    state.verificationId = null
+    state.otpData = {
+      verificationId: null,
+      email: null,
+      phone: null
+    }
+    state.verificationStep = 1
+    state.loading = false
+    state.error = null
+  },
+  
+  SET_TOKENS(state, { accessToken, refreshToken }) {
+    state.token = accessToken
+    state.refreshToken = refreshToken
   }
 }
 
@@ -70,20 +96,23 @@ const actions = {
     return new Promise((resolve, reject) => {
       axios.post('/api/auth/login', { email, password })
         .then(response => {
-          const { token, user } = response.data
+          const { token, refreshToken, user } = response.data
           
           localStorage.setItem('token', token)
+          localStorage.setItem('refresh_token', refreshToken)
           localStorage.setItem('user', JSON.stringify(user))
           
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
           commit('AUTH_SUCCESS', { token, user })
+          commit('SET_TOKENS', { accessToken: token, refreshToken })
           resolve(response.data)
         })
         .catch(err => {
           const errorMsg = err.response?.data?.message || 'Login failed'
           commit('AUTH_ERROR', errorMsg)
           localStorage.removeItem('token')
+          localStorage.removeItem('refresh_token')
           localStorage.removeItem('user')
           reject(errorMsg)
         })
@@ -107,22 +136,28 @@ const actions = {
             commit('SET_VERIFICATION_STEP', 2)
             resolve(response.data)
           } else {
-            // Otherwise proceed with direct login
+            // Otherwise proceed with direct login if token provided
             const { token, user } = response.data
             
-            localStorage.setItem('token', token)
-            localStorage.setItem('user', JSON.stringify(user))
+            if (token && user) {
+              localStorage.setItem('token', token)
+              localStorage.setItem('user', JSON.stringify(user))
+              
+              axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+              
+              commit('AUTH_SUCCESS', { token, user })
+            } else {
+              // Just clear any loading state if no token provided
+              commit('AUTH_ERROR', null)
+            }
             
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
-            
-            commit('AUTH_SUCCESS', { token, user })
             resolve(response.data)
           }
         })
         .catch(err => {
           const errorMsg = err.response?.data?.message || 'Registration failed'
           commit('AUTH_ERROR', errorMsg)
-          reject(errorMsg)
+          reject(err.response?.data || err)
         })
     })
   },
@@ -371,18 +406,11 @@ const actions = {
   // Logout user
   logout({ commit }) {
     return new Promise((resolve) => {
-      // Call logout endpoint if needed
-      axios.post('/api/auth/logout')
-        .finally(() => {
-          commit('LOGOUT')
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
-          delete axios.defaults.headers.common['Authorization']
-          
-          // Redirect to login page
-          router.push('/auth/login')
-          resolve()
-        })
+      commit('LOGOUT')
+      clearAuthStorage()
+      delete axios.defaults.headers.common['Authorization']
+      router.push('/login')
+      resolve()
     })
   },
 
@@ -443,11 +471,21 @@ const actions = {
         .catch(() => {
           // If loadUser fails, clear auth state
           commit('LOGOUT')
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
+          clearAuthStorage()
           delete axios.defaults.headers.common['Authorization']
           resolve(false)
         })
+    })
+  },
+
+  // Update user profile data
+  updateUser({ commit }, userData) {
+    return new Promise((resolve) => {
+      // Update user data in Vuex store
+      commit('UPDATE_USER_PROFILE', userData)
+      
+      // Return the updated user
+      resolve(userData)
     })
   }
 }

@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useStore } from '@/store'
 import type { DeliveryAddress } from '@/store/modules/user'
 import type { VForm } from 'vuetify/components'
@@ -203,14 +203,16 @@ const form = ref<VForm | null>(null)
 const showAddDialog = ref(false)
 const showDeleteDialog = ref(false)
 const isValid = ref(false)
-const loading = computed(() => store.state.user.loading)
+const loading = computed(() => store.state.user?.loading || false)
 
 const editingAddress = ref<DeliveryAddress | null>(null)
 const addressToDelete = ref<DeliveryAddress | null>(null)
 
-const addresses = computed(() => store.state.user.addresses)
-const defaultAddress = computed(() => store.getters['user/defaultAddress'])
-const otherAddresses = computed(() => store.getters['user/otherAddresses'])
+const addresses = computed(() => store.state.user?.addresses || [])
+const defaultAddress = computed(() => {
+  return store.getters['user/defaultAddress'] || null
+})
+const otherAddresses = computed(() => store.getters['user/otherAddresses'] || [])
 
 const addressForm = ref({
   name: '',
@@ -298,4 +300,12 @@ const setAsDefault = async (addressId: number) => {
     // Handle error
   }
 }
+
+// Clean up before component unmounts
+onBeforeUnmount(() => {
+  // Clear any references that might cause issues during unmounting
+  editingAddress.value = null
+  addressToDelete.value = null
+  form.value = null
+})
 </script>

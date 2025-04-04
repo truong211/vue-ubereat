@@ -14,7 +14,46 @@ export default {
       sort: 'Sort',
       view: 'View',
       addToCart: 'Add to cart',
-      min: 'min'
+      min: 'min',
+      selectLocation: 'Select location'
+    },
+    home: {
+      hero: {
+        title: 'Delicious food delivered to your door',
+        subtitle: 'Order from your favorite restaurants with just a few taps',
+        title2: 'Fast delivery, every time',
+        subtitle2: 'Get your food delivered in 30 minutes or less',
+        title3: 'Discover new tastes',
+        subtitle3: 'Try something new from our wide selection of restaurants',
+        searchPlaceholder: 'Search for restaurants or food'
+      },
+      howItWorks: {
+        title: 'How It Works',
+        step1: {
+          title: 'Choose your food',
+          description: 'Browse through hundreds of restaurants and select your favorite dishes'
+        },
+        step2: {
+          title: 'Place your order',
+          description: 'Confirm your order and pay securely online'
+        },
+        step3: {
+          title: 'Enjoy your meal',
+          description: 'Track your order in real-time and enjoy your food when it arrives'
+        }
+      },
+      categories: {
+        title: 'Food Categories',
+        viewAll: 'View All Categories'
+      },
+      promotions: {
+        title: 'Special Offers',
+        useCode: 'Use code'
+      },
+      app: {
+        title: 'Get the UberEat App',
+        description: 'Download our mobile app for a better experience'
+      }
     },
     auth: {
       login: 'Login',
@@ -73,6 +112,52 @@ export default {
     },
     profile: {
       title: 'My Profile'
+    },
+    search: {
+      placeholder: 'Search for restaurants, dishes, or cuisines',
+      recent: 'Recent Searches',
+      advancedFilters: 'Advanced Filters',
+      sortBy: 'Sort By',
+      filters: 'Filters',
+      sort: {
+        relevance: 'Relevance',
+        rating: 'Rating',
+        distance: 'Distance',
+        priceAsc: 'Price: Low to High',
+        priceDesc: 'Price: High to Low'
+      },
+      filterOptions: {
+        distance: 'Distance',
+        rating: 'Minimum Rating',
+        priceRange: 'Price Range',
+        cuisines: 'Cuisine Types'
+      }
+    },
+    cuisines: {
+      italian: 'Italian',
+      japanese: 'Japanese',
+      chinese: 'Chinese',
+      thai: 'Thai',
+      indian: 'Indian',
+      mexican: 'Mexican'
+    },
+    footer: {
+      aboutUs: 'About Us',
+      about: 'About',
+      careers: 'Careers',
+      blog: 'Blog',
+      support: 'Support',
+      help: 'Help Center',
+      faq: 'FAQ',
+      contact: 'Contact Us',
+      business: 'Business',
+      addRestaurant: 'Add Your Restaurant',
+      becomePartner: 'Become a Partner',
+      legal: 'Legal',
+      terms: 'Terms of Service',
+      privacy: 'Privacy Policy',
+      cookies: 'Cookie Policy',
+      allRightsReserved: 'All Rights Reserved'
     },
     restaurant: {
       // Previous translations remain...

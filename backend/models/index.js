@@ -1,61 +1,45 @@
 'use strict';
 
+// No need for Sequelize anymore
 const fs = require('fs');
 const path = require('path');
-const Sequelize = require('sequelize');
 const basename = path.basename(__filename);
-const env = process.env.NODE_ENV || 'development';
-const config = require('../config/config')[env];
 const db = {};
 
-let sequelize;
-if (config.use_env_variable) {
-  sequelize = new Sequelize(process.env[config.use_env_variable], config);
-} else {
-  sequelize = new Sequelize(config.database, config.username, config.password, config);
-}
+// Import models directly
+db.Article = require('./article');
+db.Restaurant = require('../src/models/restaurant.model');
+db.User = require('../src/models/user.model');
+db.Category = require('../src/models/category.model');
+db.Product = require('../src/models/product.model');
+db.Order = require('../src/models/order.model');
+db.OrderDetail = require('../src/models/orderDetail.model');
+db.Review = require('../src/models/review.model');
+db.ReviewVote = require('../src/models/reviewVote.model');
+db.ReviewReport = require('../src/models/reviewReport.model');
+db.PaymentHistory = require('../src/models/paymentHistory.model');
+db.UserPromotion = require('../src/models/userPromotion.model');
+db.Promotion = require('../src/models/promotion.model');
+db.ProductPromotion = require('../src/models/productPromotion.model');
+db.Banner = require('../src/models/banner.model');
+db.StaticPage = require('../src/models/staticPage.model');
+db.SiteConfig = require('../src/models/siteConfig.model');
+db.FAQ = require('../src/models/faq.model');
+db.NotificationTracking = require('../src/models/notificationTracking.model');
+db.StaffPermission = require('../src/models/staffPermission.model');
+db.DeliveryConfig = require('../src/models/deliveryConfig.model');
+// Add other models as they're converted to use direct SQL
+// db.Notification = require('./notification');
+// db.ReviewResponse = require('./reviewResponse');
 
-// Import models manually
-db.Article = require('./article.model')(sequelize, Sequelize.DataTypes);
-db.Banner = require('./banner.model')(sequelize, Sequelize.DataTypes);
-db.Notification = require('./notification.model')(sequelize, Sequelize.DataTypes);
-db.Promotion = require('./promotion.model')(sequelize, Sequelize.DataTypes);
-db.ReviewResponse = require('./reviewResponse.model')(sequelize, Sequelize.DataTypes);
+// Note: As you convert more models from Sequelize to SQL,
+// uncomment the lines above and add them to this file.
 
-// Import loyalty models (multiple models in one file)
-const loyaltyModels = require('./loyalty.model')(sequelize, Sequelize.DataTypes);
-db.Loyalty = loyaltyModels.Loyalty;
-db.LoyaltyReward = loyaltyModels.LoyaltyReward;
-db.LoyaltyRedemption = loyaltyModels.LoyaltyRedemption;
-
-// Import other models dynamically (if they exist)
-fs.readdirSync(__dirname)
-  .filter(file => {
-    return (
-      file.indexOf('.') !== 0 &&
-      file !== basename &&
-      file.slice(-9) === '.model.js' &&
-      file !== 'article.model.js' &&
-      file !== 'banner.model.js' &&
-      file !== 'notification.model.js' &&
-      file !== 'promotion.model.js' &&
-      file !== 'reviewResponse.model.js' &&
-      file !== 'loyalty.model.js'
-    );
-  })
-  .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
-    db[model.name] = model;
-  });
-
-// Set up associations
-Object.keys(db).forEach(modelName => {
-  if (db[modelName].associate) {
-    db[modelName].associate(db);
-  }
-});
-
-db.sequelize = sequelize;
-db.Sequelize = Sequelize;
+// Add database connections and utilities
+const { pool, query, authenticate, paymentConfig } = require('../src/config/database');
+db.pool = pool;
+db.query = query;
+db.authenticate = authenticate;
+db.paymentConfig = paymentConfig;
 
 module.exports = db;

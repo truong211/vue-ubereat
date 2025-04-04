@@ -1,7 +1,7 @@
 export class PushNotificationService {
   constructor() {
     this.isSupported = 'Notification' in window && 'serviceWorker' in navigator;
-    this.vapidPublicKey = process.env.VITE_VAPID_PUBLIC_KEY;
+    this.vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
   }
 
   async init() {

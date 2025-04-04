@@ -1,4 +1,4 @@
-const { PromotionCampaign, Promotion } = require('../models');
+const db = require('../config/database');
 
 class PromotionNotifications {
   constructor(io) {
@@ -7,12 +7,12 @@ class PromotionNotifications {
 
   // Monitor promotion usage and send notifications
   async monitorPromotionUsage(promotionId) {
-    const promotion = await Promotion.findByPk(promotionId);
+    const [promotion] = await db.query('SELECT * FROM promotions WHERE id = ?', [promotionId]);
     if (!promotion) return;
 
     // Check usage limits
-    if (promotion.maxRedemptions) {
-      const usagePercentage = (promotion.currentRedemptions / promotion.maxRedemptions) * 100;
+    if (promotion.max_redemptions) {
+      const usagePercentage = (promotion.current_redemptions / promotion.max_redemptions) * 100;
       
       if (usagePercentage >= 90) {
         this.notifyAdmin('promotion_alert', {
@@ -25,8 +25,8 @@ class PromotionNotifications {
     }
 
     // If part of a campaign, check campaign budget
-    if (promotion.campaignId) {
-      const campaign = await PromotionCampaign.findByPk(promotion.campaignId);
+    if (promotion.campaign_id) {
+      const [campaign] = await db.query('SELECT * FROM promotion_campaigns WHERE id = ?', [promotion.campaign_id]);
       if (campaign && campaign.budget) {
         const budgetUsage = (campaign.spentAmount / campaign.budget) * 100;
         
@@ -49,16 +49,13 @@ class PromotionNotifications {
 
   // Auto-pause campaign and its promotions
   async pauseCampaign(campaignId) {
-    const campaign = await PromotionCampaign.findByPk(campaignId);
+    const [campaign] = await db.query('SELECT * FROM promotion_campaigns WHERE id = ?', [campaignId]);
     if (!campaign) return;
 
-    await campaign.update({ status: 'paused' });
+    await db.query('UPDATE promotion_campaigns SET status = ? WHERE id = ?', ['paused', campaignId]);
     
     // Pause all promotions in the campaign
-    await Promotion.update(
-      { status: 'paused' },
-      { where: { campaignId } }
-    );
+    await db.query('UPDATE promotions SET status = ? WHERE campaign_id = ?', ['paused', campaignId]);
 
     this.notifyAdmin('campaign_alert', {
       type: 'auto_paused',
@@ -78,19 +75,17 @@ class PromotionNotifications {
 
   // Handle expired promotions
   async handleExpiredPromotions() {
-    const now = new Date();
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' '); // Format as MySQL datetime
     
     // Find expired promotions
-    const expiredPromotions = await Promotion.findAll({
-      where: {
-        status: 'active',
-        endDate: { [Op.lt]: now }
-      }
-    });
+    const expiredPromotions = await db.query(
+      'SELECT * FROM promotions WHERE isActive = true AND end_date < ?',
+      [now]
+    );
 
     // Update status and notify
     for (const promotion of expiredPromotions) {
-      await promotion.update({ status: 'expired' });
+      await db.query('UPDATE promotions SET isActive = false WHERE id = ?', [promotion.id]);
       
       this.notifyAdmin('promotion_alert', {
         type: 'expired',

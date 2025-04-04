@@ -1,6 +1,6 @@
 import { ref, onUnmounted } from 'vue';
 import { io, Socket } from 'socket.io-client';
-import config from '@/config';
+import { WS_URL } from '@/config';
 
 export const useSocket = () => {
   const socket = ref<Socket | null>(null);
@@ -10,7 +10,7 @@ export const useSocket = () => {
   const connect = () => {
     try {
       // Connect to WebSocket server
-      socket.value = io(config.SOCKET_URL, {
+      socket.value = io(WS_URL, {
         transports: ['websocket'],
         autoConnect: true,
       });

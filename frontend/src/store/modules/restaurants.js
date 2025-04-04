@@ -59,8 +59,38 @@ const actions = {
     commit('SET_LOADING', true);
     try {
       const response = await restaurantService.getRestaurantById(id, params);
-      commit('SET_RESTAURANT_DETAILS', response.data.data.restaurant);
-      return response.data.data.restaurant;
+      
+      // Handle different response structures with fallbacks
+      let restaurantData;
+      
+      if (response.data && response.data.data && response.data.data.restaurant) {
+        // Standard API response structure
+        restaurantData = response.data.data.restaurant;
+      } else if (response.data && response.data.restaurant) {
+        // Alternative API response structure
+        restaurantData = response.data.restaurant;
+      } else if (response.data && typeof response.data === 'object') {
+        // Direct restaurant object in response
+        restaurantData = response.data;
+      } else {
+        // Fallback to empty object if no recognized structure
+        console.warn('Unexpected restaurant data structure:', response);
+        restaurantData = {};
+      }
+      
+      // Ensure basic restaurant properties exist to prevent errors
+      if (!restaurantData.menuCategories) {
+        restaurantData.menuCategories = [];
+      }
+      if (!restaurantData.reviews) {
+        restaurantData.reviews = [];
+      }
+      if (!restaurantData.categories) {
+        restaurantData.categories = [];
+      }
+      
+      commit('SET_RESTAURANT_DETAILS', restaurantData);
+      return restaurantData;
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant details');
       throw error;
@@ -73,8 +103,29 @@ const actions = {
     commit('SET_LOADING', true);
     try {
       const response = await restaurantService.getRestaurantMenu(id);
-      commit('SET_RESTAURANT_MENU', response.data.data.categories);
-      return response.data.data.categories;
+      
+      // Handle different response structures with fallbacks
+      let menuData = [];
+      
+      if (response.data && response.data.data && response.data.data.categories) {
+        // Standard API response structure
+        menuData = response.data.data.categories;
+      } else if (response.data && response.data.categories) {
+        // Alternative API response structure
+        menuData = response.data.categories;
+      } else if (response.data && Array.isArray(response.data)) {
+        // Direct array of categories in response
+        menuData = response.data;
+      } else if (response.data && response.data.menu && Array.isArray(response.data.menu)) {
+        // Menu property containing array
+        menuData = response.data.menu;
+      } else {
+        // Fallback to empty array if no recognized structure
+        console.warn('Unexpected menu data structure:', response);
+      }
+      
+      commit('SET_RESTAURANT_MENU', menuData);
+      return menuData;
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant menu');
       throw error;
@@ -87,8 +138,26 @@ const actions = {
     commit('SET_LOADING', true);
     try {
       const response = await restaurantService.getRestaurantReviews(id, params);
-      commit('SET_RESTAURANT_REVIEWS', response.data.data.reviews);
-      return response.data;
+      
+      // Handle different response structures with fallbacks
+      let reviewsData = [];
+      
+      if (response.data && response.data.data && response.data.data.reviews) {
+        // Standard API response structure
+        reviewsData = response.data.data.reviews;
+      } else if (response.data && response.data.reviews) {
+        // Alternative API response structure
+        reviewsData = response.data.reviews;
+      } else if (response.data && Array.isArray(response.data)) {
+        // Direct array of reviews in response
+        reviewsData = response.data;
+      } else {
+        // Fallback to empty array if no recognized structure
+        console.warn('Unexpected reviews data structure:', response);
+      }
+      
+      commit('SET_RESTAURANT_REVIEWS', reviewsData);
+      return reviewsData;
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant reviews');
       throw error;
@@ -142,6 +211,12 @@ const actions = {
 
   setUserLocation({ commit }, location) {
     commit('SET_USER_LOCATION', location);
+  },
+
+  // Add compatibility action for components using fetchRestaurantDetails
+  async fetchRestaurantDetails({ dispatch }, id) {
+    console.warn('fetchRestaurantDetails is deprecated, use fetchRestaurantById instead');
+    return await dispatch('fetchRestaurantById', { id });
   }
 };
 

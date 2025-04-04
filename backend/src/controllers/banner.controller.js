@@ -1,8 +1,11 @@
-const { Banner } = require('../models');
+const path = require('path');
+const fs = require('fs');
+const Banner = require('../models/banner.model');
 const { AppError } = require('../middleware/error.middleware');
 const { validationResult } = require('express-validator');
 const multer = require('multer');
-const path = require('path');
+const db = require('../config/database');
+const { QueryTypes } = require('sequelize');
 
 // Configure multer for banner image uploads
 const storage = multer.diskStorage({
@@ -207,37 +210,42 @@ exports.incrementClickCount = async (req, res, next) => {
 // Get banner statistics
 exports.getStats = async (req, res, next) => {
   try {
-    const stats = await Banner.findAll({
-      attributes: [
-        [sequelize.fn('SUM', sequelize.col('viewCount')), 'totalViews'],
-        [sequelize.fn('SUM', sequelize.col('clickCount')), 'totalClicks'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'totalBanners'],
-        [sequelize.fn('COUNT', sequelize.literal('CASE WHEN active = true THEN 1 END')), 'activeBanners']
-      ]
-    });
-
+    // Use direct SQL query for stats
+    const statsQuery = `
+      SELECT 
+        SUM(viewCount) as totalViews,
+        SUM(clickCount) as totalClicks,
+        COUNT(id) as totalBanners,
+        SUM(CASE WHEN active = true THEN 1 ELSE 0 END) as activeBanners
+      FROM banners
+    `;
+    
+    const stats = await db.query(statsQuery);
+    
     // Calculate CTR (Click-Through Rate)
-    const totalViews = parseInt(stats[0].getDataValue('totalViews')) || 0;
-    const totalClicks = parseInt(stats[0].getDataValue('totalClicks')) || 0;
+    const totalViews = parseInt(stats[0]?.totalViews) || 0;
+    const totalClicks = parseInt(stats[0]?.totalClicks) || 0;
     const ctr = totalViews > 0 ? (totalClicks / totalViews) * 100 : 0;
 
     // Get performance by position
-    const positionStats = await Banner.findAll({
-      attributes: [
-        'position',
-        [sequelize.fn('SUM', sequelize.col('viewCount')), 'views'],
-        [sequelize.fn('SUM', sequelize.col('clickCount')), 'clicks'],
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-      ],
-      group: ['position']
-    });
+    const positionStatsQuery = `
+      SELECT 
+        position,
+        SUM(viewCount) as views,
+        SUM(clickCount) as clicks,
+        COUNT(id) as count
+      FROM banners
+      GROUP BY position
+    `;
+    
+    const positionStats = await db.query(positionStatsQuery);
 
     res.json({
       status: 'success',
       data: {
         overview: {
-          totalBanners: stats[0].getDataValue('totalBanners'),
-          activeBanners: stats[0].getDataValue('activeBanners'),
+          totalBanners: parseInt(stats[0]?.totalBanners) || 0,
+          activeBanners: parseInt(stats[0]?.activeBanners) || 0,
           totalViews,
           totalClicks,
           ctr: ctr.toFixed(2)

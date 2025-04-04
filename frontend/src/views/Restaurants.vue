@@ -13,9 +13,19 @@
               variant="outlined"
               hide-details
               class="mb-4"
+              @keyup.enter="handleLocationSearch"
             >
               <template v-slot:append>
-                <v-btn icon @click="getCurrentLocation">
+                <v-btn 
+                  icon 
+                  @click="handleGetCurrentLocation" 
+                  :loading="isLocating" 
+                  :disabled="isLocating"
+                  class="location-btn"
+                >
+                  <v-tooltip activator="parent" location="top">
+                    Use my current location
+                  </v-tooltip>
                   <v-icon>mdi-crosshairs-gps</v-icon>
                 </v-btn>
               </template>
@@ -284,8 +294,11 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRestaurantSearch } from '../composables/useRestaurantSearch'
+import { useToast } from 'vue-toastification'
 
 const router = useRouter()
+const toast = useToast()
+
 const {
   searchQuery,
   locationQuery,
@@ -295,11 +308,13 @@ const {
   loading,
   filters,
   filteredRestaurants,
-  getCurrentLocation
+  getCurrentLocation,
+  searchRestaurants
 } = useRestaurantSearch()
 
 const showSuggestions = ref(false)
 const showLocationSuggestions = ref(false)
+const isLocating = ref(false)
 
 const categories = ref([
   { id: 1, name: 'Vietnamese' },
@@ -347,6 +362,45 @@ function selectSuggestion(suggestion) {
 function selectLocationSuggestion(suggestion) {
   locationQuery.value = suggestion
   showLocationSuggestions.value = false
+  
+  // Trigger search with the selected location
+  handleLocationSearch()
+}
+
+async function handleLocationSearch() {
+  try {
+    loading.value = true
+    await searchRestaurants({
+      locationQuery: locationQuery.value
+    })
+    toast.success('Location updated successfully')
+  } catch (error) {
+    console.error('Location search error:', error)
+    toast.error('Error searching with this location')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleGetCurrentLocation() {
+  isLocating.value = true
+  try {
+    const locationData = await getCurrentLocation()
+    toast.success('Location updated successfully')
+    // Trigger search with the new location
+    await searchRestaurants()
+  } catch (error) {
+    console.error('Error getting location:', error)
+    toast.error(error.message || 'Error getting your location')
+    
+    // If error occurred, we'll show a dialog to manually enter location
+    if (error.code === 1) { // PERMISSION_DENIED
+      // Show an alert that helps users understand how to enable location
+      toast.info('You can search by typing your address manually')
+    }
+  } finally {
+    isLocating.value = false
+  }
 }
 
 watch(searchQuery, () => {
@@ -358,6 +412,32 @@ watch(locationQuery, () => {
 })
 
 onMounted(async () => {
-  await getCurrentLocation()
+  try {
+    await searchRestaurants()
+  } catch (error) {
+    console.error('Error fetching initial restaurants:', error)
+  }
 })
 </script>
+
+<style scoped>
+.location-btn {
+  cursor: pointer;
+  padding: 0;
+  margin-right: 4px;
+  z-index: 1;
+}
+
+.location-suggestions, 
+.search-suggestions {
+  position: absolute;
+  width: 100%;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: -16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+</style>

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { apiClient } from '../../services/api.service';
 
 const state = {
   orders: [],
@@ -37,7 +38,7 @@ const actions = {
   async fetchOrders({ commit }, params) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.get('/api/admin/orders', { params });
+      const response = await apiClient.get('/api/orders', { params });
       commit('SET_ORDERS', {
         orders: response.data.orders,
         total: response.data.total
@@ -54,7 +55,7 @@ const actions = {
   async fetchOrderDetails({ commit }, orderId) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.get(`/api/admin/orders/${orderId}`);
+      const response = await apiClient.get(`/api/orders/${orderId}`);
       commit('SET_CURRENT_ORDER', response.data);
       return response.data;
     } catch (error) {
@@ -67,7 +68,7 @@ const actions = {
 
   async updateOrderStatus({ commit }, { orderId, status, reason, note }) {
     try {
-      const response = await axios.patch(`/api/admin/orders/${orderId}/status`, {
+      const response = await apiClient.patch(`/api/orders/${orderId}/status`, {
         status,
         reason,
         note
@@ -80,13 +81,33 @@ const actions = {
     }
   },
 
+  async cancelOrder({ commit }, { id, cancellationReason }) {
+    try {
+      commit('SET_LOADING', true);
+      
+      const response = await apiClient.post(`/api/orders/${id}/cancel`, {
+        cancellationReason
+      });
+      
+      // Update the order status locally
+      commit('UPDATE_ORDER_STATUS', { orderId: id, status: 'cancelled' });
+      
+      return response.data;
+    } catch (error) {
+      commit('SET_ERROR', error.message || 'Failed to cancel order');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
   /**
    * Submit a comprehensive review including item ratings and images
    */
   async submitReview({ commit }, formData) {
     try {
       commit('SET_LOADING', true);
-      const response = await axios.post(`${API_ENDPOINT}/reviews`, formData, {
+      const response = await apiClient.post('/api/reviews', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }

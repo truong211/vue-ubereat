@@ -1,0 +1,115 @@
+const { Model, DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+
+// Corrected ReviewReport model definition for backend/src/models/reviewReport.model.js
+class ReviewReport extends Model {
+  static associate(models) {
+    // Ensure models.Review and models.User are available when associate is called
+    if (models.Review) {
+      ReviewReport.belongsTo(models.Review, {
+        foreignKey: 'review_id', // Use snake_case
+        as: 'review',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
+    } else {
+      console.warn('Review model not found during ReviewReport association');
+    }
+
+    if (models.User) {
+      ReviewReport.belongsTo(models.User, {
+        foreignKey: 'user_id', // Use snake_case
+        as: 'reporter',
+        onDelete: 'CASCADE',
+        onUpdate: 'CASCADE'
+      });
+
+      ReviewReport.belongsTo(models.User, {
+        foreignKey: 'moderator_id', // Use snake_case
+        as: 'moderator',
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE'
+      });
+    } else {
+      console.warn('User model not found during ReviewReport association');
+    }
+  }
+}
+
+ReviewReport.init({
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  user_id: { // Use snake_case
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: { // Keep references if they are correctly pointing to underscored tables/columns
+      model: 'users', // Assuming 'users' table name
+      key: 'id'
+    }
+  },
+  review_id: { // Use snake_case
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: { // Keep references if they are correctly pointing to underscored tables/columns
+      model: 'reviews', // Assuming 'reviews' table name
+      key: 'id'
+    }
+  },
+  reason: {
+    type: DataTypes.STRING(255), // Added length for consistency
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'reviewed', 'resolved'),
+    defaultValue: 'pending'
+  },
+  moderator_id: { // Use snake_case
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: { // Keep references if they are correctly pointing to underscored tables/columns
+      model: 'users', // Assuming 'users' table name
+      key: 'id'
+    }
+  },
+  resolved_at: { // Use snake_case
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  // created_at and updated_at are handled by timestamps: true + underscored: true
+}, {
+  sequelize,
+  modelName: 'ReviewReport',
+  tableName: 'review_reports', // Use snake_case table name
+  underscored: true, // Add underscored option
+  timestamps: true, // Keep timestamps
+  // Sequelize handles createdAt/updatedAt automatically with underscored: true
+  // createdAt: 'created_at', // Not needed if underscored: true
+  // updatedAt: 'updated_at', // Not needed if underscored: true
+  indexes: [ // Use snake_case for fields
+    {
+      name: 'idx_review_reports_status', // Optional: keep explicit index names
+      fields: ['status']
+    },
+    {
+      name: 'idx_review_reports_review_id',
+      fields: ['review_id']
+    },
+    {
+      name: 'idx_review_reports_user_id',
+      fields: ['user_id']
+    },
+    {
+      name: 'idx_review_reports_moderator_id',
+      fields: ['moderator_id']
+    }
+  ]
+});
+
+module.exports = ReviewReport;

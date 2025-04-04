@@ -1,30 +1,75 @@
-import api from '@/services/api';
+import cartService from '@/services/cart.service';
+import { USE_MOCK_DATA } from '@/config';
+import axios from 'axios';
+
+// Create an api instance for consistent usage
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Add request interceptor to include auth token
+api.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => Promise.reject(error)
+);
 
 // Initial state
 const state = {
-  cart: null,
-  isLoading: false,
-  error: null
+  items: [],
+  loading: false,
+  error: null,
+  subtotal: 0,
+  deliveryFee: 0,
+  tax: 0,
+  total: 0
 };
 
 // Getters
 const getters = {
-  cartItemCount: state => state.cart?.items?.length || 0,
-  cartTotal: state => state.cart?.total || 0,
-  hasItems: state => state.cart?.items?.length > 0
+  cartItems: state => state.items,
+  cartItemsCount: state => state.items.reduce((count, item) => count + item.quantity, 0),
+  cartSubtotal: state => state.subtotal,
+  cartDeliveryFee: state => state.deliveryFee,
+  cartTax: state => state.tax,
+  cartTotal: state => state.total,
+  isCartEmpty: state => state.items.length === 0,
+  isLoading: state => state.loading,
+  hasError: state => state.error !== null,
+  getError: state => state.error
 };
 
 // Actions
 const actions = {
   // Fetch the user's cart
   async fetchCart({ commit }) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
     try {
-      commit('SET_LOADING', true);
-      const response = await api.get('/cart');
-      commit('SET_CART', response.data.data);
-      return response.data.data;
+      const response = await cartService.getCartItems();
+      commit('SET_CART_ITEMS', response.data.items);
+      
+      // Update cart totals
+      commit('UPDATE_CART_TOTALS', {
+        subtotal: response.data.subtotal,
+        deliveryFee: response.data.deliveryFee,
+        tax: response.data.tax,
+        total: response.data.total
+      });
+      
+      return response.data;
     } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch cart');
+      console.error('Error fetching cart:', error);
+      commit('SET_ERROR', 'Failed to load cart items');
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -32,14 +77,17 @@ const actions = {
   },
   
   // Add item to cart
-  async addToCart({ commit, dispatch }, payload) {
+  async addToCart({ commit, dispatch }, { productId, quantity = 1, options = null }) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
     try {
-      commit('SET_LOADING', true);
-      const response = await api.post('/cart', payload);
-      await dispatch('fetchCart'); // Refresh cart after adding item
-      return response.data.data.cartItem;
+      await cartService.addToCart(productId, quantity, options);
+      // Refresh cart
+      return dispatch('fetchCart');
     } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to add item to cart');
+      console.error('Error adding to cart:', error);
+      commit('SET_ERROR', 'Failed to add item to cart');
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -47,19 +95,17 @@ const actions = {
   },
   
   // Update cart item
-  async updateCartItem({ commit, dispatch }, { id, quantity, options, notes }) {
+  async updateCartItem({ commit, dispatch }, { itemId, quantity }) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
     try {
-      commit('SET_LOADING', true);
-      const payload = {};
-      if (quantity !== undefined) payload.quantity = quantity;
-      if (options !== undefined) payload.options = options;
-      if (notes !== undefined) payload.notes = notes;
-      
-      const response = await api.patch(`/cart/${id}`, payload);
-      await dispatch('fetchCart'); // Refresh cart after update
-      return response.data.data.cartItem;
+      await cartService.updateQuantity(itemId, quantity);
+      // Refresh cart
+      return dispatch('fetchCart');
     } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to update cart item');
+      console.error('Error updating cart item:', error);
+      commit('SET_ERROR', 'Failed to update cart item');
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -67,13 +113,17 @@ const actions = {
   },
   
   // Remove item from cart
-  async removeCartItem({ commit, dispatch }, id) {
+  async removeFromCart({ commit, dispatch }, itemId) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
     try {
-      commit('SET_LOADING', true);
-      await api.delete(`/cart/${id}`);
-      await dispatch('fetchCart'); // Refresh cart after removal
+      await cartService.removeFromCart(itemId);
+      // Refresh cart
+      return dispatch('fetchCart');
     } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to remove cart item');
+      console.error('Error removing from cart:', error);
+      commit('SET_ERROR', 'Failed to remove item from cart');
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -82,12 +132,32 @@ const actions = {
   
   // Clear entire cart
   async clearCart({ commit }) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
     try {
-      commit('SET_LOADING', true);
-      await api.delete('/cart');
-      commit('SET_CART', null);
+      await cartService.clearCart();
+      commit('CLEAR_CART');
     } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to clear cart');
+      console.error('Error clearing cart:', error);
+      commit('SET_ERROR', 'Failed to clear cart');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+  
+  // Validate cart
+  async validateCart({ commit }) {
+    commit('SET_LOADING', true);
+    commit('SET_ERROR', null);
+    
+    try {
+      const response = await cartService.validateCart();
+      return response.data;
+    } catch (error) {
+      console.error('Error validating cart:', error);
+      commit('SET_ERROR', 'Failed to validate cart');
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -182,17 +252,27 @@ const actions = {
 
 // Mutations
 const mutations = {
-  SET_CART(state, cart) {
-    state.cart = cart;
+  SET_CART_ITEMS(state, items) {
+    state.items = items;
   },
-  SET_LOADING(state, isLoading) {
-    state.isLoading = isLoading;
+  SET_LOADING(state, loading) {
+    state.loading = loading;
   },
   SET_ERROR(state, error) {
     state.error = error;
   },
-  CLEAR_ERROR(state) {
-    state.error = null;
+  UPDATE_CART_TOTALS(state, { subtotal, deliveryFee, tax, total }) {
+    state.subtotal = subtotal;
+    state.deliveryFee = deliveryFee;
+    state.tax = tax;
+    state.total = total;
+  },
+  CLEAR_CART(state) {
+    state.items = [];
+    state.subtotal = 0;
+    state.deliveryFee = 0;
+    state.tax = 0;
+    state.total = 0;
   }
 };
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { store } from '@/store';
-import { config } from '@/config';
+import { API_URL } from '@/config';
 
 class TrackingService {
   constructor() {
@@ -9,7 +9,7 @@ class TrackingService {
     this.trackingInterval = null;
     this.etaUpdateInterval = null;
     this.connected = false;
-    this.apiUrl = config.apiUrl;
+    this.apiUrl = API_URL;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 3000; // 3 seconds

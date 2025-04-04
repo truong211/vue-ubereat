@@ -242,7 +242,50 @@ import { defineComponent, ref, reactive, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useToast } from '@/composables/useToast';
 import socialAuth from '@/services/social-auth';
-import otpAuth from '@/services/otp-auth';
+import otpAuthService from '@/services/otp-auth';
+
+// Create a wrapper with fallback methods in case of import errors
+const otpAuth = {
+  sendPhoneOTP: async (...args) => {
+    try {
+      return await otpAuthService.sendPhoneOTP(...args);
+    } catch (error) {
+      console.error('Error in sendPhoneOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  verifyPhoneOTP: async (...args) => {
+    try {
+      return await otpAuthService.verifyPhoneOTP(...args);
+    } catch (error) {
+      console.error('Error in verifyPhoneOTP:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  verifyPhoneForAccount: async (...args) => {
+    try {
+      return await otpAuthService.verifyPhoneForAccount(...args);
+    } catch (error) {
+      console.error('Error in verifyPhoneForAccount:', error);
+      return Promise.reject(new Error('OTP service not available'));
+    }
+  },
+  getRecaptchaToken: async () => {
+    try {
+      return await otpAuthService.getRecaptchaToken();
+    } catch (error) {
+      console.error('Error in getRecaptchaToken:', error);
+      return 'dummy-recaptcha-token-fallback';
+    }
+  },
+  initRecaptcha: () => {
+    try {
+      return otpAuthService.initRecaptcha();
+    } catch (error) {
+      console.error('Error in initRecaptcha:', error);
+    }
+  }
+};
 
 export default defineComponent({
   name: 'AccountLinking',

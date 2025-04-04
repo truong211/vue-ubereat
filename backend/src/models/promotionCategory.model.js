@@ -24,4 +24,15 @@ const PromotionCategory = sequelize.define('PromotionCategory', {
   tableName: 'promotion_categories'
 });
 
+// Define associations
+PromotionCategory.associate = function(models) {
+  if (models.PromotionCampaign) {
+    PromotionCategory.hasMany(models.PromotionCampaign, {
+      foreignKey: 'category_id',
+      as: 'campaigns',
+      constraints: false
+    });
+  }
+};
+
 module.exports = PromotionCategory;

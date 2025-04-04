@@ -461,6 +461,227 @@ exports.logout = async (req, res) => {
   res.status(200).json({ message: 'Logged out successfully' });
 };
 
+// Alias for resendVerificationEmail to match routes
+exports.resendEmailOTP = exports.resendVerificationEmail;
+
+// Alias for forgotPassword to match routes
+exports.requestPasswordReset = exports.forgotPassword;
+
+// New methods to match routes
+
+exports.verifyEmailOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+    
+    // Find user
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if OTP is valid and not expired
+    if (!user.verificationCode || 
+        user.verificationCode.email !== otp || 
+        user.verificationCode.expiresAt < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+    
+    // Update user
+    user.emailVerified = true;
+    
+    // If both email and phone (if required) are verified, set user as verified
+    if (user.emailVerified && (!user.phone || user.phoneVerified)) {
+      user.isVerified = true;
+    }
+    
+    // Clear the email OTP
+    user.verificationCode.email = undefined;
+    
+    await user.save();
+    
+    res.status(200).json({ message: 'Email verified successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+      return res.status(400).json({ message: 'Refresh token is required' });
+    }
+    
+    // Verify refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    
+    // Generate new access token
+    const accessToken = jwt.sign(
+      { userId: decoded.userId, role: decoded.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1h' }
+    );
+    
+    res.status(200).json({ accessToken });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid refresh token' });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find user
+    const user = await User.findById(userId)
+      .select('-password -verificationCode -resetPasswordToken -resetPasswordExpires');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({ user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, phone, address } = req.body;
+    const userId = req.user.id;
+    
+    // Update user profile
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { name, phone, address },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+        avatar: user.avatar
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.updatePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+    
+    // Find user
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+    
+    res.status(200).json({ message: 'Password updated successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.addFavoriteDish = async (req, res) => {
+  try {
+    const { dishId } = req.body;
+    const userId = req.user.id;
+    
+    // Find user and update favorites
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $addToSet: { favoriteDishes: dishId } },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({ 
+      message: 'Dish added to favorites',
+      favoriteDishes: user.favoriteDishes
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.removeFavoriteDish = async (req, res) => {
+  try {
+    const { id: dishId } = req.params;
+    const userId = req.user.id;
+    
+    // Find user and update favorites
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $pull: { favoriteDishes: dishId } },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({ 
+      message: 'Dish removed from favorites',
+      favoriteDishes: user.favoriteDishes
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getFavoriteDishes = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find user and populate favorite dishes
+    const user = await User.findById(userId)
+      .populate('favoriteDishes')
+      .select('favoriteDishes');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({ favoriteDishes: user.favoriteDishes });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // Helper Functions
 function generateOTP() {
   // Generate a 6-digit OTP

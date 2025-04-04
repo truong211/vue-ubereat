@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const banners = require('../controllers/banner.controller');
-const { authJwt } = require('../middleware');
+const { authMiddleware, isAdmin } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
 // Public routes
@@ -11,8 +11,8 @@ router.patch('/:id/click', banners.incrementClickCount);
 
 // Admin only routes
 router.post('/', [
-  authJwt.verifyToken,
-  authJwt.isAdmin,
+  authMiddleware,
+  isAdmin,
   body('title').notEmpty().withMessage('Title is required'),
   body('position').optional().isString().withMessage('Position must be a string'),
   body('link').optional().isURL().withMessage('Link must be a valid URL'),
@@ -23,8 +23,8 @@ router.post('/', [
 ], banners.create);
 
 router.put('/:id', [
-  authJwt.verifyToken,
-  authJwt.isAdmin,
+  authMiddleware,
+  isAdmin,
   body('title').optional().notEmpty().withMessage('Title cannot be empty'),
   body('position').optional().isString(),
   body('link').optional().isURL().withMessage('Link must be a valid URL'),
@@ -34,16 +34,15 @@ router.put('/:id', [
   body('device').optional().isIn(['all', 'mobile', 'desktop']).withMessage('Invalid device type')
 ], banners.update);
 
-router.delete('/:id', [authJwt.verifyToken, authJwt.isAdmin], banners.delete);
+router.delete('/:id', [authMiddleware, isAdmin], banners.delete);
 
 router.patch('/:id/status', [
-  authJwt.verifyToken,
-  authJwt.isAdmin,
+  authMiddleware,
+  isAdmin,
   body('active').isBoolean().withMessage('Active must be a boolean')
 ], banners.updateStatus);
 
-router.get('/stats', [authJwt.verifyToken, authJwt.isAdmin], banners.getStats);
+router.get('/stats', [authMiddleware, isAdmin], banners.getStats);
 
-module.exports = app => {
-  app.use('/api/banners', router);
-};
+// Export the router directly
+module.exports = router;

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const deliveryConfigController = require('../controllers/deliveryConfig.controller');
-const { authenticate, authorize } = require('../middleware/auth');
+const { protect, restrictTo } = require('../middleware/auth.middleware');
 
 // Public routes
 router.get('/global', deliveryConfigController.getGlobalDeliveryConfig);
@@ -10,26 +10,26 @@ router.post('/calculate-fee', deliveryConfigController.calculateDeliveryFee);
 
 // Protected routes
 router.get('/', 
-  authenticate, 
-  authorize('admin'), 
+  protect, 
+  restrictTo('admin'), 
   deliveryConfigController.getAllDeliveryConfigs
 );
 
 router.post('/', 
-  authenticate, 
-  authorize('admin', 'restaurant'), 
+  protect, 
+  restrictTo('admin', 'restaurant'), 
   deliveryConfigController.createDeliveryConfig
 );
 
 router.put('/:id', 
-  authenticate, 
-  authorize('admin', 'restaurant'), 
+  protect, 
+  restrictTo('admin', 'restaurant'), 
   deliveryConfigController.updateDeliveryConfig
 );
 
 router.delete('/:id', 
-  authenticate, 
-  authorize('admin'), 
+  protect, 
+  restrictTo('admin'), 
   deliveryConfigController.deleteDeliveryConfig
 );
 

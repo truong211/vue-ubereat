@@ -6,17 +6,13 @@
         <v-col cols="12" md="6" class="d-none d-md-flex auth-banner">
           <div class="d-flex flex-column justify-center align-center text-white pa-8 h-100">
             <div class="text-center">
-              <img src="@/assets/logo-white.png" alt="Logo" height="60" class="mb-8" />
-              <h1 class="text-h3 font-weight-bold mb-4">UberEat</h1>
+              <h1 class="text-h2 font-weight-bold mb-4">UberEat</h1>
               <p class="text-subtitle-1 mb-16">Khám phá ẩm thực ngon tuyệt từ mọi nơi</p>
             </div>
             
-            <v-img
-              src="@/assets/auth-illustration.svg"
-              alt="Food delivery illustration"
-              max-width="400"
-              class="mt-auto"
-            ></v-img>
+            <div class="mt-auto text-center">
+              <p class="text-body-1">Giao đồ ăn nhanh chóng, thuận tiện</p>
+            </div>
           </div>
         </v-col>
         
@@ -27,7 +23,7 @@
             elevation="0"
             class="d-md-none px-4"
           >
-            <img src="@/assets/logo.png" alt="Logo" height="40" />
+            <span class="text-h6 font-weight-bold primary--text">UberEat</span>
             <v-spacer></v-spacer>
             <v-btn
               icon
@@ -59,7 +55,7 @@ export default {
 }
 
 .auth-banner {
-  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+  background: linear-gradient(135deg, #ff5252 0%, #ff7675 100%);
   background-size: cover;
   background-position: center;
 }

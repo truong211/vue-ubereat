@@ -1,10 +1,10 @@
 import axios from 'axios';
-import { config } from '@/config';
+import { APP_NAME } from '@/config';
 
 class MapService {
   constructor() {
-    this.apiKey = config.mapApiKey;
-    this.mapProvider = config.mapProvider || 'google'; // 'google', 'mapbox', etc.
+    this.apiKey = import.meta.env.VITE_MAP_API_KEY || '';
+    this.mapProvider = import.meta.env.VITE_MAP_PROVIDER || 'google'; // 'google', 'mapbox', etc.
     this.geocodingCache = new Map();
     this.routeCache = new Map();
     this.distanceMatrixCache = new Map();

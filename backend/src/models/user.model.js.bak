@@ -1,0 +1,214 @@
+const bcrypt = require('bcryptjs');
+const { query } = require('../config/database');
+
+/**
+ * User Model
+ * Represents users in the system (customers, restaurant owners, admins)
+ */
+class User {
+  constructor(data = {}) {
+    Object.assign(this, data);
+  }
+
+  // Instance method to check if password is correct
+  async correctPassword(candidatePassword) {
+    try {
+      if (!this.password) return false;
+      console.log('Comparing passwords:');
+      console.log('Candidate password length:', candidatePassword.length);
+      console.log('Stored hash:', this.password);
+      const isMatch = await bcrypt.compare(candidatePassword, this.password);
+      console.log('Password match result:', isMatch);
+      return isMatch;
+    } catch (error) {
+      console.error('Password comparison error:', error);
+      return false;
+    }
+  }
+
+  // For Sequelize compatibility
+  toJSON() {
+    const values = { ...this };
+    delete values.password;
+    delete values.socialToken;
+    delete values.verificationToken;
+    delete values.resetPasswordToken;
+    delete values.emailVerificationOtp;
+    delete values.phoneVerificationOtp;
+    delete values.resetPasswordOtp;
+    return values;
+  }
+
+  // Save method to mimic Sequelize's save
+  async save() {
+    // If the user has an ID, it's an update, otherwise it's a create
+    if (this.id) {
+      const { id, ...data } = this;
+      
+      // Handle special fields like JSON and dates
+      for (const [key, value] of Object.entries(data)) {
+        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+          data[key] = JSON.stringify(value);
+        }
+      }
+      
+      // Create the SET part of the SQL
+      const setClauses = [];
+      const params = [];
+      
+      for (const [key, value] of Object.entries(data)) {
+        setClauses.push(`${key} = ?`);
+        params.push(value);
+      }
+      
+      // If there's nothing to update, just return
+      if (setClauses.length === 0) return this;
+      
+      // Add the ID to the parameters
+      params.push(id);
+      
+      const sql = `UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`;
+      await query(sql, params);
+      
+      return this;
+    } else {
+      throw new Error('Cannot save a user without an ID');
+    }
+  }
+
+  // Static methods to mimic Sequelize
+  static async findByPk(id) {
+    if (!id) return null;
+    
+    const result = await query('SELECT * FROM users WHERE id = ?', [id]);
+    return result.length > 0 ? new User(result[0]) : null;
+  }
+
+  static async findOne(options = {}) {
+    let sql = 'SELECT * FROM users';
+    const params = [];
+    const conditions = [];
+    
+    if (options.where) {
+      for (const [key, value] of Object.entries(options.where)) {
+        // Handle simple conditions
+        conditions.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+    
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    sql += ' LIMIT 1';
+    
+    const result = await query(sql, params);
+    return result.length > 0 ? new User(result[0]) : null;
+  }
+
+  static async create(data) {
+    // Process the data
+    const userData = { ...data };
+    
+    // Hash password if provided
+    if (userData.password) {
+      userData.password = await bcrypt.hash(userData.password, 12);
+    }
+    
+    // Handle JSON fields
+    for (const [key, value] of Object.entries(userData)) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        userData[key] = JSON.stringify(value);
+      }
+    }
+    
+    // Create the SQL
+    const columns = Object.keys(userData).join(', ');
+    const placeholders = Object.keys(userData).map(() => '?').join(', ');
+    const values = Object.values(userData);
+    
+    const sql = `INSERT INTO users (${columns}) VALUES (${placeholders})`;
+    const result = await query(sql, values);
+    
+    return new User({
+      id: result.insertId,
+      ...userData
+    });
+  }
+
+  static async update(data, options = {}) {
+    // Process the data
+    const userData = { ...data };
+    
+    // Handle JSON fields
+    for (const [key, value] of Object.entries(userData)) {
+      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+        userData[key] = JSON.stringify(value);
+      }
+    }
+    
+    // Create the SET part of the SQL
+    const setClauses = [];
+    const params = [];
+    
+    for (const [key, value] of Object.entries(userData)) {
+      setClauses.push(`${key} = ?`);
+      params.push(value);
+    }
+    
+    // If there's nothing to update, just return [0]
+    if (setClauses.length === 0) return [0];
+    
+    let sql = `UPDATE users SET ${setClauses.join(', ')}`;
+    
+    // Handle WHERE conditions
+    const conditions = [];
+    if (options.where) {
+      for (const [key, value] of Object.entries(options.where)) {
+        conditions.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+    
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    const result = await query(sql, params);
+    return [result.affectedRows];
+  }
+
+  static async destroy(options = {}) {
+    let sql = 'DELETE FROM users';
+    const params = [];
+    
+    // Handle WHERE conditions
+    const conditions = [];
+    if (options.where) {
+      for (const [key, value] of Object.entries(options.where)) {
+        conditions.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+    
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    const result = await query(sql, params);
+    return result.affectedRows;
+  }
+
+  // These are stubs to prevent errors during initialization
+  static init() {
+    return User;
+  }
+
+  static associate() {
+    // No-op
+  }
+}
+
+// Export both the User class for traditional usage, and a Sequelize-compatible interface
+module.exports = User;

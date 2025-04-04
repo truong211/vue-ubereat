@@ -23,7 +23,7 @@
                   </label>
                 </div>
               </div>
-              <h4>{{ user?.fullName }}</h4>
+              <h4>{{ displayName }}</h4>
               <p class="text-muted">{{ user?.email }}</p>
             </div>
           </div>
@@ -206,6 +206,10 @@ export default defineComponent({
         return `/uploads/profiles/${this.user.profileImage}`;
       }
       return '/img/default-avatar.png';
+    },
+    
+    displayName() {
+      return this.user?.fullName || this.user?.name || 'User';
     }
   },
 
@@ -217,7 +221,7 @@ export default defineComponent({
     initializeFormData() {
       if (this.user) {
         this.formData = {
-          fullName: this.user.fullName || '',
+          fullName: this.user.fullName || this.user.name || '',
           phone: this.user.phone || '',
           address: this.user.address || ''
         };
@@ -252,8 +256,20 @@ export default defineComponent({
           }
         });
 
-        // Update user in store
-        await this.$store.dispatch('auth/updateUser', response.data.data.user);
+        // Get the user data from response
+        const userData = response.data.data?.user || response.data.user;
+        
+        if (userData) {
+          // Ensure the user object has the correct fullName property
+          const updatedUser = {
+            ...userData,
+            fullName: userData.fullName || userData.name || ''
+          };
+          
+          // Update the user in store
+          await this.$store.dispatch('auth/updateUser', updatedUser);
+        }
+        
         this.$toast.success('Profile image updated successfully');
       } catch (error) {
         this.$toast.error(error.response?.data?.message || 'Failed to upload image');
@@ -265,8 +281,29 @@ export default defineComponent({
       this.errors = {};
 
       try {
-        const response = await axios.patch('/api/users/profile', this.formData);
-        await this.$store.dispatch('auth/updateUser', response.data.data.user);
+        // Make sure we're sending the correct field names
+        const formDataToSend = {
+          name: this.formData.fullName, // Backend might expect 'name' instead of 'fullName'
+          phone: this.formData.phone,
+          address: this.formData.address
+        };
+
+        const response = await axios.patch('/api/users/profile', formDataToSend);
+        
+        // Get the user data from response
+        const userData = response.data.data?.user || response.data.user;
+        
+        if (userData) {
+          // Ensure the user object has the correct fullName property
+          const updatedUser = {
+            ...userData,
+            fullName: userData.fullName || userData.name || ''
+          };
+          
+          // Update the user in store
+          await this.$store.dispatch('auth/updateUser', updatedUser);
+        }
+        
         this.$toast.success('Profile updated successfully');
       } catch (error) {
         if (error.response?.data?.errors) {

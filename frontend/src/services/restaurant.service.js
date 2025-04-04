@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { API_URL } from '../config';
-import { api } from './api';
+import api from './api';
 
 const API_ENDPOINT = `${API_URL}/restaurants`;
 

@@ -161,11 +161,13 @@ export default {
     const activeTab = ref('all')
 
     // Computed
-    const notifications = computed(() => store.state.notifications.notifications)
+    const notifications = computed(() => store.state.notifications.notifications || [])
     const unreadCount = computed(() => store.getters['notifications/unreadCount'])
     const hasUnread = computed(() => unreadCount.value > 0)
 
     const filteredNotifications = computed(() => {
+      if (!notifications.value) return []
+      
       let filtered = [...notifications.value]
 
       switch (activeTab.value) {

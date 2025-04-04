@@ -84,8 +84,8 @@
         </div>
         <div class="item-details">
           <div class="item-name">{{ food.name }}</div>
-          <div class="item-restaurant">{{ food.restaurant.name }}</div>
-          <div class="item-price">{{ formatPrice(food.price) }}</div>
+          <div class="item-restaurant">{{ food.restaurant?.name || 'Unknown Restaurant' }}</div>
+          <div class="item-price">{{ formatPrice(food.price || 0) }}</div>
         </div>
         <button 
           class="order-button" 
@@ -132,8 +132,8 @@
           <div class="item-category">{{ restaurant.category }}</div>
           <div class="item-rating">
             <i class="mdi mdi-star"></i>
-            {{ restaurant.rating.toFixed(1) }}
-            <span class="rating-count">({{ restaurant.ratingCount }})</span>
+            {{ (restaurant.rating || 0).toFixed(1) }}
+            <span class="rating-count">({{ restaurant.ratingCount || 0 }})</span>
           </div>
           <div class="item-delivery-info">
             <i class="mdi mdi-bike-fast"></i>
@@ -224,12 +224,12 @@ export default {
       
       if (this.shareType === 'food') {
         return this.$t('social.shareFoodText', {
-          name: this.shareItem.name,
-          restaurant: this.shareItem.restaurant.name
+          name: this.shareItem.name || '',
+          restaurant: this.shareItem.restaurant?.name || 'Unknown Restaurant'
         });
       } else {
         return this.$t('social.shareRestaurantText', {
-          name: this.shareItem.name
+          name: this.shareItem.name || ''
         });
       }
     }
@@ -249,10 +249,13 @@ export default {
     }),
     
     formatPrice(price) {
+      // Ensure price is a number and has a default value if undefined
+      const numericPrice = typeof price === 'number' ? price : 0;
+      
       return new Intl.NumberFormat('vi-VN', {
         style: 'currency',
         currency: 'VND'
-      }).format(price);
+      }).format(numericPrice);
     },
     
     loadFavorites() {

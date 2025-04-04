@@ -1,11 +1,10 @@
 const { validationResult } = require('express-validator');
-const { DriverLocation, User, Order } = require('../models');
+const { DriverLocation, User, Order, Driver } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const sequelize = require('../config/database');
 const { emitToOrder, emitToUser } = require('../socket/handlers');
 const trackingService = require('../services/tracking.service');
 const catchAsync = require('../utils/catchAsync');
-const { Order, Driver, DriverLocation } = require('../models');
 
 /**
  * Update driver location
@@ -366,12 +365,6 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
  */
 const deg2rad = (deg) => {
   return deg * (Math.PI / 180);
-};
-
-module.exports = {
-  updateDriverLocation,
-  getDriverLocation,
-  getOrderTracking
 };
 
 /**

@@ -3,6 +3,54 @@ const { User, Address, Order } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 const fs = require('fs');
 const path = require('path');
+const db = require('../config/database');
+const logger = require('../utils/logger');
+
+/**
+ * Get users with optional role filtering
+ * @route GET /api/users
+ * @access Public with optional auth
+ */
+exports.getUsers = async (req, res, next) => {
+  try {
+    const { roles } = req.query;
+    let conditions = [];
+    let params = [];
+    
+    // Build conditions based on query parameters
+    if (roles) {
+      const roleArray = roles.split(',');
+      const placeholders = roleArray.map(() => '?').join(',');
+      conditions.push(`role IN (${placeholders})`);
+      params.push(...roleArray);
+    }
+    
+    // Only show active users by default
+    conditions.push('isActive = ?');
+    params.push(true);
+    
+    // Build the WHERE clause
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    
+    // Execute the query
+    const query = `
+      SELECT id, username, email, fullName, phone, role, profileImage, createdAt, updatedAt 
+      FROM users 
+      ${whereClause} 
+      ORDER BY fullName ASC
+    `;
+    
+    const users = await db.query(query, params);
+    
+    res.status(200).json({
+      status: 'success',
+      data: users
+    });
+  } catch (error) {
+    logger.error('Error fetching users:', error);
+    next(error);
+  }
+};
 
 /**
  * Get user profile
@@ -124,9 +172,11 @@ exports.uploadProfileImage = async (req, res, next) => {
  */
 exports.getAddresses = async (req, res, next) => {
   try {
-    const addresses = await Address.findAll({
-      where: { userId: req.user.id }
-    });
+    // Use direct SQL query instead of Sequelize models
+    const addresses = await db.query(
+      'SELECT * FROM addresses WHERE userId = ? ORDER BY isDefault DESC, createdAt DESC',
+      [req.user.id]
+    );
 
     res.status(200).json({
       status: 'success',
@@ -136,6 +186,7 @@ exports.getAddresses = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Error fetching user addresses:', error);
     next(error);
   }
 };

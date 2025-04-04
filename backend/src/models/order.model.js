@@ -1,130 +1,172 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const User = require('./user.model');
-const Restaurant = require('./restaurant.model');
+const db = require('../config/database');
 
 /**
- * Order Model
- * Represents food orders in the system
+ * Order model with direct SQL implementation
  */
-const Order = sequelize.define('Order', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: User,
-      key: 'id'
+const Order = {
+  tableName: 'orders',
+  
+  findByPk: async (id) => {
+    try {
+      const results = await db.query('SELECT * FROM orders WHERE id = ?', [id]);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Order.findByPk:', error);
+      throw error;
     }
   },
-  restaurantId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: Restaurant,
-      key: 'id'
+  
+  findOne: async (where) => {
+    try {
+      const whereClause = Object.entries(where)
+        .map(([key, value]) => `${key} = ?`)
+        .join(' AND ');
+      const values = Object.values(where);
+      
+      const results = await db.query(`SELECT * FROM orders WHERE ${whereClause} LIMIT 1`, values);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Order.findOne:', error);
+      throw error;
     }
   },
-  orderNumber: {
-    type: DataTypes.STRING(20),
-    allowNull: false,
-    unique: true
-  },
-  status: {
-    type: DataTypes.ENUM(
-      'pending',
-      'confirmed',
-      'preparing',
-      'ready',
-      'out_for_delivery',
-      'delivered',
-      'cancelled'
-    ),
-    defaultValue: 'pending'
-  },
-  totalAmount: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
-  },
-  subtotal: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false
-  },
-  taxAmount: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0
-  },
-  deliveryFee: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0
-  },
-  discountAmount: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0
-  },
-  paymentMethod: {
-    type: DataTypes.ENUM('cash', 'credit_card', 'debit_card', 'e_wallet'),
-    defaultValue: 'cash'
-  },
-  paymentStatus: {
-    type: DataTypes.ENUM('pending', 'paid', 'failed', 'refunded'),
-    defaultValue: 'pending'
-  },
-  deliveryAddress: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
-  deliveryInstructions: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  estimatedDeliveryTime: {
-    type: DataTypes.DATE,
-    allowNull: true
-  },
-  actualDeliveryTime: {
-    type: DataTypes.DATE,
-    allowNull: true
-  },
-  driverId: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-    references: {
-      model: User,
-      key: 'id'
+  
+  findAll: async (options = {}) => {
+    try {
+      let sql = 'SELECT * FROM orders';
+      const values = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(options.where));
+      }
+      
+      if (options.order) {
+        sql += ` ORDER BY ${options.order}`;
+      }
+      
+      if (options.limit) {
+        sql += ` LIMIT ${parseInt(options.limit)}`;
+      }
+      
+      if (options.offset) {
+        sql += ` OFFSET ${parseInt(options.offset)}`;
+      }
+      
+      return await db.query(sql, values);
+    } catch (error) {
+      console.error('Error in Order.findAll:', error);
+      throw error;
     }
   },
-  customerNote: {
-    type: DataTypes.TEXT,
-    allowNull: true
+  
+  create: async (data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['items', 'deliveryAddress', 'paymentInfo'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const columns = Object.keys(processedData).join(', ');
+      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
+      const values = Object.values(processedData);
+      
+      const result = await db.query(
+        `INSERT INTO orders (${columns}) VALUES (${placeholders})`, 
+        values
+      );
+      
+      return { id: result.insertId, ...data };
+    } catch (error) {
+      console.error('Error in Order.create:', error);
+      throw error;
+    }
   },
-  restaurantNote: {
-    type: DataTypes.TEXT,
-    allowNull: true
+  
+  update: async (id, data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['items', 'deliveryAddress', 'paymentInfo'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const setClauses = Object.keys(processedData)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      const values = [...Object.values(processedData), id];
+      
+      const result = await db.query(
+        `UPDATE orders SET ${setClauses} WHERE id = ?`,
+        values
+      );
+      
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Order.update:', error);
+      throw error;
+    }
   },
-  cancellationReason: {
-    type: DataTypes.TEXT,
-    allowNull: true
+  
+  destroy: async (id) => {
+    try {
+      const result = await db.query('DELETE FROM orders WHERE id = ?', [id]);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Order.destroy:', error);
+      throw error;
+    }
   },
-  isRated: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false
+  
+  count: async (where = {}) => {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM orders';
+      const values = [];
+      
+      if (Object.keys(where).length > 0) {
+        const whereClause = Object.entries(where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(where));
+      }
+      
+      const results = await db.query(sql, values);
+      return results[0].count;
+    } catch (error) {
+      console.error('Error in Order.count:', error);
+      throw error;
+    }
+  },
+  
+  sum: async (field, options = {}) => {
+    try {
+      let sql = `SELECT SUM(${field}) as total FROM orders`;
+      const values = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(options.where));
+      }
+      
+      const results = await db.query(sql, values);
+      return results[0].total || 0;
+    } catch (error) {
+      console.error(`Error in Order.sum(${field}):`, error);
+      throw error;
+    }
   }
-}, {
-  timestamps: true,
-  tableName: 'orders'
-});
+};
 
-// Define associations
-Order.belongsTo(User, { foreignKey: 'userId', as: 'customer' });
-Order.belongsTo(Restaurant, { foreignKey: 'restaurantId', as: 'restaurant' });
-Order.belongsTo(User, { foreignKey: 'driverId', as: 'driver' });
-User.hasMany(Order, { foreignKey: 'userId', as: 'orders' });
-Restaurant.hasMany(Order, { foreignKey: 'restaurantId', as: 'orders' });
-User.hasMany(Order, { foreignKey: 'driverId', as: 'deliveries' });
-
-module.exports = Order; 
+module.exports = Order;

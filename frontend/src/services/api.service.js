@@ -1,10 +1,11 @@
 import axios from 'axios';
 import store from '../store';
 import router from '../router';
+import { API_URL } from '../config';
 
 // Create axios instance
-const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+export const apiClient = axios.create({
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
   },
@@ -96,37 +97,37 @@ apiClient.interceptors.response.use(
 const auth = {
   // Register a new user
   register: (userData) => {
-    return apiClient.post('/auth/register', userData);
+    return apiClient.post('/api/auth/register', userData);
   },
   
   // Login with email and password
   login: (email, password) => {
-    return apiClient.post('/auth/login/email', { email, password });
+    return apiClient.post('/api/auth/login', { email, password });
   },
   
   // Request password reset
   requestPasswordReset: (email) => {
-    return apiClient.post('/auth/password/request-reset', { email });
+    return apiClient.post('/api/auth/password/request-reset', { email });
   },
   
   // Reset password with token
   resetPassword: (token, newPassword) => {
-    return apiClient.post('/auth/password/reset', { token, newPassword });
+    return apiClient.post('/api/auth/password/reset', { token, newPassword });
   },
   
   // Request phone verification code
   requestPhoneVerification: (phone) => {
-    return apiClient.post('/auth/phone/request', { phone });
+    return apiClient.post('/api/auth/phone/request', { phone });
   },
   
   // Verify phone code
   verifyPhoneCode: (phone, code) => {
-    return apiClient.post('/auth/phone/verify', { phone, code });
+    return apiClient.post('/api/auth/phone/verify', { phone, code });
   },
   
   // Social login
   socialLogin: (provider, data) => {
-    return apiClient.post('/auth/social', {
+    return apiClient.post('/api/auth/social', {
       provider,
       providerId: data.userId || data.sub,
       email: data.email,
@@ -137,81 +138,81 @@ const auth = {
   
   // Google login
   loginWithGoogle: (idToken) => {
-    return apiClient.post('/auth/login/google', { idToken });
+    return apiClient.post('/api/auth/login/google', { idToken });
   },
   
   // Facebook login
   loginWithFacebook: (accessToken) => {
-    return apiClient.post('/auth/login/facebook', { accessToken });
+    return apiClient.post('/api/auth/login/facebook', { accessToken });
   }
 };
 
 // User API
 export const userAPI = {
   getProfile: () => {
-    return apiClient.get('/user/profile');
+    return apiClient.get('/api/user/profile');
   },
   updateProfile: (userData) => {
-    return apiClient.put('/user/profile', userData);
+    return apiClient.put('/api/user/profile', userData);
   },
   getAddresses: () => {
-    return apiClient.get('/user/addresses');
+    return apiClient.get('/api/user/addresses');
   },
   addAddress: (addressData) => {
-    return apiClient.post('/user/addresses', addressData);
+    return apiClient.post('/api/user/addresses', addressData);
   },
   updateAddress: (id, addressData) => {
-    return apiClient.put(`/user/addresses/${id}`, addressData);
+    return apiClient.put(`/api/user/addresses/${id}`, addressData);
   },
   deleteAddress: (id) => {
-    return apiClient.delete(`/user/addresses/${id}`);
+    return apiClient.delete(`/api/user/addresses/${id}`);
   },
   setDefaultAddress: (id) => {
-    return apiClient.put(`/user/addresses/${id}/default`);
+    return apiClient.put(`/api/user/addresses/${id}/default`);
   }
 };
 
 // Restaurant API
 export const restaurantAPI = {
   getAllRestaurants: (params) => {
-    return apiClient.get('/restaurants', { params });
+    return apiClient.get('/api/restaurants', { params });
   },
   getFeaturedRestaurants: (limit = 5) => {
-    return apiClient.get('/restaurants/featured', { params: { limit } });
+    return apiClient.get('/api/restaurants/featured', { params: { limit } });
   },
   getNearbyRestaurants: (lat, lng, radius, limit) => {
-    return apiClient.get('/restaurants/nearby', { params: { lat, lng, radius, limit } });
+    return apiClient.get('/api/restaurants/nearby', { params: { lat, lng, radius, limit } });
   },
   getRestaurantById: (id) => {
-    return apiClient.get(`/restaurants/${id}`);
+    return apiClient.get(`/api/restaurants/${id}`);
   },
   getRestaurantMenu: (id, categoryId) => {
-    return apiClient.get(`/restaurants/${id}/menu`, { params: { categoryId } });
+    return apiClient.get(`/api/restaurants/${id}/menu`, { params: { categoryId } });
   },
   getRestaurantReviews: (id, page = 1, limit = 10) => {
-    return apiClient.get(`/restaurants/${id}/reviews`, { params: { page, limit } });
+    return apiClient.get(`/api/restaurants/${id}/reviews`, { params: { page, limit } });
   },
   createRestaurant: (restaurantData) => {
-    return apiClient.post('/restaurants', restaurantData);
+    return apiClient.post('/api/restaurants', restaurantData);
   },
   updateRestaurant: (id, restaurantData) => {
-    return apiClient.put(`/restaurants/${id}`, restaurantData);
+    return apiClient.put(`/api/restaurants/${id}`, restaurantData);
   },
   deleteRestaurant: (id) => {
-    return apiClient.delete(`/restaurants/${id}`);
+    return apiClient.delete(`/api/restaurants/${id}`);
   },
   toggleOpenStatus: (id, isOpen) => {
-    return apiClient.put(`/restaurants/${id}/status`, { isOpen });
+    return apiClient.put(`/api/restaurants/${id}/status`, { isOpen });
   },
   replyToReview: (restaurantId, reviewId, reply) => {
-    return apiClient.post(`/restaurants/${restaurantId}/reviews/${reviewId}/reply`, { reply });
+    return apiClient.post(`/api/restaurants/${restaurantId}/reviews/${reviewId}/reply`, { reply });
   }
 };
 
 // Menu API (for restaurant admin)
 export const menuAPI = {
   getMenuItems: (restaurantId) => {
-    return apiClient.get(`/restaurants/${restaurantId}/menu`);
+    return apiClient.get(`/api/restaurants/${restaurantId}/menu`);
   },
   createMenuItem: (restaurantId, itemData) => {
     // Use FormData for multipart/form-data (with image upload)
@@ -228,7 +229,7 @@ export const menuAPI = {
       }
     }
     
-    return apiClient.post(`/restaurants/${restaurantId}/menu`, formData, {
+    return apiClient.post(`/api/restaurants/${restaurantId}/menu`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -249,181 +250,181 @@ export const menuAPI = {
       }
     }
     
-    return apiClient.put(`/restaurants/${restaurantId}/menu/${itemId}`, formData, {
+    return apiClient.put(`/api/restaurants/${restaurantId}/menu/${itemId}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
   },
   deleteMenuItem: (restaurantId, itemId) => {
-    return apiClient.delete(`/restaurants/${restaurantId}/menu/${itemId}`);
+    return apiClient.delete(`/api/restaurants/${restaurantId}/menu/${itemId}`);
   },
   toggleItemAvailability: (restaurantId, itemId, isAvailable) => {
-    return apiClient.put(`/restaurants/${restaurantId}/menu/${itemId}/availability`, {
+    return apiClient.put(`/api/restaurants/${restaurantId}/menu/${itemId}/availability`, {
       isAvailable
     });
   },
   createMenuCategory: (restaurantId, categoryData) => {
-    return apiClient.post(`/restaurants/${restaurantId}/menu-categories`, categoryData);
+    return apiClient.post(`/api/restaurants/${restaurantId}/menu-categories`, categoryData);
   },
   updateMenuCategory: (restaurantId, categoryId, categoryData) => {
-    return apiClient.put(`/restaurants/${restaurantId}/menu-categories/${categoryId}`, categoryData);
+    return apiClient.put(`/api/restaurants/${restaurantId}/menu-categories/${categoryId}`, categoryData);
   },
   deleteMenuCategory: (restaurantId, categoryId) => {
-    return apiClient.delete(`/restaurants/${restaurantId}/menu-categories/${categoryId}`);
+    return apiClient.delete(`/api/restaurants/${restaurantId}/menu-categories/${categoryId}`);
   }
 };
 
 // Order API
 export const orderAPI = {
   createOrder: (orderData) => {
-    return apiClient.post('/orders', orderData);
+    return apiClient.post('/api/orders', orderData);
   },
   getUserOrders: (params) => {
-    return apiClient.get('/orders', { params });
+    return apiClient.get('/api/orders', { params });
   },
   getOrderById: (id) => {
-    return apiClient.get(`/orders/${id}`);
+    return apiClient.get(`/api/orders/${id}`);
   },
   getOrderByNumber: (orderNumber) => {
-    return apiClient.get(`/orders/number/${orderNumber}`);
+    return apiClient.get(`/api/orders/number/${orderNumber}`);
   },
   trackOrder: (id) => {
-    return apiClient.get(`/orders/${id}/track`);
+    return apiClient.get(`/api/orders/${id}/track`);
   },
   updateOrderStatus: (id, status) => {
-    return apiClient.put(`/orders/${id}/status`, { status });
+    return apiClient.put(`/api/orders/${id}/status`, { status });
   },
   cancelOrder: (id, reason) => {
-    return apiClient.post(`/orders/${id}/cancel`, { reason });
+    return apiClient.post(`/api/orders/${id}/cancel`, { reason });
   },
   addOrderReview: (id, reviewData) => {
-    return apiClient.post(`/orders/${id}/review`, reviewData);
+    return apiClient.post(`/api/orders/${id}/review`, reviewData);
   },
   reorder: (id, orderData) => {
-    return apiClient.post(`/orders/${id}/reorder`, orderData);
+    return apiClient.post(`/api/orders/${id}/reorder`, orderData);
   }
 };
 
 // Restaurant Admin API
 export const restaurantAdminAPI = {
   getDashboard: (restaurantId) => {
-    return apiClient.get(`/restaurant-admin/dashboard/${restaurantId}`);
+    return apiClient.get(`/api/restaurant-admin/dashboard/${restaurantId}`);
   },
   getOrders: (restaurantId, params) => {
-    return apiClient.get(`/restaurant-admin/restaurants/${restaurantId}/orders`, { params });
+    return apiClient.get(`/api/restaurant-admin/restaurants/${restaurantId}/orders`, { params });
   },
   getAnalytics: (restaurantId, timeframe = 'month') => {
-    return apiClient.get(`/restaurant-admin/restaurants/${restaurantId}/analytics`, { 
+    return apiClient.get(`/api/restaurant-admin/restaurants/${restaurantId}/analytics`, { 
       params: { timeframe } 
     });
   },
   createPromotion: (restaurantId, promotionData) => {
-    return apiClient.post(`/restaurant-admin/restaurants/${restaurantId}/promotions`, promotionData);
+    return apiClient.post(`/api/restaurant-admin/restaurants/${restaurantId}/promotions`, promotionData);
   },
   updatePromotion: (restaurantId, promotionId, promotionData) => {
-    return apiClient.put(`/restaurant-admin/restaurants/${restaurantId}/promotions/${promotionId}`, promotionData);
+    return apiClient.put(`/api/restaurant-admin/restaurants/${restaurantId}/promotions/${promotionId}`, promotionData);
   },
   deletePromotion: (restaurantId, promotionId) => {
-    return apiClient.delete(`/restaurant-admin/restaurants/${restaurantId}/promotions/${promotionId}`);
+    return apiClient.delete(`/api/restaurant-admin/restaurants/${restaurantId}/promotions/${promotionId}`);
   },
   getPromotions: (restaurantId) => {
-    return apiClient.get(`/restaurant-admin/restaurants/${restaurantId}/promotions`);
+    return apiClient.get(`/api/restaurant-admin/restaurants/${restaurantId}/promotions`);
   },
   getSettings: (restaurantId) => {
-    return apiClient.get(`/restaurant-admin/restaurants/${restaurantId}/settings`);
+    return apiClient.get(`/api/restaurant-admin/restaurants/${restaurantId}/settings`);
   },
   updateSettings: (restaurantId, settingsData) => {
-    return apiClient.put(`/restaurant-admin/restaurants/${restaurantId}/settings`, settingsData);
+    return apiClient.put(`/api/restaurant-admin/restaurants/${restaurantId}/settings`, settingsData);
   }
 };
 
 // Driver API
 export const driverAPI = {
   getProfile: () => {
-    return apiClient.get('/driver/profile');
+    return apiClient.get('/api/driver/profile');
   },
   updateProfile: (profileData) => {
-    return apiClient.put('/driver/profile', profileData);
+    return apiClient.put('/api/driver/profile', profileData);
   },
   updateStatus: (isOnline, location) => {
-    return apiClient.post('/driver/status', { isOnline, location });
+    return apiClient.post('/api/driver/status', { isOnline, location });
   },
   updateLocation: (location) => {
-    return apiClient.post('/driver/location', { location });
+    return apiClient.post('/api/driver/location', { location });
   },
   getAvailableOrders: () => {
-    return apiClient.get('/driver/orders/available');
+    return apiClient.get('/api/driver/orders/available');
   },
   getActiveOrders: () => {
-    return apiClient.get('/driver/orders/active');
+    return apiClient.get('/api/driver/orders/active');
   },
   acceptOrder: (orderId, location) => {
-    return apiClient.post(`/driver/orders/${orderId}/accept`, { location });
+    return apiClient.post(`/api/driver/orders/${orderId}/accept`, { location });
   },
   rejectOrder: (orderId) => {
-    return apiClient.post(`/driver/orders/${orderId}/reject`);
+    return apiClient.post(`/api/driver/orders/${orderId}/reject`);
   },
   updateOrderStatus: (orderId, status) => {
-    return apiClient.post(`/driver/orders/${orderId}/status`, { status });
+    return apiClient.post(`/api/driver/orders/${orderId}/status`, { status });
   },
   updateOrderLocation: (orderId, location) => {
-    return apiClient.post(`/driver/orders/${orderId}/location`, { location });
+    return apiClient.post(`/api/driver/orders/${orderId}/location`, { location });
   },
   getEarnings: (timeframe = 'all') => {
-    return apiClient.get('/driver/earnings', { params: { timeframe } });
+    return apiClient.get('/api/driver/earnings', { params: { timeframe } });
   },
   getEarningsHistory: (startDate, endDate) => {
-    return apiClient.get('/driver/earnings/history', { params: { startDate, endDate } });
+    return apiClient.get('/api/driver/earnings/history', { params: { startDate, endDate } });
   },
   getPerformance: () => {
-    return apiClient.get('/driver/performance');
+    return apiClient.get('/api/driver/performance');
   },
   updateSettings: (settings) => {
-    return apiClient.put('/driver/settings', settings);
+    return apiClient.put('/api/driver/settings', settings);
   }
 };
 
 // Admin API
 export const adminAPI = {
   getDashboardStats: () => {
-    return apiClient.get('/admin/stats/dashboard');
+    return apiClient.get('/api/admin/stats/dashboard');
   },
   getUsers: (params) => {
-    return apiClient.get('/admin/users', { params });
+    return apiClient.get('/api/admin/users', { params });
   },
   createUser: (userData) => {
-    return apiClient.post('/admin/users', userData);
+    return apiClient.post('/api/admin/users', userData);
   },
   updateUser: (id, userData) => {
-    return apiClient.put(`/admin/users/${id}`, userData);
+    return apiClient.put(`/api/admin/users/${id}`, userData);
   },
   deleteUser: (id) => {
-    return apiClient.delete(`/admin/users/${id}`);
+    return apiClient.delete(`/api/admin/users/${id}`);
   },
   getRestaurants: (params) => {
-    return apiClient.get('/admin/restaurants', { params });
+    return apiClient.get('/api/admin/restaurants', { params });
   },
   approveRestaurant: (id, data) => {
-    return apiClient.put(`/admin/restaurants/${id}/approve`, data);
+    return apiClient.put(`/api/admin/restaurants/${id}/approve`, data);
   },
   rejectRestaurant: (id, data) => {
-    return apiClient.put(`/admin/restaurants/${id}/reject`, data);
+    return apiClient.put(`/api/admin/restaurants/${id}/reject`, data);
   },
   getDrivers: (params) => {
-    return apiClient.get('/admin/drivers', { params });
+    return apiClient.get('/api/admin/drivers', { params });
   },
   createDriver: (driverData) => {
-    return apiClient.post('/admin/drivers', driverData);
+    return apiClient.post('/api/admin/drivers', driverData);
   },
   updateDriver: (id, driverData) => {
-    return apiClient.put(`/admin/drivers/${id}`, driverData);
+    return apiClient.put(`/api/admin/drivers/${id}`, driverData);
   },
   deleteDriver: (id) => {
-    return apiClient.delete(`/admin/drivers/${id}`);
+    return apiClient.delete(`/api/admin/drivers/${id}`);
   },
   getCategories: () => {
-    return apiClient.get('/admin/categories');
+    return apiClient.get('/api/admin/categories');
   },
   createCategory: (categoryData) => {
     const formData = new FormData();
@@ -435,7 +436,7 @@ export const adminAPI = {
       }
     }
     
-    return apiClient.post('/admin/categories', formData, {
+    return apiClient.post('/api/admin/categories', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -451,77 +452,77 @@ export const adminAPI = {
       }
     }
     
-    return apiClient.put(`/admin/categories/${id}`, formData, {
+    return apiClient.put(`/api/admin/categories/${id}`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
   },
   deleteCategory: (id) => {
-    return apiClient.delete(`/admin/categories/${id}`);
+    return apiClient.delete(`/api/admin/categories/${id}`);
   },
   getPromotions: (params) => {
-    return apiClient.get('/admin/promotions', { params });
+    return apiClient.get('/api/admin/promotions', { params });
   },
   createPromotion: (promotionData) => {
-    return apiClient.post('/admin/promotions', promotionData);
+    return apiClient.post('/api/admin/promotions', promotionData);
   },
   updatePromotion: (id, promotionData) => {
-    return apiClient.put(`/admin/promotions/${id}`, promotionData);
+    return apiClient.put(`/api/admin/promotions/${id}`, promotionData);
   },
   deletePromotion: (id) => {
-    return apiClient.delete(`/admin/promotions/${id}`);
+    return apiClient.delete(`/api/admin/promotions/${id}`);
   },
   getRestaurantCounts: () => {
-    return apiClient.get('/admin/restaurants/counts');
+    return apiClient.get('/api/admin/restaurants/counts');
   },
   getUserCounts: () => {
-    return apiClient.get('/admin/users/counts');
+    return apiClient.get('/api/admin/users/counts');
   },
   createRestaurant: (restaurantData) => {
-    return apiClient.post('/admin/restaurants', restaurantData);
+    return apiClient.post('/api/admin/restaurants', restaurantData);
   },
   updateRestaurant: (id, restaurantData) => {
-    return apiClient.put(`/admin/restaurants/${id}`, restaurantData);
+    return apiClient.put(`/api/admin/restaurants/${id}`, restaurantData);
   },
   deleteRestaurant: (id) => {
-    return apiClient.delete(`/admin/restaurants/${id}`);
+    return apiClient.delete(`/api/admin/restaurants/${id}`);
   },
   getPendingOrders: () => {
-    return apiClient.get('/admin/orders/pending');
+    return apiClient.get('/api/admin/orders/pending');
   },
   assignOrder: (assignmentData) => {
-    return apiClient.post('/admin/orders/assign', assignmentData);
+    return apiClient.post('/api/admin/orders/assign', assignmentData);
   },
   getRestaurantVerificationData: (restaurantId) => {
-    return apiClient.get(`/admin/restaurants/${restaurantId}/verification`);
+    return apiClient.get(`/api/admin/restaurants/${restaurantId}/verification`);
   },
   suspendRestaurant: (restaurantId, data) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/suspend`, data);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/suspend`, data);
   },
   activateRestaurant: (restaurantId) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/activate`);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/activate`);
   },
   getPendingMenuItems: (restaurantId) => {
-    return apiClient.get(`/admin/restaurants/${restaurantId}/menu/pending`);
+    return apiClient.get(`/api/admin/restaurants/${restaurantId}/menu/pending`);
   },
   getPendingCategories: (restaurantId) => {
-    return apiClient.get(`/admin/restaurants/${restaurantId}/categories/pending`);
+    return apiClient.get(`/api/admin/restaurants/${restaurantId}/categories/pending`);
   },
   approveMenuItem: (restaurantId, itemId, data) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/menu/${itemId}/approve`, data);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/menu/${itemId}/approve`, data);
   },
   rejectMenuItem: (restaurantId, itemId, data) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/menu/${itemId}/reject`, data);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/menu/${itemId}/reject`, data);
   },
   approveCategory: (restaurantId, categoryId, data) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/categories/${categoryId}/approve`, data);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/categories/${categoryId}/approve`, data);
   },
   rejectCategory: (restaurantId, categoryId, data) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/categories/${categoryId}/reject`, data);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/categories/${categoryId}/reject`, data);
   },
   requestDocument: (restaurantId, documentId) => {
-    return apiClient.post(`/admin/restaurants/${restaurantId}/documents/${documentId}/request`);
+    return apiClient.post(`/api/admin/restaurants/${restaurantId}/documents/${documentId}/request`);
   }
 };
 

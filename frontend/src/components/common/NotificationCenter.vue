@@ -228,7 +228,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { formatDistanceToNow } from 'date-fns'
 import { vi } from 'date-fns/locale'
-import pushNotificationService from '@/services/push-notification.service'
+import { pushNotificationService } from '@/services/push-notification.service'
 
 export default {
   name: 'NotificationCenter',
@@ -252,15 +252,18 @@ export default {
     const enabledTypes = ref([])
     
     // Computed
-    const notifications = computed(() => store.state.ui.notifications)
+    const notifications = computed(() => 
+      store.state.notifications.notifications || []
+    )
     
     const unreadCount = computed(() => 
-      notifications.value.filter(n => !n.read).length
+      store.getters['notifications/unreadCount']
     )
     
-    const hasMoreNotifications = computed(() => 
-      store.state.ui.hasMoreNotifications
-    )
+    const hasMoreNotifications = computed(() => {
+      const pagination = store.state.notifications.pagination || {}
+      return pagination.page < pagination.totalPages
+    })
     
     // Notification types
     const notificationTypes = [
@@ -305,7 +308,7 @@ export default {
     const toggleNotifications = () => {
       showNotifications.value = !showNotifications.value
       if (showNotifications.value) {
-        store.dispatch('ui/markNotificationsViewed')
+        store.dispatch('notifications/markAllAsRead')
       }
     }
     
@@ -345,7 +348,7 @@ export default {
     
     const markAsRead = async (id) => {
       try {
-        await store.dispatch('ui/markNotificationRead', id)
+        await store.dispatch('notifications/markAsRead', id)
       } catch (error) {
         console.error('Failed to mark notification as read:', error)
       }
@@ -353,7 +356,7 @@ export default {
     
     const markAllRead = async () => {
       try {
-        await store.dispatch('ui/markAllNotificationsRead')
+        await store.dispatch('notifications/markAllAsRead')
       } catch (error) {
         console.error('Failed to mark all notifications as read:', error)
       }
@@ -364,7 +367,7 @@ export default {
       
       isLoadingMore.value = true
       try {
-        await store.dispatch('ui/loadMoreNotifications')
+        await store.dispatch('notifications/fetchNotifications')
       } catch (error) {
         console.error('Failed to load more notifications:', error)
       } finally {
@@ -378,14 +381,14 @@ export default {
         // Initialize push notifications
         await pushNotificationService.init()
         pushSupported.value = true
-        const permission = await pushNotificationService.checkPermission()
+        const permission = pushNotificationService.getPermissionStatus()
         pushEnabled.value = permission === 'granted'
         
         // Load other notification settings
-        const settings = await store.dispatch('ui/getNotificationSettings')
+        const settings = await store.dispatch('notifications/loadPreferences')
         enabledTypes.value = settings.enabledTypes || []
-        smsEnabled.value = settings.smsEnabled || false
-        emailEnabled.value = settings.emailEnabled || false
+        smsEnabled.value = settings.sms || false
+        emailEnabled.value = settings.email || false
         
         // Check phone verification status
         const user = store.state.auth.user
@@ -433,7 +436,7 @@ export default {
     const toggleEmailNotifications = async () => {
       isTogglingEmail.value = true
       try {
-        await store.dispatch('ui/updateEmailNotifications', emailEnabled.value)
+        await store.dispatch('notifications/updatePreferences', { email: emailEnabled.value })
       } catch (error) {
         console.error('Failed to toggle email notifications:', error)
         emailEnabled.value = !emailEnabled.value
@@ -454,10 +457,10 @@ export default {
       isSavingSettings.value = true
       
       try {
-        await store.dispatch('ui/updateNotificationSettings', {
-          pushEnabled: pushEnabled.value,
-          smsEnabled: smsEnabled.value,
-          emailEnabled: emailEnabled.value,
+        await store.dispatch('notifications/updatePreferences', {
+          push: pushEnabled.value,
+          sms: smsEnabled.value,
+          email: emailEnabled.value,
           enabledTypes: enabledTypes.value
         })
         

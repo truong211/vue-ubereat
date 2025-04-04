@@ -1,4 +1,4 @@
-import { apiService } from '@/services/api.service';
+import { apiClient } from '@/services/api.service';
 
 export default {
   namespaced: true,
@@ -75,12 +75,14 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await apiService.get('/favorites/foods');
+        const response = await apiClient.get('/api/favorites/foods');
         commit('SET_FAVORITE_FOODS', response.data);
         return response.data;
       } catch (error) {
+        console.warn('Failed to fetch favorite foods:', error);
+        commit('SET_FAVORITE_FOODS', []);
         commit('SET_ERROR', error.message || 'Failed to fetch favorite foods');
-        throw error;
+        return [];
       } finally {
         commit('SET_LOADING', false);
       }
@@ -92,12 +94,14 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await apiService.get('/favorites/restaurants');
+        const response = await apiClient.get('/api/favorites/restaurants');
         commit('SET_FAVORITE_RESTAURANTS', response.data);
         return response.data;
       } catch (error) {
+        console.warn('Failed to fetch favorite restaurants:', error);
+        commit('SET_FAVORITE_RESTAURANTS', []);
         commit('SET_ERROR', error.message || 'Failed to fetch favorite restaurants');
-        throw error;
+        return [];
       } finally {
         commit('SET_LOADING', false);
       }
@@ -112,10 +116,10 @@ export default {
       
       try {
         if (isFavorite) {
-          await apiService.delete(`/favorites/foods/${food.id}`);
+          await apiClient.delete(`/api/favorites/foods/${food.id}`);
           commit('REMOVE_FAVORITE_FOOD', food.id);
         } else {
-          await apiService.post('/favorites/foods', { foodId: food.id });
+          await apiClient.post('/api/favorites/foods', { foodId: food.id });
           commit('ADD_FAVORITE_FOOD', food);
         }
         return !isFavorite;
@@ -136,10 +140,10 @@ export default {
       
       try {
         if (isFavorite) {
-          await apiService.delete(`/favorites/restaurants/${restaurant.id}`);
+          await apiClient.delete(`/api/favorites/restaurants/${restaurant.id}`);
           commit('REMOVE_FAVORITE_RESTAURANT', restaurant.id);
         } else {
-          await apiService.post('/favorites/restaurants', { restaurantId: restaurant.id });
+          await apiClient.post('/api/favorites/restaurants', { restaurantId: restaurant.id });
           commit('ADD_FAVORITE_RESTAURANT', restaurant);
         }
         return !isFavorite;
@@ -157,12 +161,14 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await apiService.get('/recommendations/foods');
+        const response = await apiClient.get('/api/recommendations');
         commit('SET_RECOMMENDATIONS', response.data);
         return response.data;
       } catch (error) {
+        console.warn('Failed to fetch recommendations:', error);
+        commit('SET_RECOMMENDATIONS', []);
         commit('SET_ERROR', error.message || 'Failed to fetch recommendations');
-        throw error;
+        return [];
       } finally {
         commit('SET_LOADING_RECOMMENDATIONS', false);
       }

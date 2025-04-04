@@ -1,10 +1,19 @@
-const { Notification, User, Order, Driver, Restaurant } = require('../models');
+const db = require('../config/database');
+const { Op } = require('sequelize');
 const { AppError } = require('../middleware/error.middleware');
 const webpush = require('web-push');
-const { Op } = require('sequelize');
 const catchAsync = require('../utils/catchAsync');
 const socketService = require('../services/socket.service');
 const notificationTrackingService = require('../services/notificationTracking.service');
+const logger = require('../utils/logger');
+
+// Ensure we have the correct model references
+const User = db.user;
+const Order = db.order;
+const Restaurant = db.restaurant;
+const Driver = db.driver;
+const Notification = db.notification;
+const sequelize = require('sequelize');
 
 // Configure web push
 const vapidKeys = {
@@ -28,29 +37,48 @@ exports.subscribe = async (req, res, next) => {
     const { subscription, userAgent } = req.body;
 
     if (!subscription || !subscription.endpoint) {
-      return next(new AppError('Invalid subscription object', 400));
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid subscription object'
+      });
     }
 
-    // Create or update the notification subscription
-    const [notificationSub, created] = await Notification.findOrCreate({
-      where: {
-        endpoint: subscription.endpoint,
-        userId: req.user.id
-      },
-      defaults: {
-        userId: req.user.id,
-        subscription: JSON.stringify(subscription),
-        userAgent: userAgent || req.headers['user-agent'],
-        active: true
-      }
-    });
+    // Check if subscription exists
+    const [existingSubscriptions] = await db.query(
+      `SELECT * FROM notification_subscriptions 
+       WHERE endpoint = ? AND userId = ?`,
+      [subscription.endpoint, req.user.id]
+    );
 
-    if (!created) {
-      await notificationSub.update({
-        subscription: JSON.stringify(subscription),
-        userAgent: userAgent || req.headers['user-agent'],
-        active: true
-      });
+    let created = false;
+    
+    if (!existingSubscriptions || existingSubscriptions.length === 0) {
+      // Create new subscription
+      await db.query(
+        `INSERT INTO notification_subscriptions 
+         (userId, endpoint, subscription, userAgent, active, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, TRUE, NOW(), NOW())`,
+        [
+          req.user.id, 
+          subscription.endpoint, 
+          JSON.stringify(subscription), 
+          userAgent || req.headers['user-agent']
+        ]
+      );
+      created = true;
+    } else {
+      // Update existing subscription
+      await db.query(
+        `UPDATE notification_subscriptions 
+         SET subscription = ?, userAgent = ?, active = TRUE, updatedAt = NOW()
+         WHERE endpoint = ? AND userId = ?`,
+        [
+          JSON.stringify(subscription),
+          userAgent || req.headers['user-agent'],
+          subscription.endpoint,
+          req.user.id
+        ]
+      );
     }
 
     // Send a test notification to confirm subscription
@@ -80,7 +108,12 @@ exports.subscribe = async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Error subscribing to notifications:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to subscribe to notifications',
+      error: error.message
+    });
   }
 };
 
@@ -94,25 +127,33 @@ exports.unsubscribe = async (req, res, next) => {
     const { subscription } = req.body;
 
     if (!subscription || !subscription.endpoint) {
-      return next(new AppError('Invalid subscription object', 400));
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid subscription object'
+      });
     }
 
-    // Find and update the notification subscription
-    const notificationSub = await Notification.findOne({
-      where: {
-        endpoint: subscription.endpoint,
-        userId: req.user.id
-      }
-    });
+    // Find subscription
+    const [subscriptions] = await db.query(
+      `SELECT * FROM notification_subscriptions 
+       WHERE endpoint = ? AND userId = ?`,
+      [subscription.endpoint, req.user.id]
+    );
 
-    if (!notificationSub) {
-      return next(new AppError('Subscription not found', 404));
+    if (!subscriptions || subscriptions.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Subscription not found'
+      });
     }
 
     // Mark as inactive (soft delete)
-    await notificationSub.update({
-      active: false
-    });
+    await db.query(
+      `UPDATE notification_subscriptions 
+       SET active = FALSE, updatedAt = NOW() 
+       WHERE endpoint = ? AND userId = ?`,
+      [subscription.endpoint, req.user.id]
+    );
 
     res.status(200).json({
       status: 'success',
@@ -121,7 +162,12 @@ exports.unsubscribe = async (req, res, next) => {
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Error unsubscribing from notifications:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to unsubscribe from notifications',
+      error: error.message
+    });
   }
 };
 
@@ -132,28 +178,51 @@ exports.unsubscribe = async (req, res, next) => {
  */
 exports.getPreferences = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id);
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. Please log in to access notification preferences.',
+        code: 'AUTH_REQUIRED'
+      });
+    }
+
+    // Get user from database using direct SQL with the correct column name
+    const [user] = await db.query(
+      'SELECT id, notificationPreferences, isPhoneVerified FROM users WHERE id = ?',
+      [req.user.id]
+    );
 
     if (!user) {
       return next(new AppError('User not found', 404));
     }
 
-    // Get notification preferences
-    const preferences = user.notificationPreferences || {
-      orderUpdates: true,
-      promotions: true,
-      driverLocation: true,
-      marketing: false,
-      email: true,
-      push: true,
-      sms: user.phoneVerified || false
-    };
+    // Parse notification preferences (stored as JSON in the database)
+    let preferences;
+    try {
+      preferences = user.notificationPreferences ? JSON.parse(user.notificationPreferences) : null;
+    } catch (e) {
+      preferences = null;
+    }
+
+    // Set default preferences if none exist
+    if (!preferences) {
+      preferences = {
+        orderUpdates: true,
+        promotions: true,
+        driverLocation: true,
+        marketing: false,
+        email: true,
+        push: true,
+        sms: user.isPhoneVerified || false
+      };
+    }
 
     res.status(200).json({
       status: 'success',
       data: preferences
     });
   } catch (error) {
+    logger.error('Error getting notification preferences:', error);
     next(error);
   }
 };
@@ -166,26 +235,53 @@ exports.getPreferences = async (req, res, next) => {
 exports.updatePreferences = async (req, res, next) => {
   try {
     const preferences = req.body;
-    const user = await User.findByPk(req.user.id);
 
-    if (!user) {
-      return next(new AppError('User not found', 404));
+    // First, get current preferences
+    const [userResults] = await db.query(
+      'SELECT notificationPreferences FROM users WHERE id = ?',
+      [req.user.id]
+    );
+
+    if (!userResults || userResults.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
     }
 
-    // Update notification preferences
-    await user.update({
-      notificationPreferences: {
-        ...user.notificationPreferences,
-        ...preferences
-      }
-    });
+    // Parse current preferences
+    let currentPreferences;
+    try {
+      currentPreferences = userResults[0].notificationPreferences 
+        ? JSON.parse(userResults[0].notificationPreferences) 
+        : {};
+    } catch (e) {
+      currentPreferences = {};
+    }
+
+    // Merge with new preferences
+    const updatedPreferences = {
+      ...currentPreferences,
+      ...preferences
+    };
+
+    // Update in database
+    await db.query(
+      'UPDATE users SET notificationPreferences = ?, updatedAt = NOW() WHERE id = ?',
+      [JSON.stringify(updatedPreferences), req.user.id]
+    );
 
     res.status(200).json({
       status: 'success',
-      data: user.notificationPreferences
+      data: updatedPreferences
     });
   } catch (error) {
-    next(error);
+    console.error('Error updating notification preferences:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to update notification preferences',
+      error: error.message
+    });
   }
 };
 
@@ -194,94 +290,168 @@ exports.updatePreferences = async (req, res, next) => {
  * @route GET /api/notifications
  * @access Private
  */
-exports.getNotifications = catchAsync(async (req, res, next) => {
-  const notifications = await Notification.findAll({
-    where: { userId: req.user.id },
-    order: [['createdAt', 'DESC']],
-    limit: 50
-  });
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      notifications
+exports.getUserNotifications = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Authentication required. Please log in to access notifications.'
+      });
     }
-  });
-});
+    
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10; 
+    const offset = (pageNum - 1) * limitNum;
+    
+    // Use direct SQL queries to avoid Sequelize model dependency
+      const sql = `
+      SELECT * FROM notifications 
+        WHERE (userId = ? OR isSystemWide = true) 
+          AND (validUntil IS NULL OR validUntil > NOW())
+        ORDER BY createdAt DESC
+        LIMIT ${limitNum} OFFSET ${offset}
+      `;
+      
+      const countSql = `
+      SELECT COUNT(*) as total FROM notifications 
+        WHERE (userId = ? OR isSystemWide = true)
+          AND (validUntil IS NULL OR validUntil > NOW())
+      `;
+      
+    // Execute the queries
+    const [notifications] = await db.query(sql, [req.user.id]);
+    const [countResult] = await db.query(countSql, [req.user.id]);
+    
+    const totalCount = countResult[0]?.total || 0;
+    const totalPages = Math.ceil(totalCount / limitNum);
+      
+      res.status(200).json({
+        status: 'success',
+        data: {
+          notifications,
+          totalCount,
+          totalPages,
+        currentPage: pageNum
+        }
+      });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch notifications',
+      error: error.message
+    });
+  }
+};
 
 /**
- * Mark notification as read
- * @route PATCH /api/notifications/:id/read
+ * Mark notifications as read
+ * @route PATCH /api/notifications/read
  * @access Private
  */
-exports.markAsRead = catchAsync(async (req, res, next) => {
-  const notification = await Notification.findOne({
-    where: {
-      id: req.params.id,
-      userId: req.user.id
-    }
-  });
+exports.markAsRead = async (req, res, next) => {
+  try {
+    const { notificationIds } = req.body;
 
-  if (!notification) {
-    return next(new AppError('Thông báo không tồn tại', 404));
+    if (!notificationIds || !Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Notification IDs are required'
+      });
+    }
+
+    // Convert the array to a comma-separated string for the SQL IN clause
+    const idList = notificationIds.join(',');
+    
+    // Update notifications as read using direct SQL
+    const result = await db.query(
+      `UPDATE notifications 
+       SET isRead = TRUE, readAt = NOW() 
+       WHERE id IN (${idList}) 
+       AND (userId = ? OR isSystemWide = TRUE)`,
+      [req.user.id]
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        updated: result.affectedRows || 0
+      }
+    });
+  } catch (error) {
+    console.error('Error marking notifications as read:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to mark notifications as read',
+      error: error.message
+    });
   }
-
-  notification.isRead = true;
-  await notification.save();
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      notification
-    }
-  });
-});
+};
 
 /**
  * Mark all notifications as read
  * @route PATCH /api/notifications/read-all
  * @access Private
  */
-exports.markAllAsRead = catchAsync(async (req, res, next) => {
-  await Notification.update(
-    { isRead: true },
-    { where: { userId: req.user.id, isRead: false } }
-  );
+exports.markAllAsRead = async (req, res, next) => {
+  try {
+    // Update all notifications for this user as read using direct SQL
+    const result = await db.query(
+      `UPDATE notifications 
+       SET isRead = TRUE, readAt = NOW() 
+       WHERE (userId = ? OR isSystemWide = TRUE) 
+       AND isRead = FALSE`,
+      [req.user.id]
+    );
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Đã đánh dấu tất cả thông báo là đã đọc'
-  });
-});
+    res.status(200).json({
+      status: 'success',
+      data: {
+        updated: result.affectedRows || 0
+      }
+    });
+  } catch (error) {
+    console.error('Error marking all notifications as read:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to mark all notifications as read',
+      error: error.message
+    });
+  }
+};
 
 /**
  * Delete notification
  * @route DELETE /api/notifications/:id
  * @access Private
  */
-exports.deleteNotification = async (req, res, next) => {
+exports.delete = async (req, res, next) => {
   try {
     const { id } = req.params;
     
-    const notification = await Notification.findOne({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
-
-    if (!notification) {
-      return next(new AppError('Notification not found', 404));
+    const result = await db.query(
+      `DELETE FROM notifications 
+       WHERE id = ? 
+       AND (userId = ? OR isSystemWide = TRUE)`,
+      [id, req.user.id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Notification not found or you do not have permission to delete it'
+      });
     }
-
-    await notification.destroy();
-
-    res.status(204).json({
-      status: 'success',
-      data: null
-    });
+    
+    res.status(204).send();
   } catch (error) {
-    next(error);
+    console.error('Error deleting notification:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete notification',
+      error: error.message
+    });
   }
 };
 
@@ -309,7 +479,7 @@ exports.sendOrderStatusNotification = async (order, status, additionalData = {})
     }
 
     // Get notification subscriptions
-    const subscriptions = await Notification.findAll({
+    const subscriptions = await db.notification.findAll({
       where: {
         userId: user.id,
         active: true
@@ -391,7 +561,7 @@ exports.sendOrderStatusNotification = async (order, status, additionalData = {})
     }
 
     // Also create in-app notification
-    await Notification.create({
+    await db.notification.create({
       userId: user.id,
       title,
       message,
@@ -434,7 +604,7 @@ exports.sendDriverLocationNotification = async (order, location, eta) => {
     }
 
     // Get notification subscriptions
-    const subscriptions = await Notification.findAll({
+    const subscriptions = await db.notification.findAll({
       where: {
         userId: user.id,
         active: true
@@ -492,7 +662,7 @@ exports.sendDriverLocationNotification = async (order, location, eta) => {
     }
 
     // Also create in-app notification
-    await Notification.create({
+    await db.notification.create({
       userId: user.id,
       title,
       message,
@@ -533,7 +703,7 @@ exports.sendPromotionNotification = async (promotion, userIds = null) => {
 
     for (const user of users) {
       // Get notification subscriptions
-      const subscriptions = await Notification.findAll({
+      const subscriptions = await db.notification.findAll({
         where: {
           userId: user.id,
           active: true
@@ -591,7 +761,7 @@ exports.sendPromotionNotification = async (promotion, userIds = null) => {
       }
 
       // Also create in-app notification
-      await Notification.create({
+      await db.notification.create({
         userId: user.id,
         title,
         message,
@@ -631,7 +801,7 @@ exports.sendMarketingNotification = async (title, message, data = {}, userIds = 
 
     for (const user of users) {
       // Get notification subscriptions
-      const subscriptions = await Notification.findAll({
+      const subscriptions = await db.notification.findAll({
         where: {
           userId: user.id,
           active: true
@@ -674,7 +844,7 @@ exports.sendMarketingNotification = async (title, message, data = {}, userIds = 
       }
 
       // Also create in-app notification
-      await Notification.create({
+      await db.notification.create({
         userId: user.id,
         title,
         message,
@@ -689,55 +859,60 @@ exports.sendMarketingNotification = async (title, message, data = {}, userIds = 
 };
 
 /**
- * Get notification counts
+ * Get notification counts by type
  * @route GET /api/notifications/counts
  * @access Private
  */
 exports.getNotificationCounts = async (req, res, next) => {
   try {
-    // Count total unread notifications
-    const unreadCount = await Notification.count({
-      where: {
-        userId: req.user.id,
-        read: false
+    // Get counts by type and read status using SQL
+    const sql = `
+      SELECT 
+        type, 
+        isRead, 
+        COUNT(*) as count 
+      FROM notifications 
+      WHERE (userId = ? OR isSystemWide = TRUE)
+        AND (validUntil IS NULL OR validUntil > NOW())
+      GROUP BY type, isRead
+    `;
+    
+    const [results] = await db.query(sql, [req.user.id]);
+    
+    // Process results into counts by type
+    const typeCounts = {};
+    const typeUnreadCounts = {};
+    
+    results.forEach(row => {
+      // Ensure the type property exists in both count objects
+      if (!typeCounts[row.type]) {
+        typeCounts[row.type] = 0;
+        typeUnreadCounts[row.type] = 0;
       }
-    });
-
-    // Count by type
-    const counts = {
-      total: unreadCount,
-      order_status: 0,
-      driver_location: 0,
-      promotion: 0,
-      marketing: 0,
-      system: 0
-    };
-
-    // Get counts by type
-    const typeCounts = await Notification.findAll({
-      attributes: [
-        'type',
-        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
-      ],
-      where: {
-        userId: req.user.id,
-        read: false
-      },
-      group: ['type']
-    });
-
-    // Update counts
-    typeCounts.forEach(typeCount => {
-      const type = typeCount.type;
-      counts[type] = parseInt(typeCount.getDataValue('count'));
+      
+      // Add to total count for this type
+      typeCounts[row.type] += parseInt(row.count);
+      
+      // Add to unread count only if isRead is false
+      if (!row.isRead) {
+        typeUnreadCounts[row.type] += parseInt(row.count);
+      }
     });
 
     res.status(200).json({
       status: 'success',
-      data: counts
+      data: {
+        total: typeCounts,
+        unread: typeUnreadCounts
+      }
     });
   } catch (error) {
-    next(error);
+    console.error('Error getting notification counts:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get notification counts',
+      error: error.message
+    });
   }
 };
 
@@ -756,7 +931,7 @@ exports.createOrderStatusNotification = async (options) => {
     // Get status text in Vietnamese
     const statusText = getStatusText(status);
     
-    const notification = await Notification.create({
+    const notification = await db.notification.create({
       userId,
       type: 'ORDER_STATUS',
       title: `Cập nhật trạng thái đơn hàng #${data.orderNumber || orderId}`,
@@ -798,7 +973,7 @@ exports.createDriverUpdateNotification = async (options) => {
     const order = await Order.findByPk(orderId);
     if (!order) return null;
     
-    const notification = await Notification.create({
+    const notification = await db.notification.create({
       userId,
       type: 'DRIVER_LOCATION',
       title: 'Cập nhật vị trí tài xế',
@@ -847,7 +1022,7 @@ exports.createEtaUpdateNotification = async (options) => {
       ? `Thời gian giao hàng dự kiến đã được cập nhật: ${eta} phút (${reason})`
       : `Thời gian giao hàng dự kiến đã được cập nhật: ${eta} phút`;
     
-    const notification = await Notification.create({
+    const notification = await db.notification.create({
       userId,
       type: 'ETA_UPDATE',
       title: 'Cập nhật thời gian giao hàng',
@@ -894,45 +1069,6 @@ function getStatusText(status) {
 }
 
 /**
- * Get notifications for current user
- * @route GET /api/notifications
- * @access Private
- */
-exports.getUserNotifications = async (req, res, next) => {
-  try {
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (page - 1) * limit;
-
-    const notifications = await Notification.findAndCountAll({
-      where: {
-        [Op.or]: [
-          { userId: req.user.id },
-          { isSystemWide: true }
-        ],
-        [Op.or]: [
-          { validUntil: null },
-          { validUntil: { [Op.gt]: new Date() } }
-        ]
-      },
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset)
-    });
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        notifications: notifications.rows,
-        totalPages: Math.ceil(notifications.count / limit),
-        currentPage: parseInt(page)
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * Create new notification(s)
  * @route POST /api/notifications
  * @access Private (Admin)
@@ -942,14 +1078,17 @@ exports.create = async (req, res, next) => {
     const { title, message, type, userIds, isSystemWide, priority, validUntil, data } = req.body;
 
     if (!isSystemWide && (!userIds || !userIds.length)) {
-      return next(new AppError('Either userIds or isSystemWide must be provided', 400));
+      return res.status(400).json({
+        status: 'error',
+        message: 'Either userIds or isSystemWide must be provided'
+      });
     }
 
     let notifications = [];
 
     if (isSystemWide) {
       // Create a single system-wide notification
-      notifications = [await Notification.create({
+      notifications = [await db.notification.create({
         title,
         message,
         type,
@@ -962,7 +1101,7 @@ exports.create = async (req, res, next) => {
       // Create individual notifications for specified users
       notifications = await Promise.all(
         userIds.map(userId =>
-          Notification.create({
+          db.notification.create({
             title,
             message,
             type,
@@ -980,101 +1119,47 @@ exports.create = async (req, res, next) => {
       data: { notifications }
     });
   } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Mark notifications as read
- * @route PATCH /api/notifications/read
- * @access Private
- */
-exports.markAsRead = async (req, res, next) => {
-  try {
-    const { notificationIds } = req.body;
-
-    await Notification.update(
-      {
-        isRead: true,
-        readAt: new Date()
-      },
-      {
-        where: {
-          id: { [Op.in]: notificationIds },
-          [Op.or]: [
-            { userId: req.user.id },
-            { isSystemWide: true }
-          ]
-        }
-      }
-    );
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Notifications marked as read'
+    console.error('Error creating notifications:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to create notifications',
+      error: error.message
     });
-  } catch (error) {
-    next(error);
   }
 };
 
 /**
- * Delete notification
- * @route DELETE /api/notifications/:id
- * @access Private
- */
-exports.delete = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    
-    const notification = await Notification.findOne({
-      where: {
-        id,
-        [Op.or]: [
-          { userId: req.user.id },
-          { isSystemWide: true }
-        ]
-      }
-    });
-
-    if (!notification) {
-      return next(new AppError('Notification not found', 404));
-    }
-
-    await notification.destroy();
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get unread notification count
+ * Get count of unread notifications
  * @route GET /api/notifications/unread/count
  * @access Private
  */
 exports.getUnreadCount = async (req, res, next) => {
   try {
-    const count = await Notification.count({
-      where: {
-        [Op.or]: [
-          { userId: req.user.id },
-          { isSystemWide: true }
-        ],
-        isRead: false,
-        [Op.or]: [
-          { validUntil: null },
-          { validUntil: { [Op.gt]: new Date() } }
-        ]
-      }
-    });
+    // Get count of unread notifications using direct SQL
+    const sql = `
+      SELECT COUNT(*) as unreadCount 
+      FROM notifications 
+      WHERE (userId = ? OR isSystemWide = TRUE) 
+        AND isRead = FALSE 
+        AND (validUntil IS NULL OR validUntil > NOW())
+    `;
+    
+    const [results] = await db.query(sql, [req.user.id]);
+    const unreadCount = results[0]?.unreadCount || 0;
 
     res.status(200).json({
       status: 'success',
-      data: { count }
+      data: {
+        unreadCount: parseInt(unreadCount)
+      }
     });
   } catch (error) {
-    next(error);
+    console.error('Error getting unread count:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get unread notifications count',
+      error: error.message
+    });
   }
 };
 
@@ -1194,9 +1279,9 @@ exports.getPerformanceByType = async (req, res, next) => {
 };
 
 /**
- * Get best performing time slots
- * @route GET /api/notifications/best-performing-time-slots
- * @access Private
+ * Get best performing time slots for notifications
+ * @route GET /api/notifications/analytics/time-slots
+ * @access Private/Admin
  */
 exports.getBestPerformingTimeSlots = async (req, res, next) => {
   try {
@@ -1212,32 +1297,123 @@ exports.getBestPerformingTimeSlots = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  subscribe,
-  unsubscribe,
-  getPreferences,
-  updatePreferences,
-  getNotifications,
-  markAsRead,
-  markAllAsRead,
-  deleteNotification,
-  getNotificationCounts,
-  sendOrderStatusNotification,
-  sendDriverLocationNotification,
-  sendPromotionNotification,
-  sendMarketingNotification,
-  createOrderStatusNotification,
-  createDriverUpdateNotification,
-  createEtaUpdateNotification,
-  getUserNotifications,
-  create,
-  delete: deleteNotification,
-  getUnreadCount,
-  trackDelivery,
-  trackClick,
-  getDeliveryStats,
-  getUserEngagement,
-  getPerformanceByType,
-  getBestPerformingTimeSlots,
-  updateStatus
+/**
+ * Update notification status
+ * @route PATCH /api/notifications/:id/status
+ * @access Private - Admin only
+ */
+exports.updateStatus = async (req, res, next) => {
+  try {
+  const { active } = req.body;
+    
+    // First check if notification exists
+    const [notifications] = await db.query(
+      'SELECT * FROM notifications WHERE id = ?',
+      [req.params.id]
+    );
+    
+    if (!notifications || notifications.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Notification not found'
+      });
+  }
+
+    // Update the notification status
+    await db.query(
+      'UPDATE notifications SET active = ?, updatedAt = NOW() WHERE id = ?',
+      [active ? 1 : 0, req.params.id]
+    );
+
+  res.status(200).json({
+    status: 'success',
+      message: `Notification ${active ? 'activated' : 'deactivated'} successfully`
+  });
+  } catch (error) {
+    console.error('Error updating notification status:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to update notification status',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get admin notifications
+ * @route GET /api/admin/notifications
+ * @access Admin only
+ */
+exports.getAdminNotifications = async (req, res, next) => {
+  try {
+    // Get the limit from query params or use default
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // Check if user exists in request
+    if (!req.user || !req.user.id) {
+      return res.status(200).json({
+        status: 'success',
+        notifications: [] // Return empty array as fallback
+      });
+    }
+    
+    try {
+      // Get notifications from database with a limit - use a numerical limit directly in the query
+      // to avoid prepared statement type issues
+      const [notifications] = await db.query(
+        `SELECT n.id, n.title, n.message, n.type, n.isRead, 
+                n.createdAt as timestamp, n.data 
+         FROM notifications n 
+         WHERE n.isSystemWide = TRUE 
+            OR (n.userId = ?)
+         ORDER BY n.createdAt DESC 
+         LIMIT ${limit}`,
+        [req.user.id]
+      );
+
+      // Process notifications - ensure we have a valid array to map over
+      const formattedNotifications = Array.isArray(notifications) 
+        ? notifications.map(notification => {
+            let data;
+            try {
+              data = notification.data ? JSON.parse(notification.data) : {};
+            } catch (err) {
+              data = {};
+            }
+            
+            return {
+              id: notification.id,
+              title: notification.title,
+              message: notification.message,
+              type: notification.type || 'system',
+              priority: 'normal', // Default priority value since it doesn't exist in DB
+              read: !!notification.isRead,
+              timestamp: notification.timestamp,
+              data
+            };
+          })
+        : []; // Return empty array if notifications is not an array
+
+      res.status(200).json({
+        status: 'success',
+        notifications: formattedNotifications
+      });
+    } catch (dbError) {
+      console.error('Database error fetching admin notifications:', dbError);
+      
+      // Return empty notifications array instead of error
+      res.status(200).json({
+        status: 'success',
+        notifications: []
+      });
+    }
+  } catch (error) {
+    console.error('Error getting admin notifications:', error);
+    
+    // Return empty notifications array instead of error
+    res.status(200).json({
+      status: 'success',
+      notifications: []
+    });
+  }
 };

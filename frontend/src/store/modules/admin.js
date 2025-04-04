@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { adminWebSocket } from '@/services/adminWebSocket.service';
 import { adminAPI } from '@/services/api.service'
+import { WS_URL } from '@/config';
 
 const state = {
   // Dashboard stats
@@ -24,7 +25,8 @@ const state = {
     revenueTrend: [],
     userGrowth: [],
     popularCategories: [],
-    topCities: []
+    topCities: [],
+    orderStatusCounts: []
   },
 
   // Recent activities
@@ -59,6 +61,10 @@ const state = {
     users: new Set()
   },
   systemAlerts: [],
+
+  // WebSocket
+  socket: null,
+  wsConnected: false,
 
   // State for analytics
   analytics: {
@@ -171,6 +177,27 @@ const mutations = {
       loading: false,
       error: null
     };
+  },
+  SET_SOCKET(state, socket) {
+    state.socket = socket;
+  },
+  SET_WS_CONNECTED(state, connected) {
+    state.wsConnected = connected;
+  },
+  SET_ANALYTICS_STATS(state, stats) {
+    state.analytics.stats = stats;
+  },
+  SET_ANALYTICS_TRENDS(state, trends) {
+    state.analytics.trends = trends;
+  },
+  SET_ANALYTICS_USER_SEGMENTS(state, segments) {
+    state.analytics.userSegments = segments;
+  },
+  SET_ANALYTICS_TOP_RESTAURANTS(state, restaurants) {
+    state.analytics.restaurants = restaurants;
+  },
+  SET_ANALYTICS_TOP_DRIVERS(state, drivers) {
+    state.analytics.drivers = drivers;
   }
 }
 
@@ -319,8 +346,119 @@ const actions = {
     commit('MARK_NOTIFICATIONS_READ')
   },
 
-  initWebSocket({ commit, state }) {
-    adminWebSocket.connect();
+  initWebSocket({ commit, dispatch }) {
+    try {
+      // Close any existing connection
+      dispatch('closeConnections');
+      
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('Cannot connect to WebSocket: No auth token');
+        return;
+      }
+      
+      // Get WebSocket URL from config or environment
+      let wsUrl;
+      try {
+        // Try to get from import.meta.env
+        wsUrl = import.meta.env.VITE_WS_URL || WS_URL;
+      } catch (e) {
+        // Fallback to hardcoded value for production
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        wsUrl = `${protocol}//${host}`;
+      }
+      
+      // Check if backend service is running in development mode
+      if (process.env.NODE_ENV !== 'production' && !wsUrl.includes('localhost')) {
+        wsUrl = 'ws://localhost:3000';
+      }
+      
+      console.log(`Connecting to WebSocket at: ${wsUrl}`);
+      
+      // Wrap WebSocket connection in try-catch
+      try {
+        // Connect to WebSocket
+        const socket = new WebSocket(wsUrl);
+        
+        socket.onopen = () => {
+          console.log('Admin WebSocket connected');
+          commit('SET_SOCKET', socket);
+          commit('SET_WS_CONNECTED', true);
+          
+          // Send authentication message
+          socket.send(JSON.stringify({ type: 'auth', token }));
+        };
+        
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('Admin WebSocket message:', data);
+            
+            // Handle different message types
+            switch (data.type) {
+              case 'notification':
+                commit('ADD_NOTIFICATION', data.notification);
+                break;
+              case 'system_alert':
+                commit('ADD_SYSTEM_ALERT', data.alert);
+                break;
+              case 'stats_update':
+                commit('SET_STATS', data.stats);
+                break;
+              default:
+                console.log('Unhandled WebSocket message type:', data.type);
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+            // Continue operation even with parsing errors
+          }
+        };
+        
+        socket.onerror = (error) => {
+          console.error('Admin WebSocket error:', error);
+          commit('SET_WS_CONNECTED', false);
+          
+          // Don't store the socket if there's an error
+          if (error) {
+            dispatch('closeConnections');
+          }
+        };
+        
+        socket.onclose = (event) => {
+          console.log(`Admin WebSocket disconnected (code: ${event.code}, reason: ${event.reason})`);
+          commit('SET_WS_CONNECTED', false);
+          commit('SET_SOCKET', null);
+          
+          // Only auto-reconnect in production or if explicitly enabled
+          // For development, don't continuously try to reconnect if backend is unavailable
+          if (process.env.NODE_ENV === 'production' && event.code !== 1000 && event.code !== 1001) {
+            console.log('Attempting to reconnect WebSocket in 5 seconds...');
+            setTimeout(() => {
+              dispatch('initWebSocket');
+            }, 5000);
+          }
+        };
+      } catch (wsError) {
+        console.error('WebSocket connection error:', wsError);
+        commit('SET_WS_CONNECTED', false);
+        commit('SET_SOCKET', null);
+      }
+      
+    } catch (error) {
+      console.error('Error initializing WebSocket:', error);
+      commit('SET_WS_CONNECTED', false);
+      commit('SET_SOCKET', null);
+    }
+  },
+
+  closeConnections({ commit, state }) {
+    if (state.socket) {
+      state.socket.close();
+      commit('SET_SOCKET', null);
+      commit('SET_WS_CONNECTED', false);
+    }
   },
 
   // Restaurant monitoring
@@ -547,7 +685,19 @@ const getters = {
   
   recentOrderActivities: state => state.recentActivities.orders,
   recentUserActivities: state => state.recentActivities.users,
-  recentRestaurantActivities: state => state.recentActivities.restaurants
+  recentRestaurantActivities: state => state.recentActivities.restaurants,
+  dashboardStats: state => state.stats,
+  restaurantStats: state => state.restaurantStats,
+  userStats: state => state.userStats,
+  analyticsData: state => state.analyticsData,
+  recentOrders: state => state.recentOrders,
+  recentUsers: state => state.recentUsers,
+  recentRestaurants: state => state.recentRestaurants,
+  notifications: state => state.notifications,
+  wsConnected: state => state.wsConnected,
+  isAnalyticsLoading: state => state.analytics.loading,
+  analyticsError: state => state.analytics.error,
+  analyticsStats: state => state.analytics.stats
 }
 
 export default {
@@ -556,235 +706,4 @@ export default {
   mutations,
   actions,
   getters
-}
-
-export const adminModule = {
-  namespaced: true,
-
-  state: {
-    restaurants: [],
-    restaurantCounts: {
-      total: 0,
-      active: 0,
-      pending: 0,
-      suspended: 0
-    },
-    loading: false,
-    error: null
-  },
-
-  mutations: {
-    SET_RESTAURANTS(state, restaurants) {
-      state.restaurants = restaurants
-    },
-    SET_RESTAURANT_COUNTS(state, counts) {
-      state.restaurantCounts = counts
-    },
-    SET_LOADING(state, loading) {
-      state.loading = loading
-    },
-    SET_ERROR(state, error) {
-      state.error = error
-    },
-    UPDATE_RESTAURANT(state, updatedRestaurant) {
-      const index = state.restaurants.findIndex(r => r.id === updatedRestaurant.id)
-      if (index !== -1) {
-        state.restaurants.splice(index, 1, updatedRestaurant)
-      }
-    },
-    REMOVE_RESTAURANT(state, restaurantId) {
-      state.restaurants = state.restaurants.filter(r => r.id !== restaurantId)
-    }
-  },
-
-  actions: {
-    // Get all restaurants with filters
-    async getRestaurants({ commit }, params) {
-      commit('SET_LOADING', true)
-      try {
-        const response = await adminAPI.getRestaurants(params)
-        commit('SET_RESTAURANTS', response.data.restaurants)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      } finally {
-        commit('SET_LOADING', false)
-      }
-    },
-
-    // Get restaurant counts by status
-    async getRestaurantCounts({ commit }) {
-      try {
-        const response = await adminAPI.getRestaurantCounts()
-        commit('SET_RESTAURANT_COUNTS', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Get restaurant verification data
-    async getRestaurantVerificationData({ commit }, restaurantId) {
-      try {
-        const response = await adminAPI.getRestaurantVerificationData(restaurantId)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Get pending menu items for review
-    async getPendingMenuItems({ commit }, restaurantId) {
-      try {
-        const response = await adminAPI.getPendingMenuItems(restaurantId)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Get pending categories for review
-    async getPendingCategories({ commit }, restaurantId) {
-      try {
-        const response = await adminAPI.getPendingCategories(restaurantId)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Approve a restaurant
-    async approveRestaurant({ commit }, { restaurantId, verificationData }) {
-      try {
-        const response = await adminAPI.approveRestaurant(restaurantId, verificationData)
-        commit('UPDATE_RESTAURANT', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Reject a restaurant
-    async rejectRestaurant({ commit }, { restaurantId, reason }) {
-      try {
-        const response = await adminAPI.rejectRestaurant(restaurantId, { reason })
-        commit('UPDATE_RESTAURANT', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Suspend a restaurant
-    async suspendRestaurant({ commit }, { restaurantId, reason }) {
-      try {
-        const response = await adminAPI.suspendRestaurant(restaurantId, { reason })
-        commit('UPDATE_RESTAURANT', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Activate a suspended restaurant
-    async activateRestaurant({ commit }, restaurantId) {
-      try {
-        const response = await adminAPI.activateRestaurant(restaurantId)
-        commit('UPDATE_RESTAURANT', response.data)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Delete a restaurant
-    async deleteRestaurant({ commit }, restaurantId) {
-      try {
-        await adminAPI.deleteRestaurant(restaurantId)
-        commit('REMOVE_RESTAURANT', restaurantId)
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Menu item management
-    async approveMenuItem({ commit }, { restaurantId, itemId, notes }) {
-      try {
-        const response = await adminAPI.approveMenuItem(restaurantId, itemId, { notes })
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    async rejectMenuItem({ commit }, { restaurantId, itemId, notes }) {
-      try {
-        const response = await adminAPI.rejectMenuItem(restaurantId, itemId, { notes })
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Category management
-    async approveCategory({ commit }, { restaurantId, categoryId, notes }) {
-      try {
-        const response = await adminAPI.approveCategory(restaurantId, categoryId, { notes })
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    async rejectCategory({ commit }, { restaurantId, categoryId, notes }) {
-      try {
-        const response = await adminAPI.rejectCategory(restaurantId, categoryId, { notes })
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    },
-
-    // Document management
-    async requestDocument({ commit }, { restaurantId, documentId }) {
-      try {
-        const response = await adminAPI.requestDocument(restaurantId, documentId)
-        return response.data
-      } catch (error) {
-        commit('SET_ERROR', error.message)
-        throw error
-      }
-    }
-  },
-
-  getters: {
-    getRestaurantById: state => id => {
-      return state.restaurants.find(r => r.id === id)
-    },
-    pendingRestaurants: state => {
-      return state.restaurants.filter(r => r.status === 'pending')
-    },
-    activeRestaurants: state => {
-      return state.restaurants.filter(r => r.status === 'active')
-    },
-    suspendedRestaurants: state => {
-      return state.restaurants.filter(r => r.status === 'suspended')
-    }
-  }
-}
-
-export default adminModule
+};

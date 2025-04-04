@@ -24,13 +24,22 @@ export default {
       async (error) => {
         const originalRequest = error.config;
 
-        if (error.response.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && !originalRequest._retry) {
           originalRequest._retry = true;
 
           try {
-            const newToken = await this.refreshToken();
-            this.setToken(newToken);
+            const refreshToken = this.getRefreshToken();
+            if (!refreshToken) {
+              throw new Error('No refresh token available');
+            }
+
+            const response = await axios.post('/api/auth/refresh-token', { refreshToken });
+            const { token: newToken, refreshToken: newRefreshToken } = response.data;
+
+            this.setTokens(newToken, newRefreshToken);
+            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+
             return axios(originalRequest);
           } catch (refreshError) {
             this.clearTokens();
@@ -122,18 +131,47 @@ export default {
     try {
       const refreshToken = this.getRefreshToken();
       if (!refreshToken) {
-        throw new Error('No refresh token available');
+        console.warn('No refresh token available - redirecting to login');
+        this.clearTokens();
+        
+        // Check if we're already on the login page to avoid redirect loops
+        const isLoginPage = 
+          window.location.pathname === '/login' || 
+          window.location.pathname === '/auth/login';
+        
+        if (!isLoginPage) {
+          window.location.href = '/login';
+        }
+        return null;
       }
 
       const response = await axios.post('/api/auth/refresh-token', {
         refreshToken
       });
 
-      const { token, newRefreshToken } = response.data;
-      this.setTokens(token, newRefreshToken);
-      return token;
+      if (response?.data) {
+        const { token, refreshToken: newRefreshToken } = response.data;
+        
+        if (token) {
+          // Store both tokens, using the new refresh token if provided or keeping the existing one
+          this.setTokens(token, newRefreshToken || refreshToken);
+          return token;
+        }
+      }
+      
+      throw new Error('Invalid response from refresh token endpoint');
     } catch (error) {
+      console.error('Error refreshing token:', error);
       this.clearTokens();
+      
+      // Only redirect if not already on login page
+      const isLoginPage = 
+        window.location.pathname === '/login' || 
+        window.location.pathname === '/auth/login';
+      
+      if (!isLoginPage) {
+        window.location.href = '/login';
+      }
       throw error;
     }
   },
@@ -147,9 +185,27 @@ export default {
       });
 
       const { token, refreshToken, user } = response.data;
-      this.setTokens(token, refreshToken);
+      
+      // Ensure both tokens are saved
+      if (token) {
+        // Double-check that refreshToken exists
+        if (!refreshToken) {
+          console.warn('No refresh token received during login');
+        }
+        
+        // Save both tokens even if the refresh token is empty (will be handled later)
+        this.setTokens(token, refreshToken || '');
+        
+        // Set axios default header
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } else {
+        console.error('No access token received during login');
+        throw new Error('Authentication failed: No access token received');
+      }
+      
       return user;
     } catch (error) {
+      console.error('Login error:', error);
       throw error;
     }
   },

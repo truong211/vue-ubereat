@@ -1,94 +1,79 @@
 <template>
   <v-card class="nearby-restaurants-container">
-    <v-card-title class="d-flex justify-space-between align-center">
-      <div>
-        <h2 class="text-h5">Restaurants Near You</h2>
-        <p class="text-subtitle-2 text-medium-emphasis">{{ location }}</p>
-      </div>
-      <v-btn 
-        variant="text" 
-        color="primary" 
-        to="/restaurants" 
-        class="hover-scale"
-      >
-        View All
-      </v-btn>
+    <v-card-title class="text-h6 font-weight-bold">
+      <v-icon icon="mdi-map-marker" color="primary" class="mr-2"></v-icon>
+      Restaurants Near You
     </v-card-title>
-
+    <v-card-subtitle>{{ location }}</v-card-subtitle>
+    
     <v-card-text>
       <v-row v-if="loading">
-        <v-col v-for="i in 4" :key="i" cols="12" sm="6" md="3">
-          <v-skeleton-loader type="card"></v-skeleton-loader>
+        <v-col cols="12" class="text-center">
+          <v-progress-circular indeterminate color="primary"></v-progress-circular>
         </v-col>
       </v-row>
 
-      <v-row v-else-if="nearbyRestaurants.length">
+      <v-row v-else-if="nearbyRestaurants && nearbyRestaurants.length > 0" dense>
         <v-col v-for="restaurant in nearbyRestaurants" :key="restaurant.id" cols="12" sm="6" md="3">
-          <v-card 
-            @click="goToRestaurant(restaurant.id)" 
-            class="restaurant-card h-100"
-            hover
-            elevation="2"
-          >
-            <v-img 
-              :src="restaurant.image" 
-              height="150" 
+          <v-card class="restaurant-card hover-scale" @click="goToRestaurant(restaurant.id)">
+            <v-img
+              :src="restaurant.logo || '/images/placeholder-restaurant.jpg'"
+              height="160"
               cover
-              class="position-relative"
+              class="text-white"
             >
-              <div class="d-flex justify-space-between pa-2">
-                <v-chip
-                  v-if="restaurant.distance"
-                  color="info"
-                  size="x-small"
-                  class="distance-chip"
+              <template v-slot:placeholder>
+                <v-row class="fill-height ma-0" align="center" justify="center">
+                  <v-progress-circular indeterminate color="grey-lighten-5"></v-progress-circular>
+                </v-row>
+              </template>
+              
+              <div class="d-flex flex-column fill-height justify-space-between">
+                <v-chip 
+                  class="ma-2 distance-chip" 
+                  size="small" 
+                  prepend-icon="mdi-map-marker-distance"
                 >
-                  {{ restaurant.distance }} km
-                </v-chip>
-                <v-chip
-                  v-if="restaurant.deliveryFee === 0"
-                  color="success"
-                  size="x-small"
-                >
-                  Free Delivery
+                  {{ restaurant.distance ? restaurant.distance.toFixed(1) + 'km' : 'Unknown' }}
                 </v-chip>
               </div>
             </v-img>
             
-            <v-card-title class="text-subtitle-1">
-              {{ restaurant.name }}
-              <v-chip
-                :color="restaurant.isOpen ? 'success' : 'error'"
-                size="x-small"
-                class="ml-2"
-              >
-                {{ restaurant.isOpen ? 'Open' : 'Closed' }}
-              </v-chip>
-            </v-card-title>
-            
             <v-card-text>
-              <div class="d-flex align-center mb-1">
+              <div class="d-flex align-center justify-space-between mb-1">
+                <div class="text-subtitle-1 font-weight-medium text-truncate">{{ restaurant.name }}</div>
                 <v-rating
-                  :model-value="restaurant.rating"
+                  :model-value="restaurant.rating || 0"
                   color="amber"
                   density="compact"
-                  half-increments
+                  size="small"
                   readonly
-                  size="x-small"
+                  half-increments
                 ></v-rating>
-                <span class="ml-1 text-body-2">({{ restaurant.reviewCount }})</span>
               </div>
               
-              <div class="text-body-2 mb-1">{{ restaurant.categories.join(', ') }}</div>
+              <div class="text-caption text-grey mb-2 text-truncate">
+                {{ restaurant.cuisineType || restaurant.cuisine || 'Various Cuisines' }}
+              </div>
               
-              <div class="d-flex align-center text-body-2">
-                <v-icon size="small" color="grey">mdi-clock-outline</v-icon>
-                <span class="ml-1">{{ restaurant.deliveryTime }} min</span>
+              <div class="d-flex align-center text-caption text-grey">
+                <v-icon icon="mdi-bike-fast" size="small" class="mr-1"></v-icon>
+                <span class="ml-1">{{ restaurant.deliveryFee ? '$' + (restaurant.deliveryFee / 1000).toFixed(1) : 'Free' }}</span>
+                <v-spacer></v-spacer>
+                <v-icon icon="mdi-clock-outline" size="small"></v-icon>
+                <span class="ml-1">{{ restaurant.deliveryTime || restaurant.estimatedDeliveryTime || '30-45' }} min</span>
               </div>
             </v-card-text>
           </v-card>
         </v-col>
       </v-row>
+
+      <v-sheet v-else-if="error" class="text-center pa-6">
+        <v-icon icon="mdi-alert-circle" size="x-large" color="error" class="mb-4"></v-icon>
+        <h3 class="text-h6 mb-2">Error loading restaurants</h3>
+        <p class="text-body-2 mb-4">{{ error }}</p>
+        <v-btn color="primary" @click="fetchNearbyRestaurants">Try Again</v-btn>
+      </v-sheet>
 
       <v-sheet v-else class="text-center pa-6">
         <v-icon icon="mdi-map-marker-off" size="x-large" color="grey-lighten-1" class="mb-4"></v-icon>
@@ -101,9 +86,10 @@
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'vue-toastification'
+import restaurantAPI from '@/services/restaurantAPI'
 
 export default {
   name: 'NearbyRestaurants',
@@ -131,83 +117,141 @@ export default {
     
     const loading = ref(true)
     const restaurants = ref([])
+    const error = ref(null)
     const userCoordinates = ref(null)
     const currentAddress = ref('')
     
     const fetchNearbyRestaurants = async () => {
+      if (!props.userLocation) {
+        loading.value = false
+        error.value = null
+        restaurants.value = []
+        return
+      }
+      
       loading.value = true
+      error.value = null
       
       try {
-        // In a real app, this would call an API with the user's coordinates
-        // For demo purposes, we're using mock data
-        await new Promise(resolve => setTimeout(resolve, 800)) // Simulate API delay
+        const response = await restaurantAPI.getNearbyRestaurants(
+          props.userLocation.lat,
+          props.userLocation.lng,
+          props.maxDistance || 5,
+          props.maxResults || 8
+        )
         
-        // Mock data for nearby restaurants
-        restaurants.value = [
-          {
-            id: 1,
-            name: 'Burger King',
-            image: '/images/restaurants/burger-king.jpg',
-            categories: ['Burgers', 'Fast Food'],
-            rating: 4.2,
-            reviewCount: 328,
-            deliveryTime: '15-25',
-            deliveryFee: 0,
-            distance: '0.8',
-            isOpen: true
-          },
-          {
-            id: 2,
-            name: 'Pizza Hut',
-            image: '/images/restaurants/pizza-hut.jpg',
-            categories: ['Pizza', 'Italian'],
-            rating: 4.5,
-            reviewCount: 512,
-            deliveryTime: '20-30',
-            deliveryFee: 1.99,
-            distance: '1.2',
-            isOpen: true
-          },
-          {
-            id: 3,
-            name: 'Sushi Palace',
-            image: '/images/restaurants/sushi.jpg',
-            categories: ['Sushi', 'Japanese'],
-            rating: 4.8,
-            reviewCount: 205,
-            deliveryTime: '25-40',
-            deliveryFee: 2.99,
-            distance: '1.5',
-            isOpen: true
-          },
-          {
-            id: 4,
-            name: 'Thai Spice',
-            image: '/images/restaurants/thai.jpg',
-            categories: ['Thai', 'Asian'],
-            rating: 4.4,
-            reviewCount: 189,
-            deliveryTime: '20-35',
-            deliveryFee: 1.50,
-            distance: '1.8',
-            isOpen: false
+        console.log('API Response:', response);
+        
+        // Reset restaurants to empty array initially
+        restaurants.value = []
+        
+        // Handle response based on its format - Try all known response formats
+        if (response && response.data) {
+          // Format 1: {data: [...restaurants]}
+          if (Array.isArray(response.data)) {
+            restaurants.value = response.data
+          } 
+          // Format 2: {data: {data: {restaurants: [...]}}}
+          else if (response.data.data && response.data.data.restaurants) {
+            restaurants.value = response.data.data.restaurants
+          } 
+          // Format 3: {data: {restaurants: [...]}}
+          else if (response.data.restaurants) {
+            restaurants.value = response.data.restaurants
+          } 
+          // Format 4: {data: {data: [...]}}
+          else if (response.data.data && Array.isArray(response.data.data)) {
+            restaurants.value = response.data.data
+          } 
+          // Format 5: Direct data property with status field
+          else if (response.data.status === 'success') {
+            if (response.data.data && response.data.data.restaurants) {
+              restaurants.value = response.data.data.restaurants
+            } else if (Array.isArray(response.data.data)) {
+              restaurants.value = response.data.data
+            }
+          } else {
+            console.warn('Unexpected response format:', response.data)
           }
-        ]
-      } catch (error) {
-        toast.error('Failed to load nearby restaurants')
-        console.error(error)
+        }
+        
+        // Log the extracted restaurants data for debugging
+        console.log('Extracted restaurants:', restaurants.value)
+        
+        // Make sure restaurants is always an array
+        if (!Array.isArray(restaurants.value)) {
+          console.warn('Restaurants data is not an array, resetting to empty array')
+          restaurants.value = []
+        }
+      } catch (err) {
+        console.error('Error fetching nearby restaurants:', err)
+        error.value = err?.response?.data?.message || 'Could not load nearby restaurants'
+        restaurants.value = []
       } finally {
         loading.value = false
       }
     }
     
     const getCurrentLocation = () => {
-      // In a real app, this would use the browser's geolocation API
-      // For demo purposes, we're using mock data
-      currentAddress.value = props.userLocation?.address || 'San Francisco, CA'
-      userCoordinates.value = props.userLocation?.coordinates || { lat: 37.7749, lng: -122.4194 }
-      
-      fetchNearbyRestaurants()
+      // Use the browser's geolocation API instead of mock data
+      if (navigator.geolocation) {
+        loading.value = true
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            try {
+              const { latitude, longitude } = position.coords
+              
+              // Get address using reverse geocoding
+              let address = 'Current Location'
+              try {
+                const response = await fetch(
+                  `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+                )
+                const data = await response.json()
+                if (data && data.display_name) {
+                  address = data.display_name
+                }
+              } catch (e) {
+                console.error('Error getting address:', e)
+              }
+              
+              currentAddress.value = address
+              userCoordinates.value = { lat: latitude, lng: longitude }
+              
+              // Update the user location and emit the event
+              const locationData = {
+                lat: latitude,
+                lng: longitude,
+                address: address
+              }
+              
+              emit('update-location', locationData)
+              
+              // Fetch nearby restaurants
+              await fetchNearbyRestaurants()
+            } catch (err) {
+              console.error('Error processing location:', err)
+              error.value = 'Error processing your location'
+            } finally {
+              loading.value = false
+            }
+          },
+          (err) => {
+            console.error('Geolocation error:', err)
+            error.value = 'Could not get your location. Please check your browser permissions.'
+            loading.value = false
+            toast.error('Could not get your location')
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        )
+      } else {
+        error.value = 'Geolocation is not supported by your browser'
+        toast.error('Geolocation is not supported by your browser')
+      }
     }
     
     const updateLocation = () => {
@@ -222,23 +266,29 @@ export default {
     }
     
     const nearbyRestaurants = computed(() => {
-      return restaurants.value.slice(0, props.maxResults)
+      return Array.isArray(restaurants.value) 
+        ? restaurants.value.slice(0, props.maxResults) 
+        : []
     })
     
     const location = computed(() => {
       return currentAddress.value || 'Location not set'
     })
     
-    onMounted(() => {
-      getCurrentLocation()
-    })
+    watch(() => props.userLocation, (newLocation) => {
+      if (newLocation) {
+        fetchNearbyRestaurants()
+      }
+    }, { immediate: true })
     
     return {
       loading,
       nearbyRestaurants,
       location,
       updateLocation,
-      goToRestaurant
+      goToRestaurant,
+      error,
+      fetchNearbyRestaurants
     }
   }
 }

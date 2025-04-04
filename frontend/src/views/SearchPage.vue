@@ -215,6 +215,7 @@ import SearchFilters from '@/components/search/SearchFilters.vue';
 import SmartSearch from '@/components/search/SmartSearch.vue';
 import SearchResults from '@/components/search/SearchResults.vue';
 import RestaurantMap from '@/components/map/RestaurantMap.vue';
+import restaurantAPI from '@/services/restaurantAPI';
 
 // Router
 const route = useRoute();
@@ -227,6 +228,7 @@ const { height, name } = useDisplay();
 const viewMode = ref('list');
 const resultsViewMode = ref('grid');
 const loading = ref(true);
+const error = ref(null);
 const restaurants = ref([]);
 const filteredRestaurants = ref([]);
 const searchFilters = ref({
@@ -267,98 +269,61 @@ const mapHeight = computed(() => {
 
 // Fetch restaurants
 const fetchRestaurants = async () => {
+  loading.value = true;
+  error.value = null;
+  
   try {
-    loading.value = true;
+    const params = {
+      q: searchQuery.value,
+      cuisine: searchFilters.value.cuisines.join(','),
+      priceRange: searchFilters.value.price.join(','),
+      minRating: searchFilters.value.rating,
+      sort: sortBy.value,
+      page: currentPage.value,
+      limit: 10 // Assuming a default limit
+    };
     
-    // In a real application, this would be an API call
-    // For now, we'll simulate the data
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Include location coordinates if available
+    if (userLocation.value) {
+      params.lat = userLocation.value.lat;
+      params.lng = userLocation.value.lng;
+    }
     
-    // Mock data
-    restaurants.value = generateMockRestaurants(50);
+    const response = await restaurantAPI.getAllRestaurants(params);
     
-    // Apply initial filters
-    applyFilters();
-    
-    loading.value = false;
-  } catch (error) {
-    console.error('Error fetching restaurants:', error);
+    // Check if response.data exists and handle different response formats
+    if (response && response.data) {
+      // Handle different response formats
+      if (Array.isArray(response.data)) {
+        restaurants.value = response.data;
+        totalResults.value = response.data.length;
+      } else if (response.data.restaurants && Array.isArray(response.data.restaurants)) {
+        restaurants.value = response.data.restaurants;
+        totalResults.value = response.data.total || response.data.restaurants.length;
+      } else if (response.data.data && Array.isArray(response.data.data)) {
+        restaurants.value = response.data.data;
+        totalResults.value = response.data.total || response.data.data.length;
+      } else {
+        // Fallback to empty array if no valid format is found
+        console.warn('Unexpected API response format:', response.data);
+        restaurants.value = [];
+        totalResults.value = 0;
+      }
+    } else {
+      // Handle case where response or response.data is undefined
+      console.warn('No data returned from API');
+      restaurants.value = [];
+      totalResults.value = 0;
+    }
+  } catch (err) {
+    console.error('Error fetching restaurants:', err);
+    error.value = 'Could not load restaurants. Please try again later.';
+    // Ensure restaurants.value is always an array even on error
+    restaurants.value = [];
+    totalResults.value = 0;
+  } finally {
     loading.value = false;
   }
-};
-
-// Generate mock restaurant data
-const generateMockRestaurants = (count) => {
-  const cuisines = [
-    'Đồ ăn Việt Nam', 'Pizza', 'Burger', 'Sushi', 
-    'Đồ ăn Thái', 'Trà sữa', 'Bánh Ngọt', 'Đồ chay',
-    'Đồ ăn Hàn Quốc', 'Đồ ăn Nhật', 'Lẩu', 'Đồ ăn Ý'
-  ];
-  
-  const specialOffers = [
-    'Giảm 20% cho đơn hàng đầu tiên',
-    'Miễn phí giao hàng',
-    'Mua 1 tặng 1',
-    'Giảm 30% cho món thứ 2',
-    null, // No offer
-    null, // No offer
-    null  // No offer
-  ];
-  
-  const popularItems = [
-    ['Phở bò', 'Bánh mì', 'Cơm tấm', 'Gỏi cuốn'],
-    ['Margherita', 'Pepperoni', 'Hawaiian', 'BBQ Chicken'],
-    ['Cheeseburger', 'Double Burger', 'BBQ Burger', 'Chicken Burger'],
-    ['Sashimi', 'Maki Roll', 'Tempura', 'Ramen'],
-    ['Pad Thai', 'Tom Yum', 'Green Curry', 'Mango Sticky Rice'],
-    ['Trà sữa trân châu', 'Trà đào', 'Matcha Latte', 'Cà phê sữa đá']
-  ];
-  
-  return Array.from({ length: count }, (_, i) => {
-    const id = i + 1;
-    const lat = userLocation.value.lat + (Math.random() * 0.1 - 0.05);
-    const lng = userLocation.value.lng + (Math.random() * 0.1 - 0.05);
-    const distance = calculateDistance(userLocation.value.lat, userLocation.value.lng, lat, lng);
-    const cuisineType = cuisines[Math.floor(Math.random() * cuisines.length)];
-    
-    return {
-      id,
-      name: `Nhà hàng ${id}`,
-      thumbnail: `https://picsum.photos/seed/${id}/300/200`,
-      coverImage: `https://picsum.photos/seed/${id}-cover/1000/600`,
-      cuisineType,
-      rating: Number((3 + Math.random() * 2).toFixed(1)),
-      reviewCount: Math.floor(Math.random() * 500) + 10,
-      priceRange: Math.floor(Math.random() * 250000) + 50000,
-      deliveryTime: (Math.floor(Math.random() * 30) + 15),
-      distance,
-      lat,
-      lng,
-      specialOffer: specialOffers[Math.floor(Math.random() * specialOffers.length)],
-      deliveryRadius: Math.floor(Math.random() * 3) + 2,
-      popularity: Math.floor(Math.random() * 100),
-      popularItems: popularItems[Math.floor(Math.random() * popularItems.length)],
-      description: 'Nhà hàng với nhiều món ăn ngon, không gian thoáng mát và dịch vụ tận tình. Chúng tôi phục vụ các món ăn được chế biến từ nguyên liệu tươi ngon, đảm bảo vệ sinh an toàn thực phẩm.'
-    };
-  });
-};
-
-// Calculate distance between two coordinates
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Radius of the earth in km
-  const dLat = deg2rad(lat2 - lat1);
-  const dLon = deg2rad(lon2 - lon1);
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-  return R * c;
-};
-
-// Convert degrees to radians
-const deg2rad = (deg) => {
-  return deg * (Math.PI/180);
 };
 
 // Format distance
@@ -389,8 +354,20 @@ const addCuisineFilter = (cuisine) => {
 const applyFilters = () => {
   loading.value = true;
   
-  // Filter restaurants based on search filters
-  let results = [...restaurants.value];
+  // Ensure restaurants.value is an array before trying to spread it
+  if (!restaurants.value || !Array.isArray(restaurants.value)) {
+    console.warn('Restaurants data is not an array:', restaurants.value);
+    restaurants.value = [];
+  }
+  
+  // Use a try-catch block to handle any potential issues with the spread operator
+  let results = [];
+  try {
+    results = [...restaurants.value];
+  } catch (error) {
+    console.error('Error spreading restaurants array:', error);
+    results = [];
+  }
   
   // Filter by search query
   if (searchQuery.value) {
@@ -404,39 +381,39 @@ const applyFilters = () => {
   // Filter by cuisines
   if (searchFilters.value.cuisines.length > 0) {
     results = results.filter(restaurant => 
-      searchFilters.value.cuisines.includes(restaurant.cuisineType)
+      restaurant.cuisineType && searchFilters.value.cuisines.includes(restaurant.cuisineType)
     );
   }
   
   // Filter by price range
   results = results.filter(restaurant => 
-    restaurant.priceRange >= searchFilters.value.price[0] && 
+    restaurant.priceRange && restaurant.priceRange >= searchFilters.value.price[0] && 
     restaurant.priceRange <= searchFilters.value.price[1]
   );
   
   // Filter by rating
   if (searchFilters.value.rating > 0) {
     results = results.filter(restaurant => 
-      restaurant.rating >= searchFilters.value.rating
+      restaurant.rating && restaurant.rating >= searchFilters.value.rating
     );
   }
   
   // Filter by distance
   results = results.filter(restaurant => 
-    restaurant.distance <= searchFilters.value.distance
+    restaurant.distance && restaurant.distance <= searchFilters.value.distance
   );
   
   // Filter by delivery time
   if (searchFilters.value.deliveryTime) {
     results = results.filter(restaurant => 
-      restaurant.deliveryTime <= searchFilters.value.deliveryTime
+      restaurant.deliveryTime && restaurant.deliveryTime <= searchFilters.value.deliveryTime
     );
   }
   
   // Filter by special offers
   if (searchFilters.value.specialOffers) {
     results = results.filter(restaurant => 
-      restaurant.specialOffer !== null
+      restaurant.specialOffer !== null && restaurant.specialOffer !== undefined
     );
   }
   

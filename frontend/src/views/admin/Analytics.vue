@@ -1,4 +1,4 @@
-&lt;template>
+<template>
   <div class="analytics pa-6">
     <div class="d-flex align-center mb-6">
       <h1 class="text-h4">System Analytics</h1>
@@ -371,8 +371,8 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue'
+<script>
+import { ref, onMounted, computed, watch } from 'vue'
 import { useStore } from 'vuex'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -406,321 +406,396 @@ use([
   ToolboxComponent
 ])
 
-const store = useStore()
-const toast = useToast()
+export default {
+  setup() {
+    const store = useStore()
+    const toast = useToast()
 
-// State
-const selectedPeriod = ref('month')
-const activeTab = ref('restaurants')
-const loading = ref(false)
-const stats = ref({
-  revenue: 0,
-  revenueGrowth: 0,
-  orders: 0,
-  ordersGrowth: 0,
-  restaurants: 0,
-  restaurantsGrowth: 0,
-  users: 0,
-  usersGrowth: 0
-})
-
-const topRestaurants = ref([])
-const topDrivers = ref([])
-
-const exportDialog = ref({
-  show: false,
-  format: 'excel',
-  sections: ['overview'],
-  loading: false
-})
-
-// Constants
-const timePeriods = [
-  { label: 'Today', value: 'today' },
-  { label: 'Week', value: 'week' },
-  { label: 'Month', value: 'month' },
-  { label: 'Quarter', value: 'quarter' },
-  { label: 'Year', value: 'year' }
-]
-
-const exportFormats = [
-  { title: 'Excel (.xlsx)', value: 'excel' },
-  { title: 'PDF (.pdf)', value: 'pdf' },
-  { title: 'CSV (.csv)', value: 'csv' }
-]
-
-const exportSections = [
-  { title: 'Overview', value: 'overview' },
-  { title: 'Restaurant Analytics', value: 'restaurants' },
-  { title: 'Order Analytics', value: 'orders' },
-  { title: 'User Analytics', value: 'users' },
-  { title: 'Driver Analytics', value: 'drivers' }
-]
-
-// Chart Options
-const revenueChartOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis',
-    axisPointer: {
-      type: 'cross'
-    }
-  },
-  legend: {
-    data: ['Revenue', 'Orders']
-  },
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '3%',
-    containLabel: true
-  },
-  xAxis: {
-    type: 'time',
-    boundaryGap: false
-  },
-  yAxis: [
-    {
-      type: 'value',
-      name: 'Revenue',
-      position: 'left',
-      axisLabel: {
-        formatter: '${value}'
-      }
-    },
-    {
-      type: 'value',
-      name: 'Orders',
-      position: 'right'
-    }
-  ],
-  series: [
-    {
-      name: 'Revenue',
-      type: 'line',
-      smooth: true,
-      data: store.state.analytics?.revenueTrend || []
-    },
-    {
-      name: 'Orders',
-      type: 'line',
-      smooth: true,
-      yAxisIndex: 1,
-      data: store.state.analytics?.orderTrend || []
-    }
-  ]
-}))
-
-const orderDistributionOption = computed(() => ({
-  tooltip: {
-    trigger: 'item',
-    formatter: '{b}: {c} ({d}%)'
-  },
-  legend: {
-    orient: 'vertical',
-    left: 'left'
-  },
-  series: [
-    {
-      name: 'Orders',
-      type: 'pie',
-      radius: ['40%', '70%'],
-      avoidLabelOverlap: false,
-      itemStyle: {
-        borderRadius: 10,
-        borderColor: '#fff',
-        borderWidth: 2
-      },
-      label: {
-        show: false
-      },
-      emphasis: {
-        label: {
-          show: true,
-          fontSize: '16',
-          fontWeight: 'bold'
-        }
-      },
-      labelLine: {
-        show: false
-      },
-      data: store.state.analytics?.orderDistribution || []
-    }
-  ]
-}))
-
-const orderStatusOption = computed(() => ({
-  tooltip: {
-    trigger: 'item'
-  },
-  legend: {
-    top: '5%',
-    left: 'center'
-  },
-  series: [
-    {
-      name: 'Order Status',
-      type: 'pie',
-      radius: ['40%', '70%'],
-      avoidLabelOverlap: false,
-      itemStyle: {
-        borderRadius: 10,
-        borderColor: '#fff',
-        borderWidth: 2
-      },
-      label: {
-        show: false
-      },
-      emphasis: {
-        label: {
-          show: true,
-          fontSize: '16',
-          fontWeight: 'bold'
-        }
-      },
-      labelLine: {
-        show: false
-      },
-      data: store.state.analytics?.orderStatusDistribution || []
-    }
-  ]
-}))
-
-const orderValueOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis'
-  },
-  xAxis: {
-    type: 'category',
-    data: store.state.analytics?.orderValueRanges?.map(r => `$${r.min}-${r.max}`) || []
-  },
-  yAxis: {
-    type: 'value'
-  },
-  series: [
-    {
-      data: store.state.analytics?.orderValueDistribution || [],
-      type: 'bar'
-    }
-  ]
-}))
-
-const userGrowthOption = computed(() => ({
-  tooltip: {
-    trigger: 'axis'
-  },
-  xAxis: {
-    type: 'time',
-    boundaryGap: false
-  },
-  yAxis: {
-    type: 'value'
-  },
-  series: [
-    {
-      data: store.state.analytics?.userGrowth || [],
-      type: 'line',
-      smooth: true,
-      areaStyle: {}
-    }
-  ]
-}))
-
-const userSegmentsOption = computed(() => ({
-  tooltip: {
-    trigger: 'item'
-  },
-  legend: {
-    orient: 'vertical',
-    left: 'left'
-  },
-  series: [
-    {
-      name: 'User Segments',
-      type: 'pie',
-      radius: '50%',
-      data: store.state.analytics?.userSegments || [],
-      emphasis: {
-        itemStyle: {
-          shadowBlur: 10,
-          shadowOffsetX: 0,
-          shadowColor: 'rgba(0, 0, 0, 0.5)'
-        }
-      }
-    }
-  ]
-}))
-
-// Methods
-const loadAnalytics = async () => {
-  loading.value = true
-  try {
-    const response = await store.dispatch('admin/getAnalytics', { period: selectedPeriod.value })
-    stats.value = response.stats
-    topRestaurants.value = response.restaurants
-    topDrivers.value = response.drivers
-  } catch (error) {
-    toast.error('Failed to load analytics data')
-    console.error('Analytics error:', error)
-  } finally {
-    loading.value = false
-  }
-}
-
-const downloadReport = () => {
-  exportDialog.value.show = true
-}
-
-const generateReport = async () => {
-  exportDialog.value.loading = true
-  try {
-    await store.dispatch('admin/exportAnalytics', {
-      format: exportDialog.value.format,
-      sections: exportDialog.value.sections,
-      period: selectedPeriod.value
+    // State
+    const loading = ref(false)
+    const selectedPeriod = ref('month')
+    const stats = ref({
+      revenue: 0,
+      revenueGrowth: 0,
+      orders: 0,
+      ordersGrowth: 0,
+      restaurants: 0,
+      restaurantsGrowth: 0,
+      users: 0,
+      usersGrowth: 0
     })
-    exportDialog.value.show = false
-    toast.success('Report exported successfully')
-  } catch (error) {
-    toast.error('Failed to export report')
-    console.error('Export error:', error)
-  } finally {
-    exportDialog.value.loading = false
+    const topRestaurants = ref([])
+    const topDrivers = ref([])
+    
+    // Export dialog state
+    const exportDialog = ref({
+      show: false,
+      loading: false,
+      format: 'csv',
+      sections: ['summary', 'restaurants', 'orders', 'users']
+    })
+
+    // Constants
+    const timePeriods = [
+      { label: 'Today', value: 'today' },
+      { label: 'Week', value: 'week' },
+      { label: 'Month', value: 'month' },
+      { label: 'Quarter', value: 'quarter' },
+      { label: 'Year', value: 'year' }
+    ]
+
+    const exportFormats = [
+      { title: 'Excel (.xlsx)', value: 'excel' },
+      { title: 'PDF (.pdf)', value: 'pdf' },
+      { title: 'CSV (.csv)', value: 'csv' }
+    ]
+
+    const exportSections = [
+      { title: 'Overview', value: 'overview' },
+      { title: 'Restaurant Analytics', value: 'restaurants' },
+      { title: 'Order Analytics', value: 'orders' },
+      { title: 'User Analytics', value: 'users' },
+      { title: 'Driver Analytics', value: 'drivers' }
+    ]
+
+    // Chart Options
+    const revenueChartOption = computed(() => ({
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: {
+          type: 'cross'
+        }
+      },
+      legend: {
+        data: ['Revenue', 'Orders']
+      },
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'time',
+        boundaryGap: false
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: 'Revenue',
+          position: 'left',
+          axisLabel: {
+            formatter: '${value}'
+          }
+        },
+        {
+          type: 'value',
+          name: 'Orders',
+          position: 'right'
+        }
+      ],
+      series: [
+        {
+          name: 'Revenue',
+          type: 'line',
+          smooth: true,
+          data: store.state.analytics?.revenueTrend || []
+        },
+        {
+          name: 'Orders',
+          type: 'line',
+          smooth: true,
+          yAxisIndex: 1,
+          data: store.state.analytics?.orderTrend || []
+        }
+      ]
+    }))
+
+    const orderDistributionOption = computed(() => ({
+      tooltip: {
+        trigger: 'item',
+        formatter: '{b}: {c} ({d}%)'
+      },
+      legend: {
+        orient: 'vertical',
+        left: 'left'
+      },
+      series: [
+        {
+          name: 'Orders',
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2
+          },
+          label: {
+            show: false
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '16',
+              fontWeight: 'bold'
+            }
+          },
+          labelLine: {
+            show: false
+          },
+          data: store.state.analytics?.orderDistribution || []
+        }
+      ]
+    }))
+
+    const orderStatusOption = computed(() => ({
+      tooltip: {
+        trigger: 'item'
+      },
+      legend: {
+        top: '5%',
+        left: 'center'
+      },
+      series: [
+        {
+          name: 'Order Status',
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2
+          },
+          label: {
+            show: false
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '16',
+              fontWeight: 'bold'
+            }
+          },
+          labelLine: {
+            show: false
+          },
+          data: store.state.analytics?.orderStatusDistribution || []
+        }
+      ]
+    }))
+
+    const orderValueOption = computed(() => ({
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'category',
+        data: store.state.analytics?.orderValueRanges?.map(r => `$${r.min}-${r.max}`) || []
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          data: store.state.analytics?.orderValueDistribution || [],
+          type: 'bar'
+        }
+      ]
+    }))
+
+    const userGrowthOption = computed(() => ({
+      tooltip: {
+        trigger: 'axis'
+      },
+      xAxis: {
+        type: 'time',
+        boundaryGap: false
+      },
+      yAxis: {
+        type: 'value'
+      },
+      series: [
+        {
+          data: store.state.analytics?.userGrowth || [],
+          type: 'line',
+          smooth: true,
+          areaStyle: {}
+        }
+      ]
+    }))
+
+    const userSegmentsOption = computed(() => ({
+      tooltip: {
+        trigger: 'item'
+      },
+      legend: {
+        orient: 'vertical',
+        left: 'left'
+      },
+      series: [
+        {
+          name: 'User Segments',
+          type: 'pie',
+          radius: '50%',
+          data: store.state.analytics?.userSegments || [],
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+          }
+        }
+      ]
+    }))
+
+    // Methods
+    const loadAnalytics = async () => {
+      loading.value = true
+      try {
+        // Try using the store action, or fallback to direct API call
+        let response
+        try {
+          response = await store.dispatch('admin/getAnalytics', { timeframe: selectedPeriod.value })
+        } catch (err) {
+          console.warn('Store action failed, falling back to direct API call:', err)
+          const axios = (await import('axios')).default
+          const { data } = await axios.get('/api/admin/analytics', {
+            params: { timeframe: selectedPeriod.value }
+          })
+          response = data?.data || data
+        }
+        
+        if (response) {
+          // Handle stats data if available
+          if (response.stats) {
+            stats.value = response.stats
+          }
+          
+          // Handle restaurants data if available  
+          if (response.restaurants) {
+            topRestaurants.value = response.restaurants
+          }
+          
+          // Handle drivers data if available
+          if (response.drivers) {
+            topDrivers.value = response.drivers
+          }
+        }
+      } catch (error) {
+        toast.error('Failed to load analytics data')
+        console.error('Analytics error:', error)
+      } finally {
+        loading.value = false
+      }
+    }
+
+    const downloadReport = () => {
+      exportDialog.value.show = true
+    }
+
+    const generateReport = async () => {
+      if (!exportDialog.value) return
+      
+      exportDialog.value.loading = true
+      try {
+        // Attempt to use store action or fallback to direct API call
+        const axios = (await import('axios')).default
+        await axios.post('/api/admin/analytics/export', {
+          format: exportDialog.value.format,
+          sections: exportDialog.value.sections,
+          period: selectedPeriod.value
+        }, {
+          responseType: 'blob'
+        }).then(response => {
+          // Create a download link
+          const url = window.URL.createObjectURL(new Blob([response.data]))
+          const link = document.createElement('a')
+          link.href = url
+          
+          // Set file name based on format
+          const extension = exportDialog.value.format.toLowerCase()
+          link.setAttribute('download', `analytics_report_${selectedPeriod.value}.${extension}`)
+          
+          // Trigger download
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+        })
+        
+        exportDialog.value.show = false
+        toast.success('Report exported successfully')
+      } catch (error) {
+        toast.error('Failed to export report')
+        console.error('Export error:', error)
+      } finally {
+        if (exportDialog.value) {
+          exportDialog.value.loading = false
+        }
+      }
+    }
+
+    const formatCurrency = (value) => {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2
+      }).format(value)
+    }
+
+    const formatNumber = (value) => {
+      return new Intl.NumberFormat().format(value)
+    }
+
+    const formatTime = (minutes) => {
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
+    }
+
+    const getOnTimeRateColor = (rate) => {
+      if (rate >= 95) return 'success'
+      if (rate >= 85) return 'warning'
+      return 'error'
+    }
+
+    // Lifecycle
+    onMounted(() => {
+      loadAnalytics()
+    })
+
+    // Watch for period changes
+    watch(selectedPeriod, () => {
+      loadAnalytics()
+    })
+
+    return {
+      loading,
+      selectedPeriod,
+      stats,
+      topRestaurants,
+      topDrivers,
+      exportDialog,
+      downloadReport,
+      generateReport,
+      formatCurrency,
+      formatNumber,
+      formatTime,
+      getOnTimeRateColor,
+      timePeriods,
+      exportFormats,
+      exportSections,
+      revenueChartOption,
+      orderDistributionOption,
+      orderStatusOption,
+      orderValueOption,
+      userGrowthOption,
+      userSegmentsOption
+    }
   }
 }
-
-const formatCurrency = (value) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(value)
-}
-
-const formatNumber = (value) => {
-  return new Intl.NumberFormat().format(value)
-}
-
-const formatTime = (minutes) => {
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-}
-
-const getOnTimeRateColor = (rate) => {
-  if (rate >= 95) return 'success'
-  if (rate >= 85) return 'warning'
-  return 'error'
-}
-
-// Lifecycle
-onMounted(() => {
-  loadAnalytics()
-})
-
-// Watch for period changes
-watch(selectedPeriod, () => {
-  loadAnalytics()
-})
 </script>
 
 <style scoped>

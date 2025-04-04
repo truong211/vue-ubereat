@@ -1,6 +1,5 @@
-const { Promotion, PromotionCampaign, UserPromotion, Order } = require('../models');
-const { Op } = require('sequelize');
-const { 
+const db = require('../config/database');
+const {
   logPromotionActivity, 
   logPromotionError, 
   logPromotionMetrics, 
@@ -11,6 +10,7 @@ const logger = require('../utils/logger');
 class PromotionMonitoringService {
   constructor(notificationService) {
     this.notificationService = notificationService;
+    this.setupScheduledJobs();
   }
 
   async monitorHealthMetrics() {
@@ -21,11 +21,21 @@ class PromotionMonitoringService {
       await this.updatePromotionStatuses();
 
       // Log overall health metrics
+      const [activePromotionsResult] = await db.query(
+        'SELECT COUNT(*) as count FROM promotions WHERE isActive = true'
+      );
+      const [activeCampaignsResult] = await db.query(
+        'SELECT COUNT(*) as count FROM promotion_campaigns WHERE status = "active"'
+      );
+      
+      const activePromotions = activePromotionsResult?.count || 0;
+      const activeCampaigns = activeCampaignsResult?.count || 0;
+
       logPromotionMetrics({
         type: 'health_check',
         timestamp: new Date(),
-        activePromotions: await Promotion.count({ where: { status: 'active' } }),
-        activeCampaigns: await PromotionCampaign.count({ where: { status: 'active' } })
+        activePromotions,
+        activeCampaigns
       });
     } catch (error) {
       logPromotionError(error, { 
@@ -38,35 +48,41 @@ class PromotionMonitoringService {
   async detectRedemptionAnomalies() {
     const timeWindow = new Date();
     timeWindow.setHours(timeWindow.getHours() - 1);
+    const timeWindowStr = timeWindow.toISOString().slice(0, 19).replace('T', ' ');
 
     try {
-      const activePromotions = await Promotion.findAll({
-        where: { status: 'active' }
-      });
+      // Get active promotions
+      const activePromotions = await db.query(
+        'SELECT * FROM promotions WHERE isActive = true'
+      );
 
       for (const promotion of activePromotions) {
-        const recentRedemptions = await UserPromotion.count({
-          where: {
-            promotionId: promotion.id,
-            createdAt: { [Op.gte]: timeWindow }
-          }
-        });
+        // Count recent redemptions
+        const [recentRedemptionsResult] = await db.query(
+          'SELECT COUNT(*) as count FROM user_promotions WHERE promotionId = ? AND createdAt >= ?',
+          [promotion.id, timeWindowStr]
+        );
+        
+        const recentRedemptions = recentRedemptionsResult?.count || 0;
+        const averageHourlyRedemptions = promotion.averageHourlyRedemptions || 1;
 
-        if (recentRedemptions > promotion.averageHourlyRedemptions * 3) {
+        if (recentRedemptions > averageHourlyRedemptions * 3) {
           logSuspiciousActivity({
             type: 'high_redemption_rate',
             promotionId: promotion.id,
             code: promotion.code,
             redemptionCount: recentRedemptions,
-            expectedMax: promotion.averageHourlyRedemptions * 3
+            expectedMax: averageHourlyRedemptions * 3
           });
 
-          this.notificationService.notifyAdmin('promotion_alert', {
-            type: 'high_redemption_rate',
-            promotionId: promotion.id,
-            code: promotion.code,
-            message: `Unusually high redemption rate detected for promotion ${promotion.code}`
-          });
+          if (this.notificationService) {
+            this.notificationService.notifyAdmin('promotion_alert', {
+              type: 'high_redemption_rate',
+              promotionId: promotion.id,
+              code: promotion.code,
+              message: `Unusually high redemption rate detected for promotion ${promotion.code}`
+            });
+          }
         }
       }
     } catch (error) {
@@ -79,35 +95,58 @@ class PromotionMonitoringService {
 
   async monitorCampaignPerformance() {
     try {
-      const activeCampaigns = await PromotionCampaign.findAll({
-        where: { status: 'active' },
-        include: [{
-          model: Promotion,
-          as: 'promotions'
-        }]
-      });
+      // Get active campaigns with their promotions
+      const activeCampaigns = await db.query(`
+        SELECT 
+          pc.*,
+          GROUP_CONCAT(p.id) as promotionIds
+        FROM 
+          promotion_campaigns pc
+        LEFT JOIN 
+          promotions p ON p.campaign_id = pc.id
+        WHERE 
+          pc.status = 'active'
+        GROUP BY 
+          pc.id
+      `);
 
       for (const campaign of activeCampaigns) {
-        const totalRedemptions = campaign.promotions.reduce(
-          (sum, p) => sum + p.currentRedemptions, 
-          0
-        );
+        // Parse promotion IDs
+        const promotionIds = campaign.promotionIds ? campaign.promotionIds.split(',') : [];
+        
+        if (promotionIds.length === 0) continue;
+        
+        // Calculate total redemptions
+        const [redemptionsResult] = await db.query(`
+          SELECT 
+            SUM(current_redemptions) as totalRedemptions
+          FROM 
+            promotions
+          WHERE 
+            id IN (?)
+        `, [promotionIds]);
+        
+        const totalRedemptions = redemptionsResult?.totalRedemptions || 0;
 
-        const totalRevenue = await Order.sum('totalAmount', {
-          include: [{
-            model: UserPromotion,
-            where: {
-              promotionId: {
-                [Op.in]: campaign.promotions.map(p => p.id)
-              }
-            }
-          }]
-        });
+        // Calculate total revenue from orders using these promotions
+        const [revenueResult] = await db.query(`
+          SELECT 
+            SUM(o.totalAmount) as totalRevenue
+          FROM 
+            orders o
+          JOIN 
+            user_promotions up ON up.orderId = o.id
+          WHERE 
+            up.promotionId IN (?)
+        `, [promotionIds]);
+        
+        const totalRevenue = revenueResult?.totalRevenue || 0;
+        const averageOrderValue = totalRedemptions > 0 ? totalRevenue / totalRedemptions : 0;
 
         const metrics = {
           totalRedemptions,
           totalRevenue,
-          averageOrderValue: totalRevenue / totalRedemptions || 0
+          averageOrderValue
         };
 
         // Log campaign performance metrics
@@ -118,13 +157,17 @@ class PromotionMonitoringService {
           ...metrics
         });
 
-        await campaign.update({
-          metrics: {
-            ...campaign.metrics,
+        // Update campaign metrics
+        const updatedMetrics = JSON.stringify({
+          ...JSON.parse(campaign.metrics || '{}'),
             ...metrics,
             lastUpdated: new Date()
-          }
         });
+        
+        await db.query(
+          'UPDATE promotion_campaigns SET metrics = ? WHERE id = ?',
+          [updatedMetrics, campaign.id]
+        );
 
         if (campaign.budget) {
           const budgetUsagePercent = (campaign.spentAmount / campaign.budget) * 100;
@@ -137,7 +180,7 @@ class PromotionMonitoringService {
               totalBudget: campaign.budget
             });
 
-            if (budgetUsagePercent >= 80 && budgetUsagePercent < 90) {
+            if (budgetUsagePercent >= 80 && budgetUsagePercent < 90 && this.notificationService) {
               this.notificationService.notifyAdmin('campaign_alert', {
                 type: 'budget_warning',
                 campaignId: campaign.id,
@@ -158,33 +201,39 @@ class PromotionMonitoringService {
   async detectSuspiciousActivity() {
     const timeWindow = new Date();
     timeWindow.setMinutes(timeWindow.getMinutes() - 30);
+    const timeWindowStr = timeWindow.toISOString().slice(0, 19).replace('T', ' ');
 
     try {
-      const suspiciousUsers = await UserPromotion.findAll({
-        attributes: [
-          'userId',
-          [sequelize.fn('COUNT', sequelize.col('id')), 'redemptionCount']
-        ],
-        where: {
-          createdAt: { [Op.gte]: timeWindow }
-        },
-        group: ['userId'],
-        having: sequelize.literal('COUNT(id) > 5')
-      });
+      // Find users with suspicious redemption patterns
+      const suspiciousUsers = await db.query(`
+        SELECT 
+          userId, 
+          COUNT(id) as redemptionCount
+        FROM 
+          user_promotions
+        WHERE 
+          createdAt >= ?
+        GROUP BY 
+          userId
+        HAVING 
+          COUNT(id) > 5
+      `, [timeWindowStr]);
 
-      for (const user of suspiciousUsers) {
-        logSuspiciousActivity({
-          type: 'multiple_redemptions',
-          userId: user.userId,
-          redemptionCount: user.get('redemptionCount'),
-          timeWindow: '30min'
-        });
+        for (const user of suspiciousUsers) {
+          logSuspiciousActivity({
+            type: 'multiple_redemptions',
+            userId: user.userId,
+          redemptionCount: user.redemptionCount,
+            timeWindow: '30min'
+          });
 
-        this.notificationService.notifyAdmin('promotion_alert', {
-          type: 'suspicious_activity',
-          userId: user.userId,
-          message: `Suspicious promotion redemption activity detected for user ${user.userId}`
-        });
+          if (this.notificationService) {
+            this.notificationService.notifyAdmin('promotion_alert', {
+              type: 'suspicious_activity',
+              userId: user.userId,
+              message: `Suspicious promotion redemption activity detected for user ${user.userId}`
+            });
+          }
       }
     } catch (error) {
       logPromotionError(error, {
@@ -195,38 +244,47 @@ class PromotionMonitoringService {
   }
 
   async updatePromotionStatuses() {
-    const now = new Date();
-
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    
     try {
-      // Expire promotions past end date
-      const expiredCount = await Promotion.update(
-        { status: 'expired' },
-        {
-          where: {
-            status: 'active',
-            endDate: { [Op.lt]: now }
-          }
-        }
-      );
+      // Check for promotions that should be active based on dates
+      await db.query(`
+        UPDATE promotions 
+        SET isActive = true
+        WHERE 
+          isActive = false AND 
+          start_date <= ? AND 
+          end_date > ? AND
+          (max_redemptions IS NULL OR current_redemptions < max_redemptions)
+      `, [now, now]);
 
-      // Auto-activate scheduled promotions
-      const activatedCount = await Promotion.update(
-        { status: 'active' },
-        {
-          where: {
-            status: 'scheduled',
-            startDate: { [Op.lte]: now },
-            endDate: { [Op.gt]: now }
-          }
-        }
-      );
+      // Check for promotions that should be deactivated
+      await db.query(`
+        UPDATE promotions 
+        SET isActive = false
+        WHERE 
+          isActive = true AND
+          (end_date <= ? OR (max_redemptions IS NOT NULL AND current_redemptions >= max_redemptions))
+      `, [now]);
+      
+      // Log promotions that were updated
+      const updatedPromotions = await db.query(`
+        SELECT id, code, name, isActive
+        FROM promotions
+        WHERE last_modified >= DATE_SUB(?, INTERVAL 5 MINUTE)
+      `, [now]);
 
+      if (updatedPromotions.length > 0) {
       logPromotionActivity({
-        type: 'status_update',
-        expiredCount: expiredCount[0],
-        activatedCount: activatedCount[0],
-        timestamp: now
-      });
+          type: 'status_updates',
+          count: updatedPromotions.length,
+          promotions: updatedPromotions.map(p => ({
+            id: p.id,
+            code: p.code,
+            isActive: p.isActive
+          }))
+        });
+      }
     } catch (error) {
       logPromotionError(error, {
         operation: 'updatePromotionStatuses'
@@ -234,22 +292,109 @@ class PromotionMonitoringService {
     }
   }
 
-  startMonitoring() {
-    logPromotionActivity({
-      type: 'monitoring_started',
-      message: 'Promotion monitoring service started'
-    });
+  async monitorPromotions() {
+    console.log('[PromotionMonitoring] Running scheduled promotion monitoring...');
+    try {
+      await this.deactivateExpiredPromotions();
+      await this.checkLowRedemptions();
+      console.log('[PromotionMonitoring] Completed promotion monitoring check.');
+    } catch (error) {
+      console.error('[PromotionMonitoring] Error:', error);
+    }
+  }
 
-    // Run health check every 5 minutes
-    setInterval(() => {
-      this.monitorHealthMetrics();
-    }, 5 * 60 * 1000);
+  async deactivateExpiredPromotions() {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    
+    // Get expired but still active promotions
+    const expiredPromotions = await db.query(
+      'SELECT * FROM promotions WHERE isActive = true AND end_date < ?',
+      [now]
+    );
+    
+    if (expiredPromotions.length > 0) {
+      console.log(`[PromotionMonitoring] Found ${expiredPromotions.length} expired promotions.`);
+      
+      // Deactivate expired promotions
+      await db.query(
+        'UPDATE promotions SET isActive = false WHERE end_date < ?',
+        [now]
+      );
+      
+      // Log deactivations
+      for (const promo of expiredPromotions) {
+        console.log(`[PromotionMonitoring] Deactivated expired promotion: ${promo.code} (ID: ${promo.id})`);
+        
+        // Log the action in the admin activity log
+        await db.query(
+          'INSERT INTO user_activity_logs (userId, action, details, timestamp) VALUES (?, ?, ?, NOW())',
+          [
+            1, // Admin user ID
+            'system_promotion_expired',
+            JSON.stringify({
+              promotionId: promo.id,
+              code: promo.code,
+              name: promo.name,
+              endDate: promo.end_date
+            })
+          ]
+        );
+      }
+    }
+  }
 
-    // Run status updates every minute
-    setInterval(() => {
-      this.updatePromotionStatuses();
-    }, 60 * 1000);
+  async checkLowRedemptions() {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    
+    // Get active promotions that are about to expire (in next 48 hours) with low redemption rates
+    const lowRedemptionPromotions = await db.query(`
+      SELECT 
+        p.*,
+        (p.current_redemptions / p.max_redemptions) * 100 as redemption_percent
+      FROM 
+        promotions p
+      WHERE 
+        p.isActive = true 
+        AND p.end_date BETWEEN ? AND DATE_ADD(?, INTERVAL 48 HOUR)
+        AND p.max_redemptions > 0
+        AND (p.current_redemptions / p.max_redemptions) * 100 < 30
+    `, [now, now]);
+    
+    if (lowRedemptionPromotions.length > 0) {
+      console.log(`[PromotionMonitoring] Found ${lowRedemptionPromotions.length} promotions with low redemption rates that are expiring soon.`);
+      
+      // Log alert for each promotion with low redemptions
+      for (const promo of lowRedemptionPromotions) {
+        console.log(`[PromotionMonitoring] Low redemption alert: ${promo.code} (${promo.redemption_percent.toFixed(2)}% used, expires ${promo.end_date})`);
+        
+        // Create notification for admin
+        await db.query(
+          'INSERT INTO notifications (userId, title, message, type, data, isRead) VALUES (?, ?, ?, ?, ?, false)',
+          [
+            1, // Admin user ID
+            'Low Promotion Usage Alert',
+            `Promotion ${promo.code} (${promo.name}) has only ${promo.redemption_percent.toFixed(2)}% redemption and will expire soon.`,
+            'promotion_alert',
+            JSON.stringify({
+              promotionId: promo.id,
+              code: promo.code,
+              name: promo.name,
+              redemptionPercent: promo.redemption_percent,
+              endDate: promo.end_date
+            })
+          ]
+        );
+      }
+    }
+  }
+
+  setupScheduledJobs() {
+    // Run every 6 hours
+    setInterval(() => this.monitorPromotions(), 6 * 60 * 60 * 1000);
+    
+    // Also run once when service starts
+    setTimeout(() => this.monitorPromotions(), 5000);
   }
 }
 
-module.exports = PromotionMonitoringService;
+module.exports = new PromotionMonitoringService();

@@ -1,12 +1,14 @@
+const { DataTypes } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
   const Notification = sequelize.define('Notification', {
     id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
       primaryKey: true
     },
     userId: {
-      type: DataTypes.UUID,
+      type: DataTypes.INTEGER,
       allowNull: true, // Allow null for system-wide notifications
       references: {
         model: 'Users',
@@ -14,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
       }
     },
     type: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(50),
       allowNull: false,
       comment: 'Type of notification (ORDER_STATUS, DRIVER_LOCATION, SYSTEM, PROMOTION, etc.)'
     },
@@ -27,8 +29,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     data: {
-      type: DataTypes.JSONB,
-      defaultValue: {}
+      type: DataTypes.JSON,
     },
     priority: {
       type: DataTypes.ENUM('low', 'medium', 'high'),
@@ -52,6 +53,25 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DATE,
       allowNull: true
     },
+    active: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    endpoint: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      unique: true,
+      comment: 'Subscription endpoint URL'
+    },
+    subscription: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Stringified web push subscription data'
+    },
+    userAgent: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
     createdAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
@@ -63,27 +83,19 @@ module.exports = (sequelize, DataTypes) => {
   }, {
     tableName: 'Notifications',
     timestamps: true,
-    indexes: [
-      {
-        fields: ['userId']
-      },
-      {
-        fields: ['type']
-      },
-      {
-        fields: ['isSystemWide']
-      },
-      {
-        fields: ['validUntil']
-      }
-    ]
+    indexes: [],
+    sync: {
+      alter: false,
+      force: false
+    }
   });
 
   Notification.associate = function(models) {
-    Notification.belongsTo(models.User, {
-      foreignKey: 'userId',
-      as: 'user'
-    });
+    // Commented out to fix loading issues
+    // Notification.belongsTo(models.User, {
+    //   foreignKey: 'userId',
+    //   as: 'user'
+    // });
   };
 
   return Notification;

@@ -1,8 +1,7 @@
 const { validationResult } = require('express-validator');
-const { Restaurant, Category, Product, Review, User } = require('../models');
+const Restaurant = require('../models/restaurant.model');
 const { AppError } = require('../middleware/error.middleware');
-const { Op } = require('sequelize');
-const sequelize = require('sequelize');
+const db = require('../config/database');
 const { format } = require('date-fns');
 
 /**
@@ -50,128 +49,139 @@ exports.getAllRestaurants = async (req, res, next) => {
       isActive = true
     } = req.query;
 
-    // Build filter object
-    const filter = {
-      isActive: isActive === 'true' || isActive === true
-    };
+    // Build basic filter object
+    const filter = { isActive: true };
 
-    // Add search filter if provided
-    if (search) {
-      filter[Op.or] = [
-        { name: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } },
-        { cuisineType: { [Op.like]: `%${search}%` } },
-        { address: { [Op.like]: `%${search}%` } }
-      ];
-    }
+    // Due to the simplification of our model, advanced filtering needs to be handled manually
+    // These filters will be applied after we get results from the database
 
-    // Add cuisine filter if provided
-    if (cuisine && cuisine !== 'null' && cuisine !== 'all') {
-      filter.cuisineType = cuisine;
-    }
-
-    // Add rating filter
-    if (minRating && minRating !== 'null') {
-      filter.rating = { [Op.gte]: parseFloat(minRating) };
-    }
-
-    // Add delivery fee filter
-    if (maxDeliveryFee && maxDeliveryFee !== 'null') {
-      filter.deliveryFee = { [Op.lte]: parseFloat(maxDeliveryFee) };
-    }
-
-    // Add delivery time filter
-    if (maxDeliveryTime && maxDeliveryTime !== 'null') {
-      filter.estimatedDeliveryTime = { [Op.lte]: parseInt(maxDeliveryTime) };
-    }
-
-    // Add price range filter
-    if (priceRange && priceRange !== 'null') {
-      filter.priceRange = priceRange;
-    }
-
-    // Calculate pagination
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Create include array for associations
-    const includeArray = [
-      {
-        model: Category,
-        as: 'categories',
-        attributes: ['id', 'name'],
-        required: false
-      }
-    ];
-
-    // If category_id is provided, filter by category
-    if (category_id && category_id !== 'null') {
-      includeArray[0].where = { id: category_id };
-      includeArray[0].required = true;
-    }
-
-    // Get restaurants
-    let restaurants = await Restaurant.findAndCountAll({
-      where: filter,
-      include: includeArray,
-      order: [[sort, order]],
-      limit: parseInt(limit),
-      offset
-    });
-
-    // If coordinates are provided, calculate distance for each restaurant
-    let filteredRestaurants = restaurants.rows;
-    let totalCount = restaurants.count;
-
-    if (latitude && longitude) {
-      // Add distance to each restaurant
-      filteredRestaurants = restaurants.rows.map(restaurant => {
-        const rest = restaurant.toJSON();
-        if (restaurant.latitude && restaurant.longitude) {
-          rest.distance = calculateDistance(
-            parseFloat(latitude),
-            parseFloat(longitude),
-            parseFloat(restaurant.latitude),
-            parseFloat(restaurant.longitude)
-          );
-        } else {
-          rest.distance = null;
-        }
-        return rest;
+    // Get restaurants with basic filtering and pagination
+    try {
+      // Get all restaurants - we'll filter manually since our model doesn't have the same
+      // advanced filtering capabilities as Sequelize
+      const allRestaurants = await Restaurant.findAll({ 
+        where: filter, 
+        order: `${sort} ${order}` 
       });
 
-      // Filter by max distance if provided
-      if (maxDistance && maxDistance !== 'null') {
+      // Apply filters manually
+      let filteredRestaurants = allRestaurants;
+      
+      // Apply search filter if provided
+      if (search) {
+        const searchLower = search.toLowerCase();
         filteredRestaurants = filteredRestaurants.filter(r => 
-          r.distance !== null && r.distance <= parseFloat(maxDistance)
+          (r.name && r.name.toLowerCase().includes(searchLower)) ||
+          (r.description && r.description.toLowerCase().includes(searchLower)) ||
+          (r.cuisineType && r.cuisineType.toLowerCase().includes(searchLower)) ||
+          (r.address && r.address.toLowerCase().includes(searchLower))
         );
-        totalCount = filteredRestaurants.length;
       }
 
-      // Sort by distance if requested
-      if (sort === 'distance') {
-        filteredRestaurants.sort((a, b) => {
-          // Handle null distances (put them at the end)
-          if (a.distance === null) return 1;
-          if (b.distance === null) return -1;
-          
-          // Sort by distance
-          return order === 'asc' ? a.distance - b.distance : b.distance - a.distance;
-        });
+      // Apply cuisine filter if provided
+      if (cuisine && cuisine !== 'null' && cuisine !== 'all') {
+        filteredRestaurants = filteredRestaurants.filter(r => 
+          r.cuisineType && r.cuisineType.toLowerCase() === cuisine.toLowerCase()
+        );
       }
+
+      // Apply rating filter
+      if (minRating && minRating !== 'null') {
+        const minRatingValue = parseFloat(minRating);
+        filteredRestaurants = filteredRestaurants.filter(r => 
+          r.rating && r.rating >= minRatingValue
+        );
+      }
+
+      // Apply delivery fee filter
+      if (maxDeliveryFee && maxDeliveryFee !== 'null') {
+        const maxFeeValue = parseFloat(maxDeliveryFee);
+        filteredRestaurants = filteredRestaurants.filter(r => 
+          r.deliveryFee && r.deliveryFee <= maxFeeValue
+        );
+      }
+
+      // Apply delivery time filter
+      if (maxDeliveryTime && maxDeliveryTime !== 'null') {
+        const maxTimeValue = parseInt(maxDeliveryTime);
+        filteredRestaurants = filteredRestaurants.filter(r => 
+          r.estimatedDeliveryTime && r.estimatedDeliveryTime <= maxTimeValue
+        );
+      }
+
+      // Apply price range filter
+      if (priceRange && priceRange !== 'null') {
+        // If priceRange is a comma-separated range like "10000,50000"
+        if (priceRange.includes(',')) {
+          const [min, max] = priceRange.split(',').map(Number);
+          filteredRestaurants = filteredRestaurants.filter(r => 
+            r.priceRange && r.priceRange >= min && r.priceRange <= max
+          );
+        } else {
+          filteredRestaurants = filteredRestaurants.filter(r => 
+            r.priceRange && r.priceRange === parseInt(priceRange)
+          );
+        }
+      }
+
+      // Calculate distance if coordinates are provided
+      if (latitude && longitude) {
+        filteredRestaurants = filteredRestaurants.map(restaurant => {
+          const rest = { ...restaurant };
+          if (restaurant.latitude && restaurant.longitude) {
+            rest.distance = calculateDistance(
+              parseFloat(latitude),
+              parseFloat(longitude),
+              parseFloat(restaurant.latitude),
+              parseFloat(restaurant.longitude)
+            );
+          } else {
+            rest.distance = null;
+          }
+          return rest;
+        });
+
+        // Filter by max distance if provided
+        if (maxDistance && maxDistance !== 'null') {
+          const maxDistValue = parseFloat(maxDistance);
+          filteredRestaurants = filteredRestaurants.filter(r => 
+            r.distance !== null && r.distance <= maxDistValue
+          );
+        }
+
+        // Sort by distance if requested
+        if (sort === 'distance') {
+          filteredRestaurants.sort((a, b) => {
+            // Handle null distances (put them at the end)
+            if (a.distance === null) return 1;
+            if (b.distance === null) return -1;
+            
+            // Sort by distance
+            return order === 'asc' ? a.distance - b.distance : b.distance - a.distance;
+          });
+        }
+      }
+
+      // Get total count of filtered restaurants before pagination
+      const totalCount = filteredRestaurants.length;
 
       // Apply pagination manually
+      const offset = (parseInt(page) - 1) * parseInt(limit);
       filteredRestaurants = filteredRestaurants.slice(offset, offset + parseInt(limit));
-    }
 
-    res.status(200).json({
-      status: 'success',
-      results: totalCount,
-      totalPages: Math.ceil(totalCount / parseInt(limit)),
-      currentPage: parseInt(page),
-      data: {
-        restaurants: filteredRestaurants
-      }
-    });
+      res.status(200).json({
+        status: 'success',
+        results: totalCount,
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        currentPage: parseInt(page),
+        data: {
+          restaurants: filteredRestaurants
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching restaurants:', error);
+      throw new AppError('Error fetching restaurants', 500);
+    }
   } catch (error) {
     next(error);
   }
@@ -197,51 +207,48 @@ exports.searchRestaurantsByLocation = async (req, res, next) => {
       return next(new AppError('Latitude and longitude are required', 400));
     }
 
-    // Get all restaurants
-    const restaurants = await Restaurant.findAll({
-      where: { isActive: true },
-      include: [
-        {
-          model: Category,
-          as: 'categories',
-          attributes: ['id', 'name'],
-          required: false
+    try {
+      // Get all active restaurants
+      const restaurants = await Restaurant.findAll({
+        where: { isActive: true }
+      });
+
+      // Calculate distance and filter
+      const nearbyRestaurants = restaurants
+        .map(restaurant => {
+          const rest = { ...restaurant };
+          if (restaurant.latitude && restaurant.longitude) {
+            rest.distance = calculateDistance(
+              parseFloat(latitude),
+              parseFloat(longitude),
+              parseFloat(restaurant.latitude),
+              parseFloat(restaurant.longitude)
+            );
+          } else {
+            rest.distance = null;
+          }
+          return rest;
+        })
+        .filter(rest => rest.distance !== null && rest.distance <= parseFloat(radius))
+        .sort((a, b) => a.distance - b.distance);
+
+      // Manual pagination
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      const paginatedResults = nearbyRestaurants.slice(offset, offset + parseInt(limit));
+
+      res.status(200).json({
+        status: 'success',
+        results: nearbyRestaurants.length,
+        totalPages: Math.ceil(nearbyRestaurants.length / parseInt(limit)),
+        currentPage: parseInt(page),
+        data: {
+          restaurants: paginatedResults
         }
-      ]
-    });
-
-    // Calculate distance and filter
-    const nearbyRestaurants = restaurants
-      .map(restaurant => {
-        const rest = restaurant.toJSON();
-        if (restaurant.latitude && restaurant.longitude) {
-          rest.distance = calculateDistance(
-            parseFloat(latitude),
-            parseFloat(longitude),
-            parseFloat(restaurant.latitude),
-            parseFloat(restaurant.longitude)
-          );
-        } else {
-          rest.distance = null;
-        }
-        return rest;
-      })
-      .filter(rest => rest.distance !== null && rest.distance <= parseFloat(radius))
-      .sort((a, b) => a.distance - b.distance);
-
-    // Manual pagination
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedResults = nearbyRestaurants.slice(offset, offset + parseInt(limit));
-
-    res.status(200).json({
-      status: 'success',
-      results: nearbyRestaurants.length,
-      totalPages: Math.ceil(nearbyRestaurants.length / parseInt(limit)),
-      currentPage: parseInt(page),
-      data: {
-        restaurants: paginatedResults
-      }
-    });
+      });
+    } catch (error) {
+      console.error('Error searching restaurants by location:', error);
+      next(new AppError('Error searching restaurants by location', 500));
+    }
   } catch (error) {
     next(error);
   }
@@ -257,76 +264,16 @@ exports.getRestaurantById = async (req, res, next) => {
     const { id } = req.params;
     const { latitude, longitude } = req.query;
 
-    const restaurant = await Restaurant.findByPk(id, {
-      include: [
-        {
-          model: Category,
-          as: 'categories',
-          attributes: ['id', 'name', 'description', 'displayOrder'],
-          include: [
-            {
-              model: Product,
-              as: 'products',
-              where: { status: 'available' },
-              required: false,
-              attributes: [
-                'id', 'name', 'description', 'price', 'image', 
-                'preparationTime', 'isSpicy', 'isVegetarian',
-                'isVegan', 'isGlutenFree', 'spicyLevel',
-                'isPopular', 'isRecommended', 'allergens', 
-                'ingredients', 'nutritionalInfo'
-              ]
-            }
-          ]
-        },
-        {
-          model: Review,
-          as: 'reviews',
-          include: [
-            {
-              model: User,
-              as: 'user',
-              attributes: ['id', 'fullName', 'profileImage']
-            }
-          ],
-          limit: 5,
-          where: { isVisible: true },
-          order: [['createdAt', 'DESC']],
-          attributes: ['id', 'rating', 'comment', 'createdAt', 'images']
-        }
-      ],
-      attributes: {
-        include: [
-          [
-            sequelize.literal(`(
-              SELECT AVG(rating)
-              FROM reviews
-              WHERE restaurantId = Restaurant.id
-              AND isVisible = true
-            )`),
-            'averageRating'
-          ],
-          [
-            sequelize.literal(`(
-              SELECT COUNT(*)
-              FROM reviews
-              WHERE restaurantId = Restaurant.id
-              AND isVisible = true
-            )`),
-            'totalReviews'
-          ]
-        ]
-      }
-    });
+    // Get restaurant by ID using direct SQL
+    const restaurant = await Restaurant.findByPk(id);
 
     if (!restaurant) {
       return next(new AppError('Restaurant not found', 404));
     }
 
     // Calculate distance if coordinates provided
-    let result = restaurant.toJSON();
     if (latitude && longitude && restaurant.latitude && restaurant.longitude) {
-      result.distance = calculateDistance(
+      restaurant.distance = calculateDistance(
         parseFloat(latitude),
         parseFloat(longitude),
         parseFloat(restaurant.latitude),
@@ -334,66 +281,70 @@ exports.getRestaurantById = async (req, res, next) => {
       );
     }
 
-    // Calculate current open status
-    const currentTime = new Date();
-    const dayOfWeek = format(currentTime, 'EEEE').toLowerCase();
-    const currentHours = result.openingHours?.[dayOfWeek];
-    
-    result.isCurrentlyOpen = false;
-    if (currentHours?.enabled) {
-      const now = format(currentTime, 'HH:mm');
-      result.isCurrentlyOpen = now >= currentHours.open && now <= currentHours.close;
-    }
-
-    // Check for temporary closure
-    if (result.tempClosureSettings?.isTemporarilyClosed) {
-      result.isCurrentlyOpen = false;
-      result.closureReason = result.tempClosureSettings.showReason 
-        ? result.tempClosureSettings.closureReason 
-        : 'Temporarily closed';
-      result.reopenDate = result.tempClosureSettings.reopenDate;
-    }
-
-    // Get three most recent reviews
-    const recentReviews = await Review.findAll({
-      where: { restaurantId: id, isVisible: true },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'fullName', 'profileImage']
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: 3
-    });
-    
-    result.recentReviews = recentReviews;
-
-    // Get restaurant settings if exists
-    const settings = await db.RestaurantSettings.findOne({
-      where: { restaurantId: id }
-    });
-    
-    if (settings) {
-      result.settings = settings;
-      // Reflect current availability from settings
-      if (settings.isOpen !== undefined) {
-        result.isCurrentlyOpen = settings.isOpen && result.isCurrentlyOpen;
+    // Get restaurant categories
+    try {
+      const categories = await db.query(`
+        SELECT c.id, c.name, c.description, c.displayOrder 
+        FROM categories c
+        JOIN restaurant_categories rc ON c.id = rc.category_id
+        WHERE rc.restaurant_id = ?
+        ORDER BY c.displayOrder
+      `, [id]);
+      
+      // Get products for each category
+      for (const category of categories) {
+        const products = await db.query(`
+          SELECT id, name, description, price, image, preparationTime, 
+            isSpicy, isVegetarian, isVegan, isGlutenFree, spicyLevel,
+            isPopular, isRecommended, allergens, ingredients, nutritionalInfo
+          FROM products
+          WHERE category_id = ? AND status = 'available'
+          ORDER BY displayOrder
+        `, [category.id]);
+        
+        category.products = products;
       }
       
-      // Add estimated preparation time from settings if available
-      if (settings.estimatedPrepTime) {
-        result.currentEstimatedPrepTime = settings.estimatedPrepTime;
-      }
-    }
-
+      // Get reviews
+      const reviews = await db.query(`
+        SELECT r.id, r.rating, r.comment, r.createdAt, r.images,
+          u.id as userId, u.fullName, u.profileImage
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        WHERE r.restaurant_id = ? AND r.isVisible = 1
+        ORDER BY r.createdAt DESC
+        LIMIT 5
+      `, [id]);
+      
+      // Structure reviews with user info
+      const formattedReviews = reviews.map(review => ({
+        id: review.id,
+        rating: review.rating,
+        comment: review.comment,
+        createdAt: review.createdAt,
+        images: review.images,
+        user: {
+          id: review.userId,
+          fullName: review.fullName,
+          profileImage: review.profileImage
+        }
+      }));
+      
+      // Return complete restaurant data
     res.status(200).json({
       status: 'success',
       data: {
-        restaurant: result
-      }
-    });
+          restaurant: {
+            ...restaurant,
+            categories,
+            reviews: formattedReviews
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Error getting restaurant details:', error);
+      next(new AppError('Error fetching restaurant details', 500));
+    }
   } catch (error) {
     next(error);
   }
@@ -622,6 +573,73 @@ exports.getRestaurantMenu = async (req, res, next) => {
 };
 
 /**
+ * Update restaurant settings
+ * @route PATCH /api/restaurants/:id/settings
+ * @access Private (Restaurant Owner)
+ */
+console.log('updateRestaurantSettings method exists in exports:', exports.updateRestaurantSettings !== undefined);
+exports.updateRestaurantSettings = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { 
+      openingHours, 
+      deliverySettings, 
+      notificationPreferences,
+      specialHolidays,
+      tempClosureSettings,
+      menuAvailability
+    } = req.body;
+
+    // Find restaurant and verify ownership
+    const restaurant = await Restaurant.findOne({
+      where: {
+        id,
+        userId: req.user.id
+      }
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    // Prepare updates
+    const updates = {};
+    if (openingHours) updates.openingHours = openingHours;
+    if (deliverySettings) updates.deliverySettings = deliverySettings;
+    if (notificationPreferences) updates.notificationPreferences = notificationPreferences;
+    if (specialHolidays) updates.specialHolidays = specialHolidays;
+    if (tempClosureSettings) updates.tempClosureSettings = tempClosureSettings;
+    if (menuAvailability) updates.menuAvailability = menuAvailability;
+
+    // Update restaurant
+    await restaurant.update(updates);
+
+    // Emit socket events if needed
+    const io = req.app.get('socketio');
+    if (io) {
+      if (deliverySettings) {
+        io.to(`restaurant:${id}`).emit('delivery_settings_updated', deliverySettings);
+      }
+      if (tempClosureSettings) {
+        io.to(`restaurant:${id}`).emit('temp_closure_updated', tempClosureSettings);
+      }
+      if (menuAvailability) {
+        io.to(`restaurant:${id}`).emit('menu_availability_updated', menuAvailability);
+      }
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        restaurant
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get restaurant reviews
  * @route GET /api/restaurants/:id/reviews
  * @access Public
@@ -672,28 +690,18 @@ exports.getFeaturedRestaurants = async (req, res, next) => {
     const { latitude, longitude, limit = 6 } = req.query;
     
     // Get restaurants with highest ratings
-    const restaurants = await Restaurant.findAll({
-      where: { 
-        isActive: true,
-        rating: { [Op.gte]: 4.0 } // Featured restaurants have good ratings
-      },
-      include: [
-        {
-          model: Category,
-          as: 'categories',
-          attributes: ['id', 'name'],
-          required: false
-        }
-      ],
-      order: [['rating', 'DESC']],
-      limit: parseInt(limit)
-    });
+    const restaurants = await db.query(`
+      SELECT * FROM restaurants 
+      WHERE isActive = 1 AND rating >= 4.0
+      ORDER BY rating DESC
+      LIMIT ?
+    `, [parseInt(limit)]);
 
     // Calculate distance if user coordinates provided
     let results = restaurants;
     if (latitude && longitude) {
       results = restaurants.map(restaurant => {
-        const rest = restaurant.toJSON();
+        const rest = { ...restaurant };
         if (restaurant.latitude && restaurant.longitude) {
           rest.distance = calculateDistance(
             parseFloat(latitude),
@@ -701,6 +709,8 @@ exports.getFeaturedRestaurants = async (req, res, next) => {
             parseFloat(restaurant.latitude),
             parseFloat(restaurant.longitude)
           );
+        } else {
+          rest.distance = null;
         }
         return rest;
       });
@@ -726,13 +736,14 @@ exports.getPopularRestaurants = async (req, res, next) => {
   try {
     const { limit = 8 } = req.query;
     
-    // Get restaurants with highest order count (would require a join in a real application)
-    // For simplicity, we'll use rating and random order for now
-    const restaurants = await Restaurant.findAll({
-      where: { isActive: true },
-      order: [['rating', 'DESC'], sequelize.literal('RAND()')],
-      limit: parseInt(limit)
-    });
+    // Get restaurants with highest rating using direct SQL
+    // In a real app, we would consider order count
+    const restaurants = await db.query(`
+      SELECT * FROM restaurants 
+      WHERE isActive = 1 
+      ORDER BY rating DESC, RAND()
+      LIMIT ?
+    `, [parseInt(limit)]);
 
     res.status(200).json({
       status: 'success',
@@ -1005,94 +1016,17 @@ exports.getSearchSuggestions = async (req, res, next) => {
  */
 exports.getCuisineTypes = async (req, res, next) => {
   try {
-    const cuisines = await Restaurant.findAll({
-      attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('cuisineType')), 'cuisine']],
-      where: { isActive: true }
-    });
+    // Get distinct cuisine types from restaurants table using direct SQL
+    const cuisines = await db.query(`
+      SELECT DISTINCT cuisineType as cuisine 
+      FROM restaurants 
+      WHERE isActive = 1 AND cuisineType IS NOT NULL
+    `);
 
+    // Filter out any null or empty values and return
     res.json({
       status: 'success',
-      data: cuisines.map(c => c.get('cuisine')).filter(Boolean)
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Get popular cuisine types
- * @route GET /api/restaurants/cuisines
- * @access Public
- */
-exports.getCuisineTypes = async (req, res, next) => {
-  try {
-    const cuisines = await Category.findAll({
-      attributes: ['id', 'name'],
-      include: [{
-        model: Restaurant,
-        attributes: [],
-        through: { attributes: [] }
-      }],
-      group: ['Category.id'],
-      having: sequelize.literal('COUNT(Restaurants.id) > 0')
-    });
-
-    res.json({
-      status: 'success',
-      data: cuisines
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Update restaurant settings
- * @route PATCH /api/restaurants/:id/settings
- * @access Private (Restaurant Owner)
- */
-exports.updateRestaurantSettings = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { openingHours, deliverySettings, notificationPreferences } = req.body;
-
-    // Find restaurant and verify ownership
-    const restaurant = await Restaurant.findOne({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
-
-    if (!restaurant) {
-      return next(new AppError('Restaurant not found or you are not authorized', 404));
-    }
-
-    // Update settings
-    const updates = {};
-    if (openingHours) updates.openingHours = openingHours;
-    if (deliverySettings) updates.deliverySettings = deliverySettings;
-    if (notificationPreferences) updates.notificationPreferences = notificationPreferences;
-
-    await restaurant.update(updates);
-
-    // If auto-accept setting changed, update socket subscription
-    if (deliverySettings?.autoAccept !== undefined) {
-      const socket = req.app.get('socketio');
-      const room = `restaurant:${restaurant.id}`;
-      
-      if (deliverySettings.autoAccept) {
-        socket.to(room).emit('auto_accept_enabled');
-      } else {
-        socket.to(room).emit('auto_accept_disabled');
-      }
-    }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        restaurant
-      }
+      data: cuisines.map(c => c.cuisine).filter(Boolean)
     });
   } catch (error) {
     next(error);
@@ -1188,7 +1122,12 @@ exports.updateSpecialHolidays = async (req, res, next) => {
   }
 };
 
-const updateRestaurantAvailability = async (req, res, next) => {
+/**
+ * Update restaurant availability
+ * @route PATCH /api/restaurants/:id/availability
+ * @access Private (Restaurant Owner)
+ */
+exports.updateRestaurantAvailability = async (req, res, next) => {
   try {
     const { restaurantId } = req.params;
     const { 
@@ -1252,7 +1191,12 @@ const updateRestaurantAvailability = async (req, res, next) => {
   }
 };
 
-const getRestaurantSettings = async (req, res, next) => {
+/**
+ * Get restaurant settings
+ * @route GET /api/restaurants/:id/settings
+ * @access Private (Restaurant Owner)
+ */
+exports.getRestaurantSettings = async (req, res, next) => {
   try {
     const { restaurantId } = req.params;
 
@@ -1388,14 +1332,6 @@ const handleExistingOrdersOnClosure = async (restaurantId, closureSettings) => {
       });
     }
   }
-};
-
-module.exports = {
-  // ...existing exports...
-  updateRestaurantAvailability,
-  getRestaurantSettings,
-  updateMenuAvailability,
-  updateTempClosure
 };
 
 /**
@@ -1594,6 +1530,80 @@ exports.updatePassword = async (req, res, next) => {
       status: 'success',
       message: 'Password updated successfully'
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get nearby restaurants based on coordinates
+ * @route GET /api/restaurants/nearby
+ * @access Public
+ */
+exports.getNearbyRestaurants = async (req, res, next) => {
+  try {
+    const { 
+      lat, 
+      lng, 
+      radius = 5, 
+      limit = 4 
+    } = req.query;
+
+    // Validate coordinates - return empty array instead of error if coordinates are missing
+    if (!lat || !lng) {
+      return res.status(200).json({
+        status: 'success',
+        results: 0,
+        data: {
+          restaurants: []
+        }
+      });
+    }
+
+    try {
+      // Get all active restaurants
+    const allRestaurants = await Restaurant.findAll({
+        where: { isActive: true }
+    });
+
+    // Calculate distance for each restaurant and filter by radius
+    const nearbyRestaurants = allRestaurants
+      .map(restaurant => {
+          const rest = { ...restaurant };
+        if (restaurant.latitude && restaurant.longitude) {
+          rest.distance = calculateDistance(
+            parseFloat(lat),
+            parseFloat(lng),
+            parseFloat(restaurant.latitude),
+            parseFloat(restaurant.longitude)
+          );
+        } else {
+          rest.distance = null;
+        }
+        return rest;
+      })
+      .filter(restaurant => 
+        restaurant.distance !== null && restaurant.distance <= parseFloat(radius)
+      )
+      // Sort by distance (closest first)
+      .sort((a, b) => a.distance - b.distance)
+      // Limit results
+      .slice(0, parseInt(limit));
+
+      // Log successfully finding restaurants
+      console.log(`Found ${nearbyRestaurants.length} nearby restaurants within ${radius}km of lat: ${lat}, lng: ${lng}`);
+
+      return res.status(200).json({
+      status: 'success',
+      results: nearbyRestaurants.length,
+      data: {
+        restaurants: nearbyRestaurants
+      }
+    });
+    } catch (error) {
+      console.error('Error finding nearby restaurants:', error);
+      throw new AppError('Error finding nearby restaurants', 500);
+    }
   } catch (error) {
     next(error);
   }

@@ -1,4 +1,4 @@
-import AdminLayout from '@/views/admin/AdminLayout.vue'
+import AdminLayout from '@/layouts/AdminLayout.vue'
 import AdminDashboard from '@/views/admin/Dashboard.vue'
 import AdminRestaurants from '@/views/admin/Restaurants.vue'
 import AdminUsers from '@/views/admin/Users.vue'
@@ -6,11 +6,14 @@ import AdminDrivers from '@/views/admin/Drivers.vue'
 import AdminOrders from '@/views/admin/Orders.vue'
 import AdminCategories from '@/views/admin/Categories.vue'
 import AdminPromotions from '@/views/admin/Promotions.vue'
-import AdminReports from '@/views/admin/Reports.vue'
+import Analytics from '@/views/admin/Analytics.vue'
 import AdminSettings from '@/views/admin/Settings.vue'
 import ContentManagement from '@/views/admin/ContentManagement.vue'
 import RestaurantVerification from '@/views/admin/RestaurantVerification.vue'
 import SystemMonitoring from '@/views/admin/SystemMonitoring.vue'
+import StaffManagement from '@/views/admin/StaffManagement.vue'
+import DeliverySettings from '@/views/admin/DeliverySettings.vue'
+import ActiveDeliveries from '@/views/admin/ActiveDeliveries.vue'
 
 // Admin route guard
 const adminGuard = (to, from, next) => {
@@ -37,6 +40,50 @@ export const adminRoutes = {
       component: AdminDashboard,
       meta: {
         title: 'Admin Dashboard'
+      }
+    },
+    {
+      path: 'tables/:tableName',
+      name: 'TableManagement',
+      component: () => import('@/views/admin/TableManagement.vue'),
+      props: true,
+      meta: {
+        title: 'Table Management'
+      }
+    },
+    {
+      path: 'tables/:tableName/create',
+      name: 'TableCreate',
+      component: () => import('@/views/admin/TableForm.vue'),
+      props: route => ({ 
+        tableName: route.params.tableName,
+        isEdit: false,
+        id: null
+      }),
+      meta: {
+        title: 'Create Record'
+      }
+    },
+    {
+      path: 'tables/:tableName/edit/:id',
+      name: 'TableEdit',
+      component: () => import('@/views/admin/TableForm.vue'),
+      props: route => ({ 
+        tableName: route.params.tableName,
+        isEdit: true,
+        id: route.params.id
+      }),
+      meta: {
+        title: 'Edit Record'
+      }
+    },
+    {
+      path: 'tables/:tableName/view/:id',
+      name: 'TableView',
+      component: () => import('@/views/admin/TableView.vue'),
+      props: true,
+      meta: {
+        title: 'View Record'
       }
     },
     {
@@ -116,7 +163,7 @@ export const adminRoutes = {
     {
       path: 'reports',
       name: 'AdminReports',
-      component: AdminReports,
+      component: Analytics,
       meta: {
         title: 'Reports & Analytics'
       }
@@ -127,6 +174,30 @@ export const adminRoutes = {
       component: AdminSettings,
       meta: {
         title: 'System Settings'
+      }
+    },
+    {
+      path: 'staff-management',
+      name: 'StaffManagement',
+      component: StaffManagement,
+      meta: {
+        title: 'Staff Permissions Management'
+      }
+    },
+    {
+      path: 'delivery-settings',
+      name: 'DeliverySettings',
+      component: DeliverySettings,
+      meta: {
+        title: 'Delivery Configuration'
+      }
+    },
+    {
+      path: 'deliveries',
+      name: 'ActiveDeliveries',
+      component: ActiveDeliveries,
+      meta: {
+        title: 'Active Deliveries'
       }
     },
     {

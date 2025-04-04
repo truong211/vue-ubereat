@@ -52,11 +52,22 @@ export const actions = {
         ...state.filters
       };
       const response = await adminService.getUsers(params);
+      
+      // Extract data from the response based on our backend format
+      const { data } = response;
+      
+      // Check which response format we got and handle appropriately
+      const users = data.users || [];
+      const pagination = data.pagination || {};
+      const totalResults = data.totalResults || pagination.total || 0;
+      const currentPage = data.currentPage || pagination.page || page;
+      const totalPages = data.totalPages || pagination.totalPages || 1;
+      
       commit('SET_USERS', {
-        users: response.data.users,
-        totalResults: response.data.totalResults,
-        currentPage: response.data.currentPage,
-        totalPages: response.data.totalPages
+        users,
+        totalResults,
+        currentPage,
+        totalPages
       });
     } catch (error) {
       commit('SET_ERROR', error.message);

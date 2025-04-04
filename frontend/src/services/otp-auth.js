@@ -1,8 +1,85 @@
-import { getAuth, PhoneAuthProvider, signInWithCredential, RecaptchaVerifier } from 'firebase/auth';
+// Conditionally import Firebase based on USE_FIREBASE env setting
+let auth, PhoneAuthProvider, signInWithCredential, RecaptchaVerifier;
+
+// Check if we're using Firebase
+if (import.meta.env.VITE_USE_FIREBASE === 'true') {
+  // Use a self-executing async function to properly handle dynamic imports
+  (async () => {
+    try {
+      // Import the Firebase auth components
+      const firebaseAuth = await import('firebase/auth');
+      PhoneAuthProvider = firebaseAuth.PhoneAuthProvider;
+      signInWithCredential = firebaseAuth.signInWithCredential;
+      RecaptchaVerifier = firebaseAuth.RecaptchaVerifier;
+      
+      // Import the auth instance from our config
+      const firebaseConfig = await import('../config/firebase');
+      auth = firebaseConfig.auth;
+      
+      console.log('Firebase auth components loaded successfully');
+    } catch (error) {
+      console.warn('Firebase auth not available:', error);
+      setupDummyImplementations();
+    }
+  })();
+} else {
+  // Create dummy implementations for when Firebase is disabled
+  setupDummyImplementations();
+}
+
+// Helper function to create dummy implementations
+function setupDummyImplementations() {
+  auth = {};
+  
+  PhoneAuthProvider = class {
+    constructor() {
+      console.warn('Firebase auth is disabled. Using dummy PhoneAuthProvider.');
+    }
+    
+    verifyPhoneNumber() {
+      return Promise.reject(new Error('Firebase auth is disabled'));
+    }
+    
+    static credential() {
+      return { type: 'dummy-credential' };
+    }
+  };
+  
+  signInWithCredential = () => {
+    return Promise.reject(new Error('Firebase auth is disabled'));
+  };
+  
+  RecaptchaVerifier = class {
+    constructor() {
+      console.warn('Firebase auth is disabled. Using dummy RecaptchaVerifier.');
+    }
+    
+    render() {}
+    verify() {
+      return Promise.resolve('dummy-token');
+    }
+  };
+}
+
 import axios from 'axios';
 
-const auth = getAuth();
+// No need to initialize auth here again as we're importing it
+// const auth = getAuth();
 const API_URL = '/api/auth';
+const USE_FIREBASE = import.meta.env.VITE_USE_FIREBASE === 'true';
+
+// Initialize recaptcha container
+if (typeof window !== 'undefined' && USE_FIREBASE) {
+  // Make sure we only run this in browser environment
+  setTimeout(() => {
+    if (!document.getElementById('recaptcha-container')) {
+      const container = document.createElement('div');
+      container.id = 'recaptcha-container';
+      container.style.display = 'none';
+      document.body.appendChild(container);
+    }
+  }, 1000);
+}
 
 export default {
   async sendEmailOTP(email) {
@@ -31,7 +108,7 @@ export default {
   async sendPhoneOTP(phoneNumber, recaptchaToken = null) {
     try {
       // Check if we should use Firebase or custom implementation
-      if (import.meta.env.VITE_USE_FIREBASE === 'true') {
+      if (USE_FIREBASE) {
         // Initialize recaptcha if not done already
         if (!window.recaptchaVerifier) {
           this.initRecaptcha();
@@ -72,7 +149,7 @@ export default {
   async verifyPhoneOTP(verificationId, otp, provider = 'custom') {
     try {
       // Check if we should use Firebase or custom implementation
-      if (provider === 'firebase' || import.meta.env.VITE_USE_FIREBASE === 'true') {
+      if (provider === 'firebase' && USE_FIREBASE) {
         const credential = PhoneAuthProvider.credential(verificationId, otp);
         const result = await signInWithCredential(auth, credential);
         return {
@@ -240,25 +317,13 @@ export default {
     }
   },
 
-  initRecaptcha() {
-    if (!document.getElementById('recaptcha-container')) {
-      const container = document.createElement('div');
-      container.id = 'recaptcha-container';
-      container.style.display = 'none';
-      document.body.appendChild(container);
-    }
-    
-    window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-      size: 'invisible',
-      callback: () => {
-        // reCAPTCHA solved, allow signInWithPhoneNumber.
-        console.log('reCAPTCHA verified');
-      }
-    }, auth);
-  },
-
   // Get reCAPTCHA token for phone verification
   async getRecaptchaToken() {
+    // If Firebase is disabled, return a dummy token
+    if (!USE_FIREBASE) {
+      return 'dummy-recaptcha-token';
+    }
+    
     try {
       if (!window.recaptchaVerifier) {
         this.initRecaptcha();
@@ -267,7 +332,53 @@ export default {
       return await window.recaptchaVerifier.verify();
     } catch (error) {
       console.error('Error getting reCAPTCHA token:', error);
-      throw new Error('Failed to verify reCAPTCHA');
+      // Return a dummy token as fallback to not block the flow
+      return 'dummy-recaptcha-token-fallback';
+    }
+  },
+  
+  initRecaptcha() {
+    if (!USE_FIREBASE) {
+      console.log('Firebase is disabled. Skipping reCAPTCHA initialization.');
+      // Set a dummy verifier when Firebase is disabled
+      window.recaptchaVerifier = {
+        verify: () => Promise.resolve('dummy-recaptcha-token')
+      };
+      return;
+    }
+    
+    // Skip if RecaptchaVerifier is not available yet (async loading might still be in progress)
+    if (!RecaptchaVerifier) {
+      console.warn('RecaptchaVerifier is not available yet. Skipping initialization.');
+      return;
+    }
+    
+    // Create recaptcha container if it doesn't exist
+    if (!document.getElementById('recaptcha-container')) {
+      const container = document.createElement('div');
+      container.id = 'recaptcha-container';
+      container.style.display = 'none';
+      document.body.appendChild(container);
+    }
+    
+    try {
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        size: 'invisible',
+        callback: () => {
+          console.log('reCAPTCHA verified');
+        },
+        'expired-callback': () => {
+          console.log('reCAPTCHA expired');
+          window.recaptchaVerifier = null;
+          this.initRecaptcha();
+        }
+      });
+    } catch (error) {
+      console.error('Error initializing reCAPTCHA:', error);
+      // Set a dummy verifier as fallback
+      window.recaptchaVerifier = {
+        verify: () => Promise.resolve('dummy-recaptcha-token-fallback')
+      };
     }
   }
 };

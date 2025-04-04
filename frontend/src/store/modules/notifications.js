@@ -1,8 +1,7 @@
 import axios from 'axios';
-import { PushNotificationService } from '@/services/push-notifications.service'
+import { pushNotificationService } from '@/services/push-notification.service'
 import { ref } from 'vue'
-
-const pushService = new PushNotificationService()
+import { API_URL } from '@/config'
 
 const state = {
   notifications: [],
@@ -44,7 +43,7 @@ const getters = {
 
   // Get notification by ID
   getNotificationById: (state) => (id) => {
-    return state.notifications.find(n => n.id === id);
+    return state.notifications?.find(n => n.id === id);
   },
 
   // Check if push notifications are supported
@@ -62,12 +61,66 @@ const getters = {
     return state.pushNotificationsEnabled;
   },
 
-  unreadCount: state => state.notifications.filter(n => !n.read).length,
-  allNotifications: state => state.notifications,
+  // Group notifications by date
+  notificationsByDate(state) {
+    if (!state.notifications || state.notifications.length === 0) {
+      return [];
+    }
+
+    // Helper function to get date string
+    const getDateString = (dateStr) => {
+      const date = new Date(dateStr);
+      return date.toISOString().split('T')[0]; // YYYY-MM-DD
+    };
+
+    // Group notifications by date
+    const groups = {};
+    state.notifications.forEach(notification => {
+      const dateStr = getDateString(notification.createdAt);
+      if (!groups[dateStr]) {
+        groups[dateStr] = {
+          date: dateStr,
+          notifications: []
+        };
+      }
+      groups[dateStr].notifications.push(notification);
+    });
+
+    // Convert to array and sort by date (newest first)
+    const result = Object.values(groups).sort((a, b) => {
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    // Add user-friendly labels
+    result.forEach(group => {
+      const date = new Date(group.date);
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      if (getDateString(now) === group.date) {
+        group.label = 'Today';
+      } else if (getDateString(yesterday) === group.date) {
+        group.label = 'Yesterday';
+      } else {
+        group.label = date.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'short',
+          day: 'numeric',
+          year: now.getFullYear() !== date.getFullYear() ? 'numeric' : undefined
+        });
+      }
+    });
+
+    return result;
+  },
+
+  // Additional getters
+  allNotifications: state => state.notifications || [],
   currentNotification: state => state.currentNotification,
   isShowingNotification: state => state.showNotification,
-  unreadNotifications: state => state.notifications.filter(n => !n.read),
-  notificationsByType: state => type => state.notifications.filter(n => n.type === type),
+  unreadNotifications: state => state.notifications ? state.notifications.filter(n => !n.read) : [],
+  notificationsByType: state => type => state.notifications ? state.notifications.filter(n => n.type === type) : [],
   isPushEnabled: state => state.preferences.push && state.pushPermission === 'granted',
   canEnablePush: state => state.pushSupported && !state.isSubscribing
 }
@@ -259,35 +312,44 @@ const actions = {
   },
 
   // Fetch notifications from API
-  async fetchNotifications({ commit }, { page = 1, limit = 10 } = {}) {
+  async fetchNotifications({ commit, state }) {
     commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-
+    
     try {
-      const response = await axios.get('/api/notifications', {
-        params: { page, limit }
+      const response = await axios.get(`${API_URL}/api/notifications`, {
+        params: {
+          page: state.pagination.page,
+          limit: state.pagination.limit
+        }
       });
-
-      // Extract data from response
-      const {
-        notifications,
-        pagination: { totalPages, totalCount }
-      } = response.data.data;
-
-      // Update state
-      commit('SET_NOTIFICATIONS', notifications);
-      commit('SET_PAGINATION', {
-        page,
-        limit,
-        totalPages,
-        totalCount
-      });
-
-      return notifications;
+      
+      if (response.data && response.data.data) {
+        const { notifications, totalPages, currentPage, totalCount } = response.data.data;
+        
+        commit('SET_NOTIFICATIONS', notifications || []);
+        commit('SET_PAGINATION', {
+          page: currentPage || 1,
+          limit: state.pagination.limit,
+          totalPages: totalPages || 1,
+          totalCount: totalCount || 0
+        });
+        
+        return response.data.data;
+      }
+      
+      return { notifications: [], totalPages: 0, totalCount: 0 };
     } catch (error) {
-      commit('SET_ERROR', error.message || 'Failed to fetch notifications');
       console.error('Error fetching notifications:', error);
-      return [];
+      // Set empty notifications and reset pagination on error
+      commit('SET_NOTIFICATIONS', []);
+      commit('SET_PAGINATION', {
+        page: 1,
+        limit: state.pagination.limit,
+        totalPages: 0,
+        totalCount: 0
+      });
+      
+      return { notifications: [], totalPages: 0, totalCount: 0 };
     } finally {
       commit('SET_LOADING', false);
     }
@@ -306,20 +368,22 @@ const actions = {
   // Mark notification as read
   async markAsRead({ commit }, notificationId) {
     try {
-      await axios.put(`/api/notifications/${notificationId}/read`);
+      await axios.patch(`${API_URL}/api/notifications/read`, {
+        notificationIds: [notificationId]
+      });
       commit('MARK_AS_READ', notificationId);
     } catch (error) {
-      console.error(`Error marking notification ${notificationId} as read:`, error);
+      console.error('Failed to mark notification as read:', error);
     }
   },
 
   // Mark all notifications as read
   async markAllAsRead({ commit }) {
     try {
-      await axios.put('/api/notifications/read-all');
+      await axios.patch(`${API_URL}/api/notifications/read-all`);
       commit('MARK_ALL_AS_READ');
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+      console.error('Failed to mark all notifications as read:', error);
     }
   },
 
@@ -344,13 +408,45 @@ const actions = {
     }
   },
 
-  // Get notification preferences
-  async getNotificationPreferences() {
+  // Get notification preferences from the backend
+  async getPreferences({ commit, state }) {
     try {
-      return await pushNotificationService.getPreferences();
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      const response = await axios.get(`${API_URL}/api/notifications/preferences`);
+      
+      // Make sure we have a preferences object with default values in case anything is missing
+      const preferences = response.data.data || {};
+      
+      // Update the preferences in the state
+      commit('UPDATE_PREFERENCES', preferences);
+      
+      // Return the preferences for the component to use
+      return {
+        push: preferences.push || false,
+        email: preferences.email || false,
+        sms: preferences.sms || false,
+        enabledTypes: preferences.enabledTypes || []
+      };
     } catch (error) {
-      console.error('Error getting notification preferences:', error);
-      return null;
+      console.error('Error fetching notification preferences:', error);
+      commit('SET_ERROR', 'Failed to load notification preferences');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  // Update notification preferences in the backend
+  async updateNotificationPreferences({ commit }, preferences) {
+    try {
+      const response = await axios.put(`${API_URL}/api/notifications/preferences`, preferences);
+      commit('UPDATE_PREFERENCES', preferences);
+      return response.data;
+    } catch (error) {
+      console.error('Error updating notification preferences:', error);
+      throw error;
     }
   },
 
@@ -379,14 +475,6 @@ const actions = {
     return notification
   },
   
-  markAsRead({ commit }, notificationId) {
-    commit('MARK_AS_READ', notificationId)
-  },
-  
-  markAllAsRead({ commit }) {
-    commit('MARK_ALL_AS_READ')
-  },
-  
   closeNotification({ commit }) {
     commit('SET_SHOW_NOTIFICATION', false)
     commit('SET_CURRENT_NOTIFICATION', null)
@@ -394,40 +482,66 @@ const actions = {
 
   // Initialize notifications system
   async init({ dispatch, commit }) {
-    const supported = pushService.isNotificationSupported()
-    commit('SET_PUSH_SUPPORTED', supported)
+    try {
+      const supported = pushNotificationService.isPushSupported();
+      commit('SET_PUSH_SUPPORTED', supported);
     if (supported) {
-      await pushService.init()
-      commit('SET_PUSH_PERMISSION', pushService.getPermissionStatus())
+        await pushNotificationService.init();
+        commit('SET_PUSH_PERMISSION', pushNotificationService.getPermissionStatus());
+      }
+      await dispatch('loadPreferences');
+      await dispatch('fetchNotifications');
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
     }
-    await dispatch('loadPreferences')
-    await dispatch('fetchNotifications')
   },
 
   // Load user's notification preferences
   async loadPreferences({ commit }) {
     try {
-      const response = await fetch('/api/notifications/preferences')
-      const preferences = await response.json()
-      commit('UPDATE_PREFERENCES', preferences)
+      // Get user notification preferences from API
+      const response = await axios.get(`${API_URL}/api/notifications/preferences`);
+      
+      if (response.data) {
+        // Update state with preferences from API
+        commit('UPDATE_PREFERENCES', response.data);
+      }
+      
+      return response.data;
     } catch (error) {
-      console.error('Failed to load notification preferences:', error)
+      console.error('Error loading notification preferences:', error);
+      
+      // Default preferences in case of error
+      const defaultPreferences = {
+        push: false,
+        email: true,
+        sms: false,
+        enabledTypes: [
+          'order_status',
+          'driver_location',
+          'chat',
+          'system'
+        ]
+      };
+      
+      commit('UPDATE_PREFERENCES', defaultPreferences);
+      return defaultPreferences;
     }
   },
 
   // Update notification preferences
   async updatePreferences({ commit }, preferences) {
     try {
-      const response = await fetch('/api/notifications/preferences', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(preferences)
-      })
-      const updatedPreferences = await response.json()
-      commit('UPDATE_PREFERENCES', updatedPreferences)
+      const response = await axios.put(`${API_URL}/api/notifications/preferences`, preferences);
+      
+      if (response.data && response.data.data) {
+        commit('UPDATE_PREFERENCES', response.data.data);
+        return response.data.data;
+      }
+      return null;
     } catch (error) {
-      console.error('Failed to update notification preferences:', error)
-      throw error
+      console.error('Failed to update notification preferences:', error);
+      throw error;
     }
   },
 
@@ -437,7 +551,7 @@ const actions = {
 
     commit('SET_IS_SUBSCRIBING', true)
     try {
-      await pushService.requestPermission()
+      await pushNotificationService.requestPermission()
       commit('SET_PUSH_PERMISSION', 'granted')
       commit('UPDATE_PREFERENCES', { push: true })
       return true
@@ -452,51 +566,12 @@ const actions = {
   // Unsubscribe from push notifications
   async unsubscribeFromPush({ commit }) {
     try {
-      await pushService.unsubscribe()
+      await pushNotificationService.unsubscribe()
       commit('UPDATE_PREFERENCES', { push: false })
       return true
     } catch (error) {
       console.error('Failed to unsubscribe from push:', error)
       return false
-    }
-  },
-
-  // Fetch notifications
-  async fetchNotifications({ commit }) {
-    try {
-      const response = await fetch('/api/notifications')
-      const data = await response.json()
-      commit('SET_NOTIFICATIONS', data.notifications)
-      
-      // Set unread count
-      const unreadCount = data.notifications.filter(n => !n.read).length
-      commit('SET_UNREAD_COUNT', unreadCount)
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error)
-    }
-  },
-
-  // Mark notification as read
-  async markAsRead({ commit }, notificationId) {
-    try {
-      await fetch(`/api/notifications/${notificationId}/read`, {
-        method: 'PUT'
-      })
-      commit('MARK_AS_READ', notificationId)
-    } catch (error) {
-      console.error('Failed to mark notification as read:', error)
-    }
-  },
-
-  // Mark all notifications as read
-  async markAllAsRead({ commit }) {
-    try {
-      await fetch('/api/notifications/read-all', {
-        method: 'PUT'
-      })
-      commit('MARK_ALL_AS_READ')
-    } catch (error) {
-      console.error('Failed to mark all notifications as read:', error)
     }
   },
 
@@ -510,6 +585,64 @@ const actions = {
         read: false,
         receivedAt: new Date().toISOString()
       })
+    }
+  },
+
+  // Delete a notification
+  async deleteNotification({ commit, state }, notificationId) {
+    try {
+      await axios.delete(`${API_URL}/api/notifications/${notificationId}`);
+      
+      // Remove from local state
+      const updatedNotifications = state.notifications.filter(n => n.id !== notificationId);
+      commit('SET_NOTIFICATIONS', updatedNotifications);
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      throw error;
+    }
+  },
+
+  // Add these actions inside the actions object
+  async fetchSettings({ commit, state }) {
+    commit('SET_LOADING', true);
+    try {
+      // Use existing preferences if we already have them loaded
+      if (state.preferences) {
+        return { ...state.preferences };
+      }
+      
+      const response = await axios.get(`${API_URL}/notifications/settings`);
+      const settings = response.data.data || response.data;
+      
+      commit('UPDATE_PREFERENCES', settings);
+      return settings;
+    } catch (error) {
+      console.error('Error fetching notification settings:', error);
+      commit('SET_ERROR', error.message || 'Failed to fetch notification settings');
+      
+      // Return default settings if there's an error
+      return { ...state.preferences };
+    } finally {
+      commit('SET_LOADING', false);
+    }
+  },
+
+  async updateSettings({ commit }, settings) {
+    commit('SET_LOADING', true);
+    try {
+      const response = await axios.put(`${API_URL}/notifications/settings`, settings);
+      const updatedSettings = response.data.data || response.data;
+      
+      commit('UPDATE_PREFERENCES', updatedSettings);
+      return updatedSettings;
+    } catch (error) {
+      console.error('Error updating notification settings:', error);
+      commit('SET_ERROR', error.message || 'Failed to update notification settings');
+      throw error;
+    } finally {
+      commit('SET_LOADING', false);
     }
   }
 }

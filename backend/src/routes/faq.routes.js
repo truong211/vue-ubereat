@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const faqs = require('../controllers/faq.controller');
-const { authJwt } = require('../middleware');
+const { authMiddleware, isAdmin } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
 // Public routes
@@ -10,8 +10,8 @@ router.get('/', faqs.findAll);
 // Admin only routes
 router.post('/', 
   [
-    authJwt.verifyToken, 
-    authJwt.isAdmin,
+    authMiddleware, 
+    isAdmin,
     body('question').notEmpty().withMessage('Question is required'),
     body('answer').notEmpty().withMessage('Answer is required'),
     body('category').notEmpty().withMessage('Category is required'),
@@ -22,8 +22,8 @@ router.post('/',
 
 router.put('/:id', 
   [
-    authJwt.verifyToken, 
-    authJwt.isAdmin,
+    authMiddleware, 
+    isAdmin,
     body('question').optional().notEmpty().withMessage('Question cannot be empty'),
     body('answer').optional().notEmpty().withMessage('Answer cannot be empty'),
     body('category').optional().notEmpty().withMessage('Category cannot be empty'),
@@ -32,8 +32,7 @@ router.put('/:id',
   faqs.update
 );
 
-router.delete('/:id', [authJwt.verifyToken, authJwt.isAdmin], faqs.delete);
+router.delete('/:id', [authMiddleware, isAdmin], faqs.delete);
 
-module.exports = app => {
-  app.use('/api/faqs', router);
-};
+// Export the router directly
+module.exports = router;

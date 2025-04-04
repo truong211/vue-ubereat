@@ -248,15 +248,15 @@ export function useMapService() {
   /**
    * Format distance for display
    * @param {number} distance Distance in kilometers
-   * @returns {string} Formatted distance string (e.g., "1.2 km" or "800 m")
+   * @returns {string} Formatted distance string (e.g., "1.2km" or "800m")
    */
   const formatDistance = (distance) => {
     if (distance < 0.1) {
-      return `${Math.round(distance * 1000)} m`;
+      return `${Math.round(distance * 1000)}m`;
     } else if (distance < 1) {
-      return `${(distance * 1000).toFixed(0)} m`;
+      return `${(distance * 1000).toFixed(0)}m`;
     } else {
-      return `${distance.toFixed(1)} km`;
+      return `${distance.toFixed(1)}km`;
     }
   };
 
@@ -318,20 +318,73 @@ export function useMapService() {
       }
 
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          userLocation.value = location;
-          resolve(location);
+        async (position) => {
+          try {
+            const location = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            };
+            
+            // Store the basic location first
+            userLocation.value = location;
+            
+            // Try to get address details, but don't fail if this doesn't work
+            try {
+              // Add cache buster and headers to avoid CORS issues
+              const timestamp = new Date().getTime();
+              const response = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${location.lat}&lon=${location.lng}&format=json&_=${timestamp}`,
+                {
+                  headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'FoodDeliveryApp' 
+                  }
+                }
+              );
+              
+              if (response.ok) {
+                const data = await response.json();
+                if (data && data.display_name) {
+                  location.address = data.display_name;
+                  location.city = data.address?.city || data.address?.town;
+                  location.district = data.address?.suburb || data.address?.district;
+                  location.streetName = data.address?.road;
+                  location.houseNumber = data.address?.house_number;
+                }
+              }
+            } catch (addressError) {
+              console.warn('Could not get address details, continuing with coordinates only', addressError);
+              // Set a default address so the UI still works
+              location.address = `Location (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})`;
+            }
+            
+            resolve(location);
+          } catch (error) {
+            console.error('Error processing location:', error);
+            reject(error);
+          }
         },
         (error) => {
-          reject(new Error('Failed to get location: ' + error.message));
+          console.error('Geolocation error:', error);
+          let errorMessage;
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage = 'Location access was denied. Please enable location permissions in your browser settings.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage = 'Location information is unavailable.';
+              break;
+            case error.TIMEOUT:
+              errorMessage = 'The request to get your location timed out.';
+              break;
+            default:
+              errorMessage = 'Failed to get location: ' + error.message;
+          }
+          reject(new Error(errorMessage));
         },
         {
           enableHighAccuracy: true,
-          timeout: 5000,
+          timeout: 10000, // Increased timeout
           maximumAge: 0
         }
       );
@@ -345,20 +398,41 @@ export function useMapService() {
    */
   const getAddressFromCoords = async (coords) => {
     try {
+      // Add cache-busting parameter to avoid CORS issues
+      const timestamp = new Date().getTime();
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${coords.lat}&lon=${coords.lng}&format=json`
+        `https://nominatim.openstreetmap.org/reverse?lat=${coords.lat}&lon=${coords.lng}&format=json&_=${timestamp}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'FoodDeliveryApp'
+          }
+        }
       );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      
       return {
         address: data.display_name,
-        city: data.address.city || data.address.town,
-        district: data.address.suburb || data.address.district,
-        streetName: data.address.road,
-        houseNumber: data.address.house_number
+        city: data.address?.city || data.address?.town,
+        district: data.address?.suburb || data.address?.district,
+        streetName: data.address?.road,
+        houseNumber: data.address?.house_number
       };
     } catch (error) {
       console.error('Reverse geocoding error:', error);
-      throw new Error('Failed to get address details');
+      // Return a fallback with coordinates only
+      return {
+        address: `Location (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})`,
+        city: null,
+        district: null,
+        streetName: null,
+        houseNumber: null
+      };
     }
   };
 
@@ -369,20 +443,36 @@ export function useMapService() {
    */
   const getCoordsFromAddress = async (address) => {
     try {
+      // Add cache-busting parameter to avoid CORS issues
+      const timestamp = new Date().getTime();
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&_=${timestamp}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'FoodDeliveryApp'
+          }
+        }
       );
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      
       if (data.length === 0) {
         throw new Error('Address not found');
       }
+      
       return {
         lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
+        lng: parseFloat(data[0].lon),
+        displayName: data[0].display_name
       };
     } catch (error) {
       console.error('Forward geocoding error:', error);
-      throw new Error('Failed to get coordinates');
+      throw new Error('Failed to find this location. Please try a different address.');
     }
   };
 

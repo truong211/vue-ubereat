@@ -285,7 +285,7 @@ const actions = {
   async login({ commit }, credentials) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/login/email', credentials);
+      const response = await axios.post('/api/auth/login', credentials);
       const { user, accessToken, refreshToken } = response.data;
       
       commit('SET_USER', user);
@@ -309,7 +309,9 @@ const actions = {
   async loginWithOTP({ commit }, { email, phone, otp }) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/login/otp', { email, phone, otp });
+      // Since we're not seeing a specific OTP login endpoint in the backend,
+      // assume it might be handled by the main login endpoint with an OTP parameter
+      const response = await axios.post('/api/auth/login', { email, phone, otp, method: 'otp' });
       const { user, accessToken, refreshToken } = response.data;
       
       commit('SET_USER', user);

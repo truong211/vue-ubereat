@@ -1,0 +1,130 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const User = require('./user.model');
+
+const Restaurant = sequelize.define('Restaurant', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: User,
+      key: 'id'
+    }
+  },
+  name: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  phone: {
+    type: DataTypes.STRING(15),
+    allowNull: true
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  logo: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  coverImage: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  openingHours: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: {
+      Monday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Tuesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Wednesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Thursday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Friday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
+      Saturday: { enabled: true, open: '10:00', close: '23:00', breakStart: null, breakEnd: null },
+      Sunday: { enabled: true, open: '10:00', close: '22:00', breakStart: null, breakEnd: null }
+    },
+    validate: {
+      isValidOpeningHours(value) {
+        if (!value) return;
+        const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const timeRegex = /^([0-1][0-9]|2[0-3]):[0-5][0-9]$/;
+        
+        for (const day of days) {
+          const hours = value[day];
+          if (!hours) throw new Error(`Missing hours for ${day}`);
+          if (typeof hours.enabled !== 'boolean') throw new Error(`Invalid enabled status for ${day}`);
+          if (hours.enabled) {
+            if (!timeRegex.test(hours.open)) throw new Error(`Invalid open time for ${day}`);
+            if (!timeRegex.test(hours.close)) throw new Error(`Invalid close time for ${day}`);
+            if (hours.open >= hours.close) throw new Error(`Close time must be after open time for ${day}`);
+          }
+        }
+      }
+    }
+  },
+  specialHolidays: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: []
+  },
+  cuisineType: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  priceRange: {
+    type: DataTypes.ENUM('$', '$$', '$$$', '$$$$'),
+    allowNull: true
+  },
+  rating: {
+    type: DataTypes.DECIMAL(3, 2),
+    defaultValue: 0
+  },
+  deliveryFee: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+  minOrderAmount: {
+    type: DataTypes.DECIMAL(10, 2),
+    defaultValue: 0
+  },
+  estimatedDeliveryTime: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  latitude: {
+    type: DataTypes.DECIMAL(10, 8),
+    allowNull: true
+  },
+  longitude: {
+    type: DataTypes.DECIMAL(11, 8),
+    allowNull: true
+  }
+}, {
+  timestamps: true,
+  tableName: 'restaurants'
+});
+
+// Define associations
+Restaurant.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
+
+module.exports = Restaurant;

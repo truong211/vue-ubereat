@@ -1,169 +1,209 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const User = require('./user.model');
+const db = require('../config/database');
 
 /**
- * Restaurant Model
- * Represents restaurants in the system
+ * Restaurant model with direct SQL implementation
  */
-const Restaurant = sequelize.define('Restaurant', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: User,
-      key: 'id'
+const Restaurant = {
+  tableName: 'restaurants',
+  
+  findByPk: async (id) => {
+    try {
+      const results = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Restaurant.findByPk:', error);
+      throw error;
     }
   },
-  name: {
-    type: DataTypes.STRING(100),
-    allowNull: false
-  },
-  description: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  address: {
-    type: DataTypes.TEXT,
-    allowNull: false
-  },
-  phone: {
-    type: DataTypes.STRING(15),
-    allowNull: true
-  },
-  email: {
-    type: DataTypes.STRING(100),
-    allowNull: true,
-    validate: {
-      isEmail: true
+  
+  findOne: async (where) => {
+    try {
+      const whereClause = Object.entries(where)
+        .map(([key, value]) => `${key} = ?`)
+        .join(' AND ');
+      const values = Object.values(where);
+      
+      const results = await db.query(`SELECT * FROM restaurants WHERE ${whereClause} LIMIT 1`, values);
+      return results[0];
+    } catch (error) {
+      console.error('Error in Restaurant.findOne:', error);
+      throw error;
     }
   },
-  logo: {
-    type: DataTypes.STRING(255),
-    allowNull: true
-  },
-  coverImage: {
-    type: DataTypes.STRING(255),
-    allowNull: true
-  },
-  openingHours: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: {
-      Monday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
-      Tuesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
-      Wednesday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
-      Thursday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
-      Friday: { enabled: true, open: '09:00', close: '22:00', breakStart: null, breakEnd: null },
-      Saturday: { enabled: true, open: '10:00', close: '23:00', breakStart: null, breakEnd: null },
-      Sunday: { enabled: true, open: '10:00', close: '22:00', breakStart: null, breakEnd: null }
+  
+  findAll: async (options = {}) => {
+    try {
+      let sql = 'SELECT * FROM restaurants';
+      const values = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(options.where));
+      }
+      
+      if (options.order) {
+        sql += ` ORDER BY ${options.order}`;
+      }
+      
+      if (options.limit) {
+        sql += ` LIMIT ${parseInt(options.limit)}`;
+      }
+      
+      if (options.offset) {
+        sql += ` OFFSET ${parseInt(options.offset)}`;
+      }
+      
+      return await db.query(sql, values);
+    } catch (error) {
+      console.error('Error in Restaurant.findAll:', error);
+      throw error;
     }
   },
-  specialHolidays: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: []
-  },
-  cuisineType: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  },
-  priceRange: {
-    type: DataTypes.ENUM('$', '$$', '$$$', '$$$$'),
-    allowNull: true
-  },
-  rating: {
-    type: DataTypes.DECIMAL(3, 2),
-    defaultValue: 0
-  },
-  deliveryFee: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0
-  },
-  minOrderAmount: {
-    type: DataTypes.DECIMAL(10, 2),
-    defaultValue: 0
-  },
-  estimatedDeliveryTime: {
-    type: DataTypes.INTEGER, // in minutes
-    allowNull: true
-  },
-  isActive: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: true
-  },
-  latitude: {
-    type: DataTypes.DECIMAL(10, 8),
-    allowNull: true
-  },
-  longitude: {
-    type: DataTypes.DECIMAL(11, 8),
-    allowNull: true
-  },
-  deliverySettings: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: {
-      radius: 5, // delivery radius in km
-      minOrder: 10,
-      baseFee: 2,
-      perKmFee: 0.5,
-      autoAccept: false,
-      pickupEnabled: true,
-      maxOrders: 50,
-      maxConcurrentOrders: 10,
-      preparationTimePerItem: 5,
-      rushHourMultiplier: 1.5,
-      rushHours: {
-        lunch: { start: '11:30', end: '13:30' },
-        dinner: { start: '18:00', end: '20:00' }
-      },
-      zonePricing: []
+  
+  // Add findAndCountAll method to mimic Sequelize's behavior
+  findAndCountAll: async (options = {}) => {
+    try {
+      // First, get the count without limit and offset
+      let countSql = 'SELECT COUNT(*) as count FROM restaurants';
+      const countValues = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        countSql += ` WHERE ${whereClause}`;
+        countValues.push(...Object.values(options.where));
+      }
+      
+      const countResult = await db.query(countSql, countValues);
+      const count = countResult[0].count;
+      
+      // Then get the rows with limit and offset
+      let rowsSql = 'SELECT * FROM restaurants';
+      const rowsValues = [];
+      
+      if (options.where) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        rowsSql += ` WHERE ${whereClause}`;
+        rowsValues.push(...Object.values(options.where));
+      }
+      
+      if (options.order && options.order.length > 0) {
+        // Handle sequelize-style ordering [[field, direction]]
+        if (Array.isArray(options.order[0])) {
+          const [field, direction] = options.order[0];
+          rowsSql += ` ORDER BY ${field} ${direction}`;
+        } else {
+          rowsSql += ` ORDER BY ${options.order}`;
+        }
+      }
+      
+      if (options.limit) {
+        rowsSql += ` LIMIT ${parseInt(options.limit)}`;
+      }
+      
+      if (options.offset) {
+        rowsSql += ` OFFSET ${parseInt(options.offset)}`;
+      }
+      
+      const rows = await db.query(rowsSql, rowsValues);
+      
+      // Return in the format expected by the controller: { count, rows }
+      return { count, rows };
+    } catch (error) {
+      console.error('Error in Restaurant.findAndCountAll:', error);
+      throw error;
     }
   },
-  notificationPreferences: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: {
-      email: true,
-      sms: true,
-      push: true,
-      newOrders: true,
-      orderUpdates: true,
-      reviews: true
+  
+  create: async (data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['businessHours', 'deliveryZones', 'cuisine', 'features'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const columns = Object.keys(processedData).join(', ');
+      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
+      const values = Object.values(processedData);
+      
+      const result = await db.query(
+        `INSERT INTO restaurants (${columns}) VALUES (${placeholders})`, 
+        values
+      );
+      
+      return { id: result.insertId, ...data };
+    } catch (error) {
+      console.error('Error in Restaurant.create:', error);
+      throw error;
     }
   },
-  menuAvailability: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: {
-      scheduleEnabled: false,
-      defaultAvailability: true,
-      schedules: []
+  
+  update: async (id, data) => {
+    try {
+      // Handle JSON fields
+      const processedData = { ...data };
+      ['businessHours', 'deliveryZones', 'cuisine', 'features'].forEach(field => {
+        if (processedData[field] && typeof processedData[field] === 'object') {
+          processedData[field] = JSON.stringify(processedData[field]);
+        }
+      });
+      
+      const setClauses = Object.keys(processedData)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      const values = [...Object.values(processedData), id];
+      
+      const result = await db.query(
+        `UPDATE restaurants SET ${setClauses} WHERE id = ?`,
+        values
+      );
+      
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Restaurant.update:', error);
+      throw error;
     }
   },
-  tempClosureSettings: {
-    type: DataTypes.JSONB,
-    allowNull: true,
-    defaultValue: {
-      isTemporarilyClosed: false,
-      reopenDate: null,
-      closureReason: null,
-      showReason: true,
-      acceptPreOrders: false
+  
+  destroy: async (id) => {
+    try {
+      const result = await db.query('DELETE FROM restaurants WHERE id = ?', [id]);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Restaurant.destroy:', error);
+      throw error;
+    }
+  },
+  
+  count: async (where = {}) => {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM restaurants';
+      const values = [];
+      
+      if (Object.keys(where).length > 0) {
+        const whereClause = Object.entries(where)
+          .map(([key, value]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(where));
+      }
+      
+      const results = await db.query(sql, values);
+      return results[0].count;
+    } catch (error) {
+      console.error('Error in Restaurant.count:', error);
+      throw error;
     }
   }
-}, {
-  timestamps: true,
-  tableName: 'restaurants'
-});
+};
 
-// Define associations
-Restaurant.belongsTo(User, { foreignKey: 'userId', as: 'owner' });
-
-module.exports = Restaurant;
+module.exports = Restaurant; 

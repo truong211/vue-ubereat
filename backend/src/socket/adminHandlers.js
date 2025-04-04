@@ -1,9 +1,8 @@
 const { userSockets, orderRooms } = require('./socketState');
 const { Restaurant, User, Order } = require('../models');
-const { emitToUser } = require('./handlers');
 
 function handleAdminEvents(socket, io) {
-  const adminId = socket.user.id;
+  const adminId = socket.user?.id || 'guest-admin';
   userSockets.set(adminId, socket);
 
   // Join admin monitoring room

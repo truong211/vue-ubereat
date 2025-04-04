@@ -1,8 +1,9 @@
 const { validationResult } = require('express-validator');
-const { Address } = require('../models');
+const db = require('../config/database');
 const { AppError } = require('../middleware/error.middleware');
 const axios = require('axios');
 const config = require('../config/config');
+const logger = require('../utils/logger');
 
 /**
  * Helper function to get coordinates from address using external mapping service
@@ -36,7 +37,7 @@ const getCoordinates = async (addressData) => {
     
     return null;
   } catch (error) {
-    console.error('Error getting coordinates:', error);
+    logger.error('Error getting coordinates:', error);
     return null;
   }
 };
@@ -50,10 +51,10 @@ exports.getAddresses = async (req, res, next) => {
   try {
     const userId = req.user.id;
     
-    const addresses = await Address.findAll({
-      where: { userId },
-      order: [['isDefault', 'DESC'], ['createdAt', 'DESC']]
-    });
+    const addresses = await db.query(
+      'SELECT * FROM addresses WHERE userId = ? ORDER BY isDefault DESC, createdAt DESC',
+      [userId]
+    );
     
     res.status(200).json({
       status: 'success',
@@ -63,6 +64,7 @@ exports.getAddresses = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Error fetching addresses:', error);
     next(error);
   }
 };
@@ -77,9 +79,10 @@ exports.getAddress = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    const address = await Address.findOne({
-      where: { id, userId }
-    });
+    const [address] = await db.query(
+      'SELECT * FROM addresses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
     
     if (!address) {
       return next(new AppError('Address not found', 404));
@@ -92,6 +95,7 @@ exports.getAddress = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Error fetching address:', error);
     next(error);
   }
 };
@@ -154,14 +158,14 @@ exports.createAddress = async (req, res, next) => {
     
     // If this is the default address, unset any existing default
     if (isDefault) {
-      await Address.update(
-        { isDefault: false },
-        { where: { userId, isDefault: true } }
+      await db.query(
+        'UPDATE addresses SET isDefault = false WHERE userId = ? AND isDefault = true',
+        [userId]
       );
     }
     
     // Create the address
-    const address = await Address.create({
+    const addressData = {
       userId,
       name,
       addressLine1,
@@ -181,8 +185,26 @@ exports.createAddress = async (req, res, next) => {
       contactPhone,
       floor,
       apartmentNumber,
-      hasElevator
-    });
+      hasElevator,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Build query
+    const fields = Object.keys(addressData).join(', ');
+    const placeholders = Object.keys(addressData).map(() => '?').join(', ');
+    const values = Object.values(addressData);
+    
+    const result = await db.query(
+      `INSERT INTO addresses (${fields}) VALUES (${placeholders})`,
+      values
+    );
+    
+    // Get the inserted address
+    const [address] = await db.query(
+      'SELECT * FROM addresses WHERE id = ?',
+      [result.insertId]
+    );
     
     res.status(201).json({
       status: 'success',
@@ -191,6 +213,7 @@ exports.createAddress = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Error creating address:', error);
     next(error);
   }
 };
@@ -205,16 +228,16 @@ exports.updateAddress = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    // Find the address
-    let address = await Address.findOne({
-      where: { id, userId }
-    });
+    // First, check if address exists and belongs to user
+    const [existingAddress] = await db.query(
+      'SELECT * FROM addresses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
     
-    if (!address) {
+    if (!existingAddress) {
       return next(new AppError('Address not found', 404));
     }
     
-    // Extract only the fields that are allowed to be updated
     const {
       name,
       addressLine1,
@@ -238,70 +261,72 @@ exports.updateAddress = async (req, res, next) => {
       hasElevator
     } = req.body;
     
-    // Create update object with only provided fields
-    const updateFields = {};
-    if (name) updateFields.name = name;
-    if (addressLine1) updateFields.addressLine1 = addressLine1;
-    if (addressLine2 !== undefined) updateFields.addressLine2 = addressLine2;
-    if (city) updateFields.city = city;
-    if (district !== undefined) updateFields.district = district;
-    if (ward !== undefined) updateFields.ward = ward;
-    if (state) updateFields.state = state;
-    if (postalCode) updateFields.postalCode = postalCode;
-    if (country) updateFields.country = country;
-    if (phone !== undefined) updateFields.phone = phone;
-    if (type) updateFields.type = type;
-    if (instructions !== undefined) updateFields.instructions = instructions;
-    if (contactName !== undefined) updateFields.contactName = contactName;
-    if (contactPhone !== undefined) updateFields.contactPhone = contactPhone;
-    if (floor !== undefined) updateFields.floor = floor;
-    if (apartmentNumber !== undefined) updateFields.apartmentNumber = apartmentNumber;
-    if (hasElevator !== undefined) updateFields.hasElevator = hasElevator;
+    // Prepare update data
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (addressLine1 !== undefined) updateData.addressLine1 = addressLine1;
+    if (addressLine2 !== undefined) updateData.addressLine2 = addressLine2;
+    if (city !== undefined) updateData.city = city;
+    if (district !== undefined) updateData.district = district;
+    if (ward !== undefined) updateData.ward = ward;
+    if (state !== undefined) updateData.state = state;
+    if (postalCode !== undefined) updateData.postalCode = postalCode;
+    if (country !== undefined) updateData.country = country;
+    if (phone !== undefined) updateData.phone = phone;
+    if (type !== undefined) updateData.type = type;
+    if (instructions !== undefined) updateData.instructions = instructions;
+    if (latitude !== undefined) updateData.latitude = latitude;
+    if (longitude !== undefined) updateData.longitude = longitude;
+    if (contactName !== undefined) updateData.contactName = contactName;
+    if (contactPhone !== undefined) updateData.contactPhone = contactPhone;
+    if (floor !== undefined) updateData.floor = floor;
+    if (apartmentNumber !== undefined) updateData.apartmentNumber = apartmentNumber;
+    if (hasElevator !== undefined) updateData.hasElevator = hasElevator;
     
-    // Check if we need to update coordinates
-    if ((addressLine1 && !latitude) || (addressLine1 && !longitude)) {
-      const coordinates = await getCoordinates({
-        addressLine1: addressLine1 || address.addressLine1,
-        district: district || address.district,
-        ward: ward || address.ward,
-        city: city || address.city,
-        state: state || address.state,
-        country: country || address.country
-      });
-      
-      if (coordinates) {
-        updateFields.latitude = coordinates.latitude;
-        updateFields.longitude = coordinates.longitude;
-        updateFields.formattedAddress = coordinates.formattedAddress;
-        updateFields.placeId = coordinates.placeId;
-      }
-    } else if (latitude !== undefined && longitude !== undefined) {
-      updateFields.latitude = latitude;
-      updateFields.longitude = longitude;
-    }
+    // Add updated timestamp
+    updateData.updatedAt = new Date();
     
-    // If this is the default address, unset any existing default
-    if (isDefault) {
-      await Address.update(
-        { isDefault: false },
-        { where: { userId, isDefault: true } }
+    // If changing to default, update other addresses
+    if (isDefault === true && !existingAddress.isDefault) {
+      await db.query(
+        'UPDATE addresses SET isDefault = false WHERE userId = ? AND isDefault = true',
+        [userId]
       );
-      updateFields.isDefault = true;
+      updateData.isDefault = true;
     }
     
-    // Update the address
-    await address.update(updateFields);
+    // Construct update query
+    if (Object.keys(updateData).length === 0) {
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          address: existingAddress
+        }
+      });
+    }
     
-    // Get the updated address
-    address = await Address.findByPk(id);
+    const setClauses = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
+    const values = [...Object.values(updateData), id, userId];
+    
+    await db.query(
+      `UPDATE addresses SET ${setClauses} WHERE id = ? AND userId = ?`,
+      values
+    );
+    
+    // Get updated address
+    const [updatedAddress] = await db.query(
+      'SELECT * FROM addresses WHERE id = ?',
+      [id]
+    );
     
     res.status(200).json({
       status: 'success',
       data: {
-        address
+        address: updatedAddress
       }
     });
   } catch (error) {
+    logger.error('Error updating address:', error);
     next(error);
   }
 };
@@ -316,35 +341,43 @@ exports.deleteAddress = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    // Find the address
-    const address = await Address.findOne({
-      where: { id, userId }
-    });
+    // Check if address exists
+    const [address] = await db.query(
+      'SELECT * FROM addresses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
     
     if (!address) {
       return next(new AppError('Address not found', 404));
     }
     
-    // Check if this was the default address
-    const wasDefault = address.isDefault;
-    
     // Delete the address
-    await address.destroy();
+    await db.query(
+      'DELETE FROM addresses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
     
-    // If this was the default address, set a new default if any addresses remain
-    if (wasDefault) {
-      const remainingAddress = await Address.findOne({
-        where: { userId },
-        order: [['createdAt', 'DESC']]
-      });
+    // If this was the default address, set another one as default
+    if (address.isDefault) {
+      const [anotherAddress] = await db.query(
+        'SELECT id FROM addresses WHERE userId = ? ORDER BY createdAt DESC LIMIT 1',
+        [userId]
+      );
       
-      if (remainingAddress) {
-        await remainingAddress.update({ isDefault: true });
+      if (anotherAddress) {
+        await db.query(
+          'UPDATE addresses SET isDefault = true WHERE id = ?',
+          [anotherAddress.id]
+        );
       }
     }
     
-    res.status(204).send();
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
   } catch (error) {
+    logger.error('Error deleting address:', error);
     next(error);
   }
 };
@@ -359,78 +392,80 @@ exports.setDefaultAddress = async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
     
-    // Find the address
-    const address = await Address.findOne({
-      where: { id, userId }
-    });
+    // Check if address exists
+    const [address] = await db.query(
+      'SELECT * FROM addresses WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
     
     if (!address) {
       return next(new AppError('Address not found', 404));
     }
     
-    // Unset any existing default
-    await Address.update(
-      { isDefault: false },
-      { where: { userId, isDefault: true } }
+    // Remove default from all other addresses
+    await db.query(
+      'UPDATE addresses SET isDefault = false WHERE userId = ?',
+      [userId]
     );
     
     // Set this address as default
-    await address.update({ isDefault: true });
+    await db.query(
+      'UPDATE addresses SET isDefault = true WHERE id = ?',
+      [id]
+    );
+    
+    // Get updated address
+    const [updatedAddress] = await db.query(
+      'SELECT * FROM addresses WHERE id = ?',
+      [id]
+    );
     
     res.status(200).json({
       status: 'success',
       data: {
-        address
+        address: updatedAddress
       }
     });
   } catch (error) {
+    logger.error('Error setting default address:', error);
     next(error);
   }
 };
 
 /**
- * Get nearby places for address search suggestions
+ * Get places for address search suggestions
  * @route GET /api/addresses/places
  * @access Private
  */
 exports.getPlaces = async (req, res, next) => {
   try {
-    const { query, lat, lng, radius = 5000 } = req.query;
+    const { input } = req.query;
     
-    if (!query) {
-      return next(new AppError('Search query is required', 400));
-    }
-    
-    let params = {
-      input: query,
-      key: config.googleMaps.apiKey,
-      language: 'vi',
-      components: 'country:vn'
-    };
-    
-    // If lat and lng are provided, use them for location biasing
-    if (lat && lng) {
-      params.location = `${lat},${lng}`;
-      params.radius = radius;
+    if (!input) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Input query is required'
+      });
     }
     
     // Call Google Places API
     const response = await axios.get('https://maps.googleapis.com/maps/api/place/autocomplete/json', {
-      params
+      params: {
+        input,
+        key: config.googleMaps.apiKey,
+        language: 'vi',
+        components: 'country:vn'
+      }
     });
     
-    if (response.data.status === 'OK' || response.data.status === 'ZERO_RESULTS') {
-      res.status(200).json({
-        status: 'success',
-        results: response.data.predictions.length,
-        data: {
-          places: response.data.predictions
-        }
-      });
-    } else {
-      return next(new AppError('Error getting places', 500));
-    }
+    res.status(200).json({
+      status: 'success',
+      data: {
+        predictions: response.data.predictions || []
+      }
+    });
   } catch (error) {
+    logger.error('Error fetching places:', error);
     next(error);
   }
 };
@@ -444,11 +479,7 @@ exports.getPlaceDetails = async (req, res, next) => {
   try {
     const { placeId } = req.params;
     
-    if (!placeId) {
-      return next(new AppError('Place ID is required', 400));
-    }
-    
-    // Call Google Places API for details
+    // Call Google Place Details API
     const response = await axios.get('https://maps.googleapis.com/maps/api/place/details/json', {
       params: {
         place_id: placeId,
@@ -457,60 +488,14 @@ exports.getPlaceDetails = async (req, res, next) => {
       }
     });
     
-    if (response.data.status === 'OK') {
-      // Extract the address components for easy frontend mapping
-      const result = response.data.result;
-      const addressComponents = {};
-      
-      if (result.address_components) {
-        result.address_components.forEach(component => {
-          if (component.types.includes('street_number')) {
-            addressComponents.streetNumber = component.long_name;
-          }
-          if (component.types.includes('route')) {
-            addressComponents.street = component.long_name;
-          }
-          if (component.types.includes('sublocality_level_1')) {
-            addressComponents.ward = component.long_name;
-          }
-          if (component.types.includes('administrative_area_level_2')) {
-            addressComponents.district = component.long_name;
-          }
-          if (component.types.includes('administrative_area_level_1')) {
-            addressComponents.state = component.long_name;
-          }
-          if (component.types.includes('locality')) {
-            addressComponents.city = component.long_name;
-          }
-          if (component.types.includes('country')) {
-            addressComponents.country = component.long_name;
-          }
-          if (component.types.includes('postal_code')) {
-            addressComponents.postalCode = component.long_name;
-          }
-        });
+    res.status(200).json({
+      status: 'success',
+      data: {
+        place: response.data.result || {}
       }
-      
-      // Format the address for the frontend
-      const formattedPlace = {
-        placeId: result.place_id,
-        formattedAddress: result.formatted_address,
-        location: result.geometry?.location,
-        addressComponents,
-        name: result.name,
-        types: result.types
-      };
-      
-      res.status(200).json({
-        status: 'success',
-        data: {
-          place: formattedPlace
-        }
-      });
-    } else {
-      return next(new AppError('Error getting place details', 500));
-    }
+    });
   } catch (error) {
+    logger.error('Error fetching place details:', error);
     next(error);
   }
 }; 

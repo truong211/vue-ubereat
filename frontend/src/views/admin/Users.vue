@@ -1,6 +1,15 @@
 <template>
   <v-container>
-    <h1 class="text-h4 mb-4">Quản Lý Người Dùng</h1>
+    <div class="d-flex align-center justify-space-between mb-4">
+      <h1 class="text-h4">Quản Lý Người Dùng</h1>
+      <v-btn
+        color="primary"
+        prepend-icon="mdi-account-plus"
+        @click="openUserDialog()"
+      >
+        Thêm người dùng
+      </v-btn>
+    </div>
 
     <!-- Search and Filters -->
     <v-card class="mb-4">
@@ -103,6 +112,14 @@
               label="Email"
               type="email"
               required
+            ></v-text-field>
+            <v-text-field
+              v-if="!userDialog.isEdit"
+              v-model="userDialog.user.password"
+              label="Mật khẩu"
+              type="password"
+              hint="Để trống để sử dụng mật khẩu mặc định: changeme123"
+              persistent-hint
             ></v-text-field>
             <v-text-field
               v-model="userDialog.user.phone"
@@ -284,6 +301,8 @@ const openUserDialog = (user = null) => {
     user: user ? { ...user } : {
       fullName: '',
       email: '',
+      username: '',
+      password: '',
       phone: '',
       role: 'customer'
     }

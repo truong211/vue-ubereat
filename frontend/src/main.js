@@ -15,6 +15,64 @@ import jwtAuth from './services/jwt-auth.js'
 import i18n from './i18n'
 import './assets/styles/global.css'
 import { pushNotificationService } from '@/services/push-notification.service'
+import axios from 'axios'
+import { clearAuthStorage } from './config'
+
+// Import Firebase config only if Firebase is enabled
+if (import.meta.env.VITE_USE_FIREBASE === 'true') {
+  import('./config/firebase')
+    .then(() => console.log('Firebase initialized successfully'))
+    .catch(error => console.warn('Failed to initialize Firebase:', error));
+}
+
+// Set axios default base URL to point to the backend server
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+
+// Add interceptor to log requests for debugging
+axios.interceptors.request.use(config => {
+  console.log(`Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
+  return config;
+});
+
+// Add response interceptor for debugging
+axios.interceptors.response.use(
+  response => {
+    console.log(`Response: ${response.status} from ${response.config.url}`);
+    return response;
+  },
+  error => {
+    console.error(`API Error: ${error.response?.status || 'Network Error'} - ${error.message}`);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      
+      // Handle 401 errors specifically
+      if (error.response.status === 401) {
+        // Check if the error is related to invalid token
+        const errorMessage = error.response.data.message?.toLowerCase() || '';
+        console.log('Auth error details:', errorMessage);
+        
+        if (errorMessage.includes('invalid token') || 
+            errorMessage.includes('invalid signature') || 
+            errorMessage.includes('expired') ||
+            errorMessage.includes('authentication failed') ||
+            errorMessage.includes('not logged in')) {
+          console.warn('Authentication token issue detected, redirecting to token clear page');
+          console.warn('This is likely due to a change in the server JWT secret key');
+          
+          // Clear all authentication data
+          clearAuthStorage();
+          
+          // Redirect to the clear-tokens page which will handle the reset flow
+          if (window.location.pathname !== '/clear-tokens' && 
+              window.location.pathname !== '/login') {
+            window.location.href = '/clear-tokens';
+          }
+        }
+      }
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Create Vuetify instance
 const vuetify = createVuetify({
@@ -38,27 +96,29 @@ const vuetify = createVuetify({
   }
 })
 
+// Initialize JWT auth service
+jwtAuth.init()
+
 // Setup JWT auth interceptors
 jwtAuth.setupInterceptors(
   // Get refresh token
-  () => store.state.auth.refreshToken,
+  () => store.state.auth.refreshToken || localStorage.getItem('refresh_token'),
   // On refresh success
   (token) => {
     store.commit('auth/SET_TOKENS', { 
       accessToken: token, 
-      refreshToken: store.state.auth.refreshToken 
+      refreshToken: localStorage.getItem('refresh_token')
     })
     jwtAuth.setAuthHeader(token)
   },
   // On refresh error
   () => {
-    store.commit('auth/CLEAR_AUTH')
-    router.push('/auth/login')
+    store.dispatch('auth/logout')
   }
 )
 
 // Set initial auth header if token exists
-const token = store.state.auth.accessToken
+const token = localStorage.getItem('token')
 if (token) {
   jwtAuth.setAuthHeader(token)
 }
@@ -103,6 +163,9 @@ const initNotificationSystem = async () => {
 // Create and mount app
 const app = createApp(App)
 
+// Provide the store instance to all components
+app.provide('store', store)
+
 app.use(Toast, {
   position: 'top-right',
   timeout: 3000,
@@ -123,8 +186,27 @@ app.use(router)
 app.use(vuetify)
 app.use(i18n)
 
-// Initialize WebSocket service
-store.dispatch('initWebSocket');
+// Initialize WebSocket service (only for authenticated users)
+if (store.state.auth?.user) {
+  store.dispatch('initWebSocket');
+  
+  // Only initialize admin WebSocket for admin users
+  if (store.state.auth.user.role === 'admin') {
+    console.log('Initializing admin WebSocket connection for admin user');
+    
+    // Wrap the WebSocket initialization in a try/catch to prevent fatal errors
+    try {
+      store.dispatch('admin/initWebSocket');
+    } catch (error) {
+      console.warn('Failed to initialize admin WebSocket:', error);
+      // Continue app execution even if admin WebSocket fails
+    }
+  } else {
+    console.log('Skipping admin WebSocket initialization - not an admin user');
+  }
+} else {
+  console.log('Skipping WebSocket initialization - user not authenticated');
+}
 
 // Mount the app
 app.mount('#app')

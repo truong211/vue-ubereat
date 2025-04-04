@@ -1,655 +1,1143 @@
+const User = require('../../models/user');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { validationResult } = require('express-validator');
-const { User } = require('../models');
-const { AppError } = require('../middleware/error.middleware');
-const { Op } = require('sequelize');
+const { OAuth2Client } = require('google-auth-library');
+const fetch = require('node-fetch');
 const crypto = require('crypto');
-const emailService = require('../services/email.service');
-const otpService = require('../services/otp.service');
-const socialAuthService = require('../services/social-auth.service');
-const config = require('../config/config');
+const nodemailer = require('nodemailer');
+const twilio = require('twilio');
+const db = require('../config/database');
+const logger = require('../utils/logger');
+const { v4: uuidv4 } = require('uuid');
+const passport = require('../config/passport');
+const { googleClient } = require('../config/oauth');
+const { AppError } = require('../middleware/error.middleware');
 
-/**
- * Generate JWT token
- */
-const generateToken = (id) => {
-  return jwt.sign({ id }, config.jwt.secret, {
-    expiresIn: config.jwt.expiresIn
-  });
-};
+// Get JWT secrets from environment variables with fallbacks
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-jwt-secret-key-for-development-only';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback-jwt-refresh-secret-key-for-development-only';
+const JWT_EMAIL_SECRET = process.env.JWT_EMAIL_SECRET || 'fallback-jwt-email-secret-key-for-development-only';
 
-/**
- * Generate refresh token
- */
-const generateRefreshToken = (id) => {
-  return jwt.sign({ id }, config.jwt.refreshSecret, {
-    expiresIn: config.jwt.refreshExpiresIn
-  });
-};
+// JWT version - update this whenever you change the JWT secrets
+// This helps clients know when they need to get new tokens
+const JWT_VERSION = process.env.JWT_VERSION || '2023-04-21';
 
-/**
- * Generate random token for verification or password reset
- */
-const generateRandomToken = () => {
-  return crypto.randomBytes(32).toString('hex');
-};
+// Twilio client setup for SMS OTP
+const twilioClient = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
-/**
- * Register a new user
- * @route POST /api/auth/register
- * @access Public
- */
-exports.register = async (req, res, next) => {
+// Email transporter setup
+const transporter = nodemailer.createTransport({
+  service: process.env.EMAIL_SERVICE || 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
+  },
+});
+
+exports.register = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { username, email, password, fullName, phone, address, role } = req.body;
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ 
-      where: { 
-        [Op.or]: [
-          { username },
-          { email }
-        ]
-      }
-    });
-
-    if (existingUser) {
-      return next(new AppError('User already exists with this username or email', 400));
-    }
-
-    // Create new user
-    const user = await User.create({
-      username,
-      email,
-      password, // Will be hashed by the model hook
-      fullName,
-      phone,
-      address,
-      role: role || 'customer',
-      isEmailVerified: false
-    });
-
-    // Generate OTP for email verification
-    const otp = await otpService.createOTP(user.id, 'email');
+    const { name, email, password, phone } = req.body;
     
-    // Send verification email with OTP
-    await otpService.sendOTPEmail(email, otp, fullName);
-
-    // Generate tokens
-    const token = generateToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    res.status(201).json({
-      status: 'success',
-      token,
-      refreshToken,
-      data: {
-        user: user.toJSON(),
-        message: 'Registration successful. Please verify your email with the OTP sent.'
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Login user
- * @route POST /api/auth/login
- * @access Public
- */
-exports.login = async (req, res, next) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { username, password } = req.body;
-
-    // Check if user exists
-    const user = await User.findOne({
-      where: {
-        [Op.or]: [
-          { username },
-          { email: username } // Allow login with email as well
-        ]
-      }
-    });
-
-    if (!user || !(await user.correctPassword(password))) {
-      return next(new AppError('Incorrect username or password', 401));
-    }
-
-    // Check if user is active
-    if (!user.isActive) {
-      return next(new AppError('Your account has been deactivated. Please contact support.', 401));
-    }
-
-    // Generate tokens
-    const token = generateToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
-
-    res.status(200).json({
-      status: 'success',
-      token,
-      refreshToken,
-      data: {
-        user: user.toJSON()
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Verify email with OTP
- * @route POST /api/auth/verify-email-otp
- * @access Public
- */
-exports.verifyEmailOTP = async (req, res, next) => {
-  try {
-    const { userId, otp } = req.body;
-
-    if (!userId || !otp) {
-      return next(new AppError('User ID and OTP are required', 400));
-    }
-
-    // Verify OTP
-    await otpService.verifyOTP(userId, otp, 'email');
-
-    // Get updated user info
-    const user = await User.findByPk(userId);
-
-    // Generate tokens if not already authenticated
-    const token = generateToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    res.status(200).json({
-      status: 'success',
-      token,
-      refreshToken,
-      data: {
-        message: 'Email verified successfully',
-        user: user.toJSON()
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Resend email verification OTP
- * @route POST /api/auth/resend-email-otp
- * @access Public
- */
-exports.resendEmailOTP = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return next(new AppError('Email is required', 400));
-    }
-
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return next(new AppError('User not found with this email', 404));
-    }
-
-    // Check if email is already verified
-    if (user.isEmailVerified) {
-      return next(new AppError('Email is already verified', 400));
-    }
-
-    // Generate new OTP
-    const otp = await otpService.createOTP(user.id, 'email');
+    // Check if email already exists with correct model
+    const existingEmail = await User.findByEmail(email);
     
-    // Send verification email with OTP
-    await otpService.sendOTPEmail(email, otp, user.fullName);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Verification OTP sent to your email',
-        userId: user.id
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Request phone verification OTP
- * @route POST /api/auth/request-phone-otp
- * @access Private
- */
-exports.requestPhoneOTP = async (req, res, next) => {
-  try {
-    const { phone } = req.body;
-    const userId = req.user.id;
-
-    if (!phone) {
-      return next(new AppError('Phone number is required', 400));
+    if (existingEmail) {
+      return res.status(400).json({ 
+        message: 'Email already registered. Please use a different email.'
+      });
     }
-
-    // Update user's phone if provided
+    
+    // Check if phone already exists (if provided) with correct model
     if (phone) {
-      await User.update({ phone }, { where: { id: userId } });
+      try {
+        // Use a direct SQL query similar to findByEmail
+        const sql = 'SELECT * FROM users WHERE phone = ?';
+        const results = await db.query(sql, [phone]);
+        
+        if (results.length > 0) {
+          return res.status(400).json({
+            message: 'Phone number already registered. Please use a different phone number.'
+          });
+        }
+      } catch (phoneCheckError) {
+        console.error('Error checking phone number:', phoneCheckError);
+        // Continue with registration even if phone check fails
+      }
     }
-
-    // Generate OTP
-    const otp = await otpService.createOTP(userId, 'phone');
     
-    // Send OTP via SMS
-    await otpService.sendOTPSMS(phone, otp);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Verification OTP sent to your phone'
-      }
-    });
+    // Generate a valid username from email or name
+    let username = email.split('@')[0];
+    
+    // Ensure username meets minimum length of 3 characters
+    if (username.length < 3) {
+      // Add random characters to make it at least 3 characters long
+      const randomChars = Math.random().toString(36).substring(2, 5);
+      username = username + randomChars;
+    }
+    
+    // Create new user using our SQL model
+    try {
+      const user = await User.create({
+        fullName: name,
+        email,
+        phone,
+        username, // Use the generated valid username
+        password, // Our model handles password hashing now
+        // Mark email as verified for development convenience
+        isEmailVerified: true,
+        isPhoneVerified: phone ? false : true,
+        role: 'customer'
+      });
+      
+      // Generate token
+      const token = jwt.sign(
+        { userId: user.id, role: user.role },
+        JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+      
+      // Generate refresh token
+      const refreshToken = jwt.sign(
+        { userId: user.id, role: user.role },
+        JWT_REFRESH_SECRET,
+        { expiresIn: '30d' }
+      );
+      
+      // Return user info and tokens for immediate login
+      res.status(201).json({ 
+        success: true,
+        message: 'Registration successful! You can now login with your account.',
+        token,
+        refreshToken,
+        user: {
+          id: user.id,
+          name: user.fullName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role
+        }
+      });
+    } catch (createError) {
+      console.error('User creation error:', createError);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Error creating user account. Please try again.'
+      });
+    }
   } catch (error) {
-    next(error);
+    console.error('Registration error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message 
+    });
   }
 };
 
-/**
- * Verify phone with OTP
- * @route POST /api/auth/verify-phone-otp
- * @access Private
- */
-exports.verifyPhoneOTP = async (req, res, next) => {
+exports.login = async (req, res) => {
   try {
-    const { otp } = req.body;
-    const userId = req.user.id;
-
-    if (!otp) {
-      return next(new AppError('OTP is required', 400));
-    }
-
-    // Verify OTP
-    await otpService.verifyOTP(userId, otp, 'phone');
-
-    // Get updated user info
-    const user = await User.findByPk(userId);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Phone verified successfully',
-        user: user.toJSON()
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Request password reset OTP
- * @route POST /api/auth/request-password-reset
- * @access Public
- */
-exports.requestPasswordReset = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return next(new AppError('Email is required', 400));
-    }
-
-    // Find user by email
-    const user = await User.findOne({ where: { email } });
+    console.log('Login attempt for:', req.body.email);
+    const { email, password } = req.body;
+    
+    // Find user with email using the correct model
+    const user = await User.findByEmail(email);
+    
     if (!user) {
-      return next(new AppError('User not found with this email', 404));
+      console.log('User not found:', email);
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    // Generate OTP
-    const otp = await otpService.createOTP(user.id, 'password');
     
-    // Send OTP via email
-    await otpService.sendOTPEmail(email, otp, user.fullName, 'password-reset');
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Password reset OTP sent to your email',
-        userId: user.id
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Reset password with OTP
- * @route POST /api/auth/reset-password
- * @access Public
- */
-exports.resetPassword = async (req, res, next) => {
-  try {
-    const { userId, otp, newPassword } = req.body;
-
-    if (!userId || !otp || !newPassword) {
-      return next(new AppError('User ID, OTP, and new password are required', 400));
+    console.log('User found:', user.id, user.email);
+    
+    // Verify password directly with bcrypt
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    console.log('Password valid:', isPasswordValid);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
-
-    // Verify OTP
-    await otpService.verifyOTP(userId, otp, 'password');
-
-    // Update password
-    const user = await User.findByPk(userId);
-    user.password = newPassword;
-    await user.save();
-
+    
+    // Log JWT secret information for debugging (first 10 chars only for security)
+    console.log('Using JWT_SECRET starting with:', JWT_SECRET.substring(0, 10));
+    console.log('Token generation for user:', user.id, 'with role:', user.role);
+    
+    // Generate access token with both userId and id for maximum compatibility
+    const token = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Log successful token creation
+    console.log('Access token generated successfully');
+    
+    // Generate refresh token with both userId and id for maximum compatibility
+    const refreshToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    // Log successful refresh token creation
+    console.log('Refresh token generated successfully');
+    
+    // Update last login time
+    await User.updateLoginTimestamp(user.id);
+    
+    // Set JWT as a cookie
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
+    });
+    
+    // Also set refresh token as a cookie
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/'
+    });
+    
+    // Send response with both tokens
     res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Password reset successfully'
+      success: true,
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        avatar: user.profileImage
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Login error:', error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Login with Google
- * @route POST /api/auth/login/google
- * @access Public
- */
-exports.googleLogin = async (req, res, next) => {
+exports.googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
-
-    if (!idToken) {
-      return next(new AppError('Google ID token is required', 400));
+    
+    // Verify Google token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    
+    const { email, name, picture } = ticket.getPayload();
+    
+    // Find or create user with the correct model
+    let user = await User.findByEmail(email);
+    
+    if (!user) {
+      // Generate a valid username from email
+      let username = email.split('@')[0];
+      
+      // Ensure username meets minimum length of 3 characters
+      if (username.length < 3) {
+        // Add random characters to make it at least 3 characters long
+        const randomChars = Math.random().toString(36).substring(2, 5);
+        username = username + randomChars;
+      }
+      
+      // Create new user for Google login
+      user = await User.create({
+        fullName: name,
+        email,
+        username,
+        profileImage: picture,
+        isEmailVerified: true,
+        socialProvider: 'google',
+        socialId: email,
+        role: 'customer'
+      });
+    } else {
+      // Update existing user's Google info
+      await User.update(
+        {
+          socialProvider: 'google',
+          socialId: email,
+          isEmailVerified: true,
+          lastLogin: new Date()
+        },
+        { where: { id: user.id } }
+      );
     }
-
-    // Verify Google token and get or create user
-    const user = await socialAuthService.loginWithGoogle(idToken);
-
-    // Generate tokens
-    const token = generateToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
-
+    
+    // Generate access token with both id and userId fields
+    const token = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Generate refresh token with both id and userId fields
+    const refreshToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    // Update last login time
+    await User.updateLoginTimestamp(user.id);
+    
+    // Send response with both tokens
     res.status(200).json({
-      status: 'success',
       token,
       refreshToken,
-      data: {
-        user: user.toJSON()
+      user: {
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        role: user.role,
+        avatar: user.profileImage
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Google login error:', error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Login with Facebook
- * @route POST /api/auth/login/facebook
- * @access Public
- */
-exports.facebookLogin = async (req, res, next) => {
+exports.facebookLogin = async (req, res) => {
   try {
     const { accessToken } = req.body;
-
-    if (!accessToken) {
-      return next(new AppError('Facebook access token is required', 400));
+    
+    // Verify Facebook token
+    const response = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`);
+    const data = await response.json();
+    
+    if (data.error) {
+      return res.status(401).json({ message: 'Invalid Facebook token' });
     }
-
-    // Verify Facebook token and get or create user
-    const user = await socialAuthService.loginWithFacebook(accessToken);
-
-    // Generate tokens
-    const token = generateToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    // Update last login
-    user.lastLogin = new Date();
-    await user.save();
-
+    
+    const { email, name, picture } = data;
+    
+    // Find or create user with the correct model
+    let user = await User.findByEmail(email);
+    
+    if (!user) {
+      // Generate a valid username from email
+      let username = email.split('@')[0];
+      
+      // Ensure username meets minimum length of 3 characters
+      if (username.length < 3) {
+        // Add random characters to make it at least 3 characters long
+        const randomChars = Math.random().toString(36).substring(2, 5);
+        username = username + randomChars;
+      }
+      
+      // Create new user with the correct model
+      user = await User.create({
+        fullName: name,
+        email,
+        avatar: picture?.data?.url,
+        username,
+        isEmailVerified: true, // Facebook verified the email
+        role: 'customer'
+      });
+    } else {
+      // Update existing user's Facebook info with the correct model
+      await User.update(
+        {
+          socialProvider: 'facebook',
+          socialId: data.id,
+          isEmailVerified: true,
+          lastLogin: new Date()
+        },
+        { where: { id: user.id } }
+      );
+    }
+    
+    // Generate access token with both id and userId fields
+    const token = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Generate refresh token with both id and userId fields
+    const refreshToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    // Update last login time
+    await User.updateLoginTimestamp(user.id);
+    
+    // Send response with both tokens
     res.status(200).json({
-      status: 'success',
       token,
       refreshToken,
-      data: {
-        user: user.toJSON()
+      user: {
+        id: user.id,
+        name: user.fullName,
+        email: user.email,
+        role: user.role,
+        avatar: user.profileImage
       }
     });
   } catch (error) {
-    next(error);
+    console.error('Facebook login error:', error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Refresh token
- * @route POST /api/auth/refresh-token
- * @access Public
- */
-exports.refreshToken = async (req, res, next) => {
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Update user
+    const user = await User.findByPk(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    user.isEmailVerified = true;
+    
+    // If both email and phone (if required) are verified, set user as verified
+    if (user.isEmailVerified && (!user.phone || user.isPhoneVerified)) {
+      user.isVerified = true;
+    }
+    
+    await user.save();
+    
+    res.status(200).json({ message: 'Email verified successfully' });
+  } catch (error) {
+    res.status(400).json({ message: 'Invalid or expired verification token' });
+  }
+};
+
+exports.verifyPhoneOTP = async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    
+    // Find user by phone
+    const user = await User.findOne({ phone });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if OTP is valid and not expired
+    if (!user.phoneVerificationOtp || 
+        user.phoneVerificationOtp !== otp || 
+        user.phoneVerificationExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+    
+    // Update user
+    user.isPhoneVerified = true;
+    
+    // If both email and phone are verified, set user as verified
+    if (user.isEmailVerified && user.isPhoneVerified) {
+      user.isVerified = true;
+    }
+    
+    // Clear the OTP
+    user.phoneVerificationOtp = null;
+    user.phoneVerificationExpires = null;
+    
+    await user.save();
+    
+    res.status(200).json({ message: 'Phone verified successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.resendEmailOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Find user
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.isEmailVerified) {
+      return res.status(400).json({ message: 'Email already verified' });
+    }
+    
+    // Generate new verification token
+    const verificationToken = jwt.sign(
+      { userId: user.id },
+      JWT_EMAIL_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    // Send verification email
+    await sendVerificationEmail(user.email, verificationToken, user.fullName);
+    
+    res.status(200).json({ message: 'Verification email sent' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.requestPhoneOTP = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    
+    // Find user
+    const user = await User.findOne({ phone });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.isPhoneVerified) {
+      return res.status(400).json({ message: 'Phone already verified' });
+    }
+    
+    // Generate new OTP
+    const otp = generateOTP();
+    
+    // Update user with new OTP
+    user.phoneVerificationOtp = otp;
+    user.phoneVerificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    
+    await user.save();
+    
+    // Send OTP
+    await sendPhoneVerificationOTP(phone, otp);
+    
+    res.status(200).json({ message: 'OTP sent to your phone' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.requestPasswordReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Find user
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Hash token and save to user
+    user.resetPasswordToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+      
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    
+    await user.save();
+    
+    // Send reset email
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    
+    const mailOptions = {
+      from: process.env.EMAIL_FROM,
+      to: user.email,
+      subject: 'UberEat - Reset Password',
+      html: `
+        <h1>Password Reset Request</h1>
+        <p>Hello ${user.fullName},</p>
+        <p>You requested to reset your password. Please click the link below to reset your password:</p>
+        <a href="${resetUrl}" style="display: inline-block; background-color: #FF5A5F; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Reset Password</a>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you did not request a password reset, please ignore this email.</p>
+        <p>Best regards,</p>
+        <p>UberEat Team</p>
+      `
+    };
+    
+    await transporter.sendMail(mailOptions);
+    
+    res.status(200).json({ message: 'Password reset instructions sent to your email' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { otp, userId, newPassword } = req.body;
+    
+    // Find user
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if OTP is valid and not expired
+    if (!user.resetPasswordToken || 
+        user.resetPasswordToken !== otp || 
+        user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+    
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Update password and clear OTP
+    user.password = hashedPassword;
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+    
+    await user.save();
+    
+    res.status(200).json({ message: 'Password reset successful' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return next(new AppError('Refresh token is required', 400));
+    
+    // If no refresh token in body, check cookies
+    let token = refreshToken;
+    if (!token && req.cookies && req.cookies.refresh_token) {
+      token = req.cookies.refresh_token;
     }
-
-    // Verify refresh token
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'No refresh token provided' 
+      });
+    }
+    
+    // Verify the refresh token
     let decoded;
     try {
-      decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
-    } catch (err) {
-      if (err.name === 'JsonWebTokenError') {
-        return next(new AppError('Invalid refresh token', 401));
-      }
-      if (err.name === 'TokenExpiredError') {
-        return next(new AppError('Refresh token has expired. Please log in again', 401));
-      }
-      throw err;
+      decoded = jwt.verify(token, JWT_REFRESH_SECRET);
+    } catch (error) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'Invalid or expired refresh token' 
+      });
     }
-
-    // Check if user exists
-    const user = await User.findByPk(decoded.id);
-    if (!user) {
-      return next(new AppError('The user belonging to this token no longer exists', 401));
-    }
-
-    // Generate new access token
-    const token = generateToken(user.id);
-
-    res.status(200).json({
-      status: 'success',
-      token,
-      data: {
-        user: user.toJSON()
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Update user profile
- * @route PATCH /api/auth/profile
- * @access Private
- */
-exports.updateProfile = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { fullName, address, notificationPreferences, preferredLanguage } = req.body;
-
-    // Fields that can be updated
-    const updateFields = {};
-    if (fullName) updateFields.fullName = fullName;
-    if (address) updateFields.address = address;
-    if (notificationPreferences) updateFields.notificationPreferences = notificationPreferences;
-    if (preferredLanguage) updateFields.preferredLanguage = preferredLanguage;
-
-    // Update user
-    await User.update(updateFields, { where: { id: userId } });
-
-    // Get updated user
+    
+    // Get user from database
+    const userId = decoded.id || decoded.userId;
     const user = await User.findByPk(userId);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        user: user.toJSON()
-      }
+    
+    if (!user) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+    
+    // Generate new tokens
+    const newAccessToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    const newRefreshToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    // Set new cookies
+    res.cookie('jwt', newAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: '/'
+    });
+    
+    res.cookie('refresh_token', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/'
+    });
+    
+    // Return new tokens
+    return res.status(200).json({
+      success: true,
+      token: newAccessToken,
+      refreshToken: newRefreshToken
     });
   } catch (error) {
-    next(error);
+    console.error('Refresh token error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'An error occurred during token refresh' 
+    });
   }
 };
 
-/**
- * Update user password
- * @route PATCH /api/auth/update-password
- * @access Private
- */
-exports.updatePassword = async (req, res, next) => {
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, phone, address } = req.body;
+    const userId = req.user.id;
+    
+    // Update user profile using correct model
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Update user fields with User model's update method
+    await User.update(
+      {
+        fullName: name || user.fullName,
+        phone: phone || user.phone,
+        address: address || user.address
+      },
+      { where: { id: userId } }
+    );
+    
+    // Get updated user
+    const updatedUser = await User.findByPk(userId);
+    
+    res.status(200).json({
+      message: 'Profile updated successfully',
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.fullName,
+        email: updatedUser.email,
+        phone: updatedUser.phone,
+        address: updatedUser.address,
+        role: updatedUser.role,
+        avatar: updatedUser.profileImage
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     const userId = req.user.id;
-
-    if (!currentPassword || !newPassword) {
-      return next(new AppError('Current password and new password are required', 400));
-    }
-
-    // Find user
+    
+    // Find user using correct model
     const user = await User.findByPk(userId);
-
-    // Check current password
-    if (!(await user.correctPassword(currentPassword))) {
-      return next(new AppError('Current password is incorrect', 401));
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
-
-    // Update password
-    user.password = newPassword;
-    await user.save();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Password updated successfully'
-      }
-    });
+    
+    // Verify current password using bcrypt directly
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    
+    // Update password using User model's update method
+    await User.update(
+      { password: newPassword }, // User model will hash the password
+      { where: { id: userId } }
+    );
+    
+    res.status(200).json({ message: 'Password updated successfully' });
   } catch (error) {
-    next(error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Add favorite dish
- * @route POST /api/auth/favorites/dishes
- * @access Private
- */
-exports.addFavoriteDish = async (req, res, next) => {
+exports.addFavoriteDish = async (req, res) => {
   try {
     const { dishId } = req.body;
     const userId = req.user.id;
-
-    if (!dishId) {
-      return next(new AppError('Dish ID is required', 400));
-    }
-
-    // Get user
+    
+    // Find user and update favorites
     const user = await User.findByPk(userId);
     
-    // Add dish to favorites if not already there
-    const favorites = user.favoriteDishes || [];
-    if (!favorites.includes(dishId)) {
-      favorites.push(dishId);
-      user.favoriteDishes = favorites;
-      await user.save();
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
     }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Dish added to favorites',
-        favoriteDishes: user.favoriteDishes
-      }
+    
+    await user.addFavoriteDish(dishId);
+    
+    res.status(200).json({ 
+      message: 'Dish added to favorites',
+      favoriteDishes: await user.getFavoriteDishes()
     });
   } catch (error) {
-    next(error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Remove favorite dish
- * @route DELETE /api/auth/favorites/dishes/:id
- * @access Private
- */
-exports.removeFavoriteDish = async (req, res, next) => {
+exports.removeFavoriteDish = async (req, res) => {
   try {
-    const dishId = req.params.id;
+    const { id: dishId } = req.params;
     const userId = req.user.id;
-
-    // Get user
+    
+    // Find user and update favorites
     const user = await User.findByPk(userId);
     
-    // Remove dish from favorites
-    const favorites = user.favoriteDishes || [];
-    user.favoriteDishes = favorites.filter(id => id !== dishId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    await user.removeFavoriteDish(dishId);
+    
+    res.status(200).json({ 
+      message: 'Dish removed from favorites',
+      favoriteDishes: await user.getFavoriteDishes()
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getFavoriteDishes = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find user and populate favorite dishes
+    const user = await User.findByPk(userId, {
+      include: {
+        model: User.associations.favoriteDishes,
+        attributes: ['id', 'name', 'price', 'description', 'imageUrl']
+      }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({ favoriteDishes: user.favoriteDishes });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find user using correct model
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Remove sensitive data
+    const { password, resetPasswordToken, resetPasswordExpires, ...safeUser } = user;
+    
+    res.status(200).json({ user: safeUser });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+exports.logout = async (req, res) => {
+  try {
+    // Log logout attempt
+    console.log('Logout request received');
+    
+    // Clear the JWT cookie with various path options to ensure it's removed
+    res.clearCookie('jwt', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/'
+    });
+    
+    // Also clear the refresh token cookie
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/'
+    });
+    
+    // Also clear with alternative path to be sure
+    res.clearCookie('jwt', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/admin'
+    });
+    
+    // Clear session if using passport
+    if (req.logout) {
+      req.logout();
+    }
+    
+    // Log success
+    console.log('Logout successful, cookies cleared');
+    
+    // Return success message
+    res.status(200).json({ 
+      success: true,
+      message: 'Logged out successfully'
+    });
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error during logout'
+    });
+  }
+};
+
+exports.googleCallback = async (req, res) => {
+  try {
+    // User will be attached to req.user by passport
+    const user = req.user;
+    
+    // Generate token
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+  } catch (error) {
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+  }
+};
+
+exports.facebookCallback = async (req, res) => {
+  try {
+    // User will be attached to req.user by passport
+    const user = req.user;
+    
+    // Generate token
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+  } catch (error) {
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+  }
+};
+
+exports.verifyEmailOTP = async (req, res) => {
+  try {
+    const { userId, otp } = req.body;
+    
+    // Find user
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Check if OTP is valid and not expired
+    if (!user.emailVerificationOtp || 
+        user.emailVerificationOtp !== otp || 
+        user.emailVerificationExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+    
+    // Update user
+    user.isEmailVerified = true;
+    
+    // If both email and phone (if required) are verified, set user as verified
+    if (user.isEmailVerified && (!user.phone || user.isPhoneVerified)) {
+      user.isVerified = true;
+    }
+    
+    // Clear the email OTP
+    user.emailVerificationOtp = null;
+    user.emailVerificationExpires = null;
+    
     await user.save();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        message: 'Dish removed from favorites',
-        favoriteDishes: user.favoriteDishes
-      }
-    });
+    
+    res.status(200).json({ message: 'Email verified successfully' });
   } catch (error) {
-    next(error);
+    res.status(500).json({ message: error.message });
   }
 };
 
-/**
- * Get favorite dishes
- * @route GET /api/auth/favorites/dishes
- * @access Private
- */
-exports.getFavoriteDishes = async (req, res, next) => {
+exports.resendEmailOTP = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const { email } = req.body;
+    
+    // Find user
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    if (user.isEmailVerified) {
+      return res.status(400).json({ message: 'Email already verified' });
+    }
+    
+    // Generate new OTP
+    const otp = generateOTP();
+    
+    // Update user with new OTP
+    user.emailVerificationOtp = otp;
+    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    
+    await user.save();
+    
+    // Send verification email with OTP
+    await sendVerificationEmailWithOTP(user.email, otp, user.fullName);
+    
+    res.status(200).json({ message: 'OTP sent to your email' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
-    // Get user with their favorite dishes
-    const user = await User.findByPk(userId);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        favoriteDishes: user.favoriteDishes || []
-      }
+// Kiểm tra email đã tồn tại hay chưa
+exports.checkEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+    
+    // Kiểm tra email trong cơ sở dữ liệu
+    const existingEmail = await User.findByEmail(email);
+    
+    // Trả về kết quả
+    res.status(200).json({ 
+      exists: !!existingEmail
     });
   } catch (error) {
-    next(error);
+    console.error('Check email error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Kiểm tra số điện thoại đã tồn tại hay chưa
+exports.checkPhone = async (req, res) => {
+  try {
+    const { phone } = req.body;
+    
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+    
+    // Kiểm tra số điện thoại trong cơ sở dữ liệu
+    try {
+      const sql = 'SELECT * FROM users WHERE phone = ?';
+      const results = await db.query(sql, [phone]);
+      
+      // Trả về kết quả
+      res.status(200).json({ 
+        exists: results.length > 0
+      });
+    } catch (queryError) {
+      console.error('Query error:', queryError);
+      res.status(500).json({ message: 'Database query error' });
+    }
+  } catch (error) {
+    console.error('Check phone error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// Helper Functions
+function generateOTP() {
+  // Generate a 6-digit OTP
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+async function sendVerificationEmail(email, token, name) {
+  // Build verification URL
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
+  
+  // Email options
+  const mailOptions = {
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: 'UberEat - Verify Your Email',
+    html: `
+      <h1>Email Verification</h1>
+      <p>Hello ${name},</p>
+      <p>Thank you for registering with UberEat. Please click the link below to verify your email address:</p>
+      <a href="${verificationUrl}" style="display: inline-block; background-color: #FF5A5F; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Verify Email</a>
+      <p>This link will expire in 24 hours.</p>
+      <p>If you did not register for an UberEat account, please ignore this email.</p>
+      <p>Best regards,</p>
+      <p>UberEat Team</p>
+    `
+  };
+  
+  // Send email
+  await transporter.sendMail(mailOptions);
+}
+
+async function sendPhoneVerificationOTP(phone, otp) {
+  // Send OTP via SMS using Twilio
+  await twilioClient.messages.create({
+    body: `Your UberEat verification code is: ${otp}. This code will expire in 15 minutes.`,
+    from: process.env.TWILIO_PHONE_NUMBER,
+    to: phone
+  });
+}
+
+async function sendVerificationEmailWithOTP(email, otp, name) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: 'UberEat - Verify Your Email',
+    html: `
+      <h1>Email Verification</h1>
+      <p>Hello ${name},</p>
+      <p>Your email verification code is: ${otp}</p>
+      <p>This code will expire in 24 hours.</p>
+      <p>If you did not request this code, please ignore this email.</p>
+      <p>Best regards,</p>
+      <p>UberEat Team</p>
+    `
+  };
+  
+  await transporter.sendMail(mailOptions);
+}
+
+// Get the JWT version - useful for clients to check if they need to re-authenticate
+exports.getJwtVersion = async (req, res) => {
+  try {
+    res.status(200).json({
+      success: true,
+      jwtVersion: JWT_VERSION,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('JWT version check error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error checking JWT version'
+    });
   }
 };

@@ -641,7 +641,7 @@
 
 <script>
 import { mapState, mapActions } from 'vuex';
-import { format, parse, addDays, isAfter, isSameDay } from 'date-fns';
+import { format, addHours, addDays, addMinutes, isAfter, parse } from 'date-fns';
 
 export default {
   name: 'CartView',
@@ -778,23 +778,6 @@ export default {
       updateAddress: 'user/updateAddress'
     }),
     
-    addHours(date, hours) {
-      const result = new Date(date);
-      result.setHours(result.getHours() + hours);
-      return result;
-    },
-    
-    addMinutes(date, minutes) {
-      const result = new Date(date);
-      result.setMinutes(result.getMinutes() + minutes);
-      return result;
-    },
-    
-    allowedMinutes(minute) {
-      // Allow only 15-minute intervals (0, 15, 30, 45)
-      return minute % 15 === 0;
-    },
-    
     async loadCart() {
       try {
         this.isLoading = true;
@@ -830,7 +813,9 @@ export default {
       try {
         this.isLoadingAddresses = true;
         const addresses = await this.fetchAddresses();
-        this.addresses = addresses;
+        
+        // Ensure addresses is always an array
+        this.addresses = Array.isArray(addresses) ? addresses : [];
         
         // If no address is selected and we have addresses, select the default one
         if (!this.selectedAddressId && this.addresses.length > 0) {
@@ -842,7 +827,9 @@ export default {
         }
       } catch (error) {
         console.error('Failed to load addresses:', error);
-        this.$toast.error('Failed to load your delivery addresses.');
+        // Safe access to error properties
+        const errorMessage = error?.response?.data?.message || 'Failed to load your delivery addresses.';
+        this.$toast.error(errorMessage);
       } finally {
         this.isLoadingAddresses = false;
       }

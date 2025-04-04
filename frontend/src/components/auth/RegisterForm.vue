@@ -28,6 +28,7 @@
             id="email" 
             v-model="formData.email"
             class="form-control"
+            @blur="checkEmailExists"
             required
           />
           <small v-if="validationErrors.email" class="text-error">{{ validationErrors.email }}</small>
@@ -40,6 +41,7 @@
             id="phone" 
             v-model="formData.phone"
             class="form-control"
+            @blur="checkPhoneExists"
             placeholder="+84xxxxxxxxxx"
             required
           />
@@ -176,6 +178,7 @@
 import { ref, reactive, computed, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
+import axios from 'axios';
 
 export default {
   name: 'RegisterForm',
@@ -339,7 +342,23 @@ export default {
         startResendCountdown();
       } catch (error) {
         console.error('Registration error:', error);
-        message.value = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
+        
+        // Hiển thị thông báo lỗi cụ thể từ server
+        if (error.response?.data?.message) {
+          // Kiểm tra các trường hợp lỗi phổ biến và hiển thị thông báo thân thiện
+          if (error.response.data.message.includes('Email already registered')) {
+            validationErrors.value.email = 'Email đã được đăng ký. Vui lòng sử dụng email khác.';
+            message.value = 'Email đã được đăng ký. Vui lòng sử dụng email khác.';
+          } else if (error.response.data.message.includes('Phone number already registered')) {
+            validationErrors.value.phone = 'Số điện thoại đã được đăng ký. Vui lòng sử dụng số điện thoại khác.';
+            message.value = 'Số điện thoại đã được đăng ký. Vui lòng sử dụng số điện thoại khác.';
+          } else {
+            message.value = error.response.data.message;
+          }
+        } else {
+          message.value = 'Đăng ký thất bại. Vui lòng thử lại.';
+        }
+        
         messageType.value = 'error';
       } finally {
         isLoading.value = false;
@@ -462,6 +481,49 @@ export default {
       }
     };
     
+    // Thêm phương thức checkEmailExists và checkPhoneExists
+    const checkEmailExists = async () => {
+      try {
+        if (!formData.value.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.value.email)) {
+          return; // Không kiểm tra nếu email không hợp lệ
+        }
+        
+        const response = await axios.post('/api/auth/check-email', {
+          email: formData.value.email
+        });
+        
+        if (response.data.exists) {
+          validationErrors.value.email = 'Email đã được đăng ký. Vui lòng sử dụng email khác.';
+        } else {
+          validationErrors.value.email = '';
+        }
+      } catch (error) {
+        console.error('Email check error:', error);
+        // Không hiển thị lỗi nếu API kiểm tra không thành công
+      }
+    };
+
+    const checkPhoneExists = async () => {
+      try {
+        if (!formData.value.phone || !/^\+84\d{9,10}$/.test(formData.value.phone)) {
+          return; // Không kiểm tra nếu số điện thoại không hợp lệ
+        }
+        
+        const response = await axios.post('/api/auth/check-phone', {
+          phone: formData.value.phone
+        });
+        
+        if (response.data.exists) {
+          validationErrors.value.phone = 'Số điện thoại đã được đăng ký. Vui lòng sử dụng số điện thoại khác.';
+        } else {
+          validationErrors.value.phone = '';
+        }
+      } catch (error) {
+        console.error('Phone check error:', error);
+        // Không hiển thị lỗi nếu API kiểm tra không thành công
+      }
+    };
+    
     // Clean up on component unmount
     onUnmounted(() => {
       if (countdownTimer) {
@@ -489,7 +551,9 @@ export default {
       googleLogin,
       facebookLogin,
       onOtpDigitInput,
-      onOtpKeyDown
+      onOtpKeyDown,
+      checkEmailExists,
+      checkPhoneExists
     };
   }
 };
