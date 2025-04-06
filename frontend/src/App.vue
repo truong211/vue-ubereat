@@ -10,7 +10,7 @@
             <component :is="Component" />
           </transition>
         </router-view>
-        
+
         <!-- Toast Notifications -->
         <v-snackbar
           v-model="toast.show"
@@ -19,7 +19,7 @@
           location="top"
         >
           {{ toast.text }}
-          
+
           <template v-slot:actions>
             <v-btn
               variant="text"
@@ -28,7 +28,7 @@
             ></v-btn>
           </template>
         </v-snackbar>
-        
+
         <!-- Order Chat Dialog -->
         <order-chat-dialog
           v-if="isChatOpen"
@@ -61,10 +61,11 @@ import NotificationToast from '@/components/notifications/NotificationToast.vue'
 import SupportChat from '@/components/support/SupportChat.vue'
 import { computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
+import { useToast } from '@/composables/useToast';
 
 export default {
   name: 'App',
-  
+
   components: {
     MainLayout,
     OrderChatDialog,
@@ -72,41 +73,20 @@ export default {
     NotificationToast,
     SupportChat
   },
-  
-  data() {
-    return {
-      toast: {
-        show: false,
-        text: '',
-        color: 'success',
-        timeout: 3000
-      }
-    };
-  },
-  
-  created() {
-    // Initialize toast notification system
-    this.$toast = {
-      success: (text) => this.showToast(text, 'success'),
-      error: (text) => this.showToast(text, 'error'),
-      info: (text) => this.showToast(text, 'info'),
-      warning: (text) => this.showToast(text, 'warning')
-    };
-    
-    // Make toast available globally
-    this.$root.$toast = this.$toast;
-  },
-  
+
   setup() {
     const store = useStore();
-    
+
+    // Get toast state from our composable
+    const { state: toastState } = useToast();
+
     // Chat state
     const isChatOpen = computed(() => store.getters['chat/isChatOpen']);
     const activeChat = computed(() => store.getters['chat/activeChat']);
     const activeChatOrderId = computed(() => activeChat.value?.orderId || '');
     const activeChatDriverId = computed(() => activeChat.value?.driverId || '');
     const activeChatDriverName = computed(() => activeChat.value?.driverName || 'Driver');
-    
+
     const closeChat = () => {
       store.dispatch('chat/closeChatDialog');
     };
@@ -123,8 +103,9 @@ export default {
     })
 
     const currentNotification = computed(() => store.state.notifications.currentNotification)
-    
+
     return {
+      toast: toastState,
       isChatOpen,
       activeChatOrderId,
       activeChatDriverId,
@@ -133,15 +114,6 @@ export default {
       showNotification,
       currentNotification
     };
-  },
-  
-  methods: {
-    showToast(text, color = 'success', timeout = 3000) {
-      this.toast.show = true;
-      this.toast.text = text;
-      this.toast.color = color;
-      this.toast.timeout = timeout;
-    }
   }
 };
 </script>

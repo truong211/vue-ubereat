@@ -19,10 +19,20 @@
         </div>
         <div class="header-center">
           <SearchBar />
+          <div class="nav-links">
+            <router-link to="/foods" class="nav-link">
+              <v-icon>mdi-food</v-icon>
+              <span class="ml-1">Food</span>
+            </router-link>
+            <router-link to="/restaurants" class="nav-link">
+              <v-icon>mdi-store</v-icon>
+              <span class="ml-1">Restaurants</span>
+            </router-link>
+          </div>
         </div>
         <div class="header-right">
-          <button 
-            class="language-toggle" 
+          <button
+            class="language-toggle"
             @click="toggleLanguageSelector"
           >
             <i class="fas fa-globe"></i>
@@ -30,16 +40,16 @@
           <div v-if="showLanguageSelector" class="language-dropdown">
             <LanguageSwitcher />
           </div>
-          <router-link 
-            to="/cart" 
+          <router-link
+            to="/cart"
             class="cart-button"
           >
             <i class="fas fa-shopping-cart"></i>
             <span v-if="cartItemCount > 0" class="cart-badge">{{ cartItemCount }}</span>
           </router-link>
           <div class="user-menu">
-            <button 
-              class="user-menu-toggle" 
+            <button
+              class="user-menu-toggle"
               @click="toggleUserMenu"
             >
               <i class="fas fa-user-circle"></i>
@@ -162,14 +172,14 @@ import { mapGetters, mapActions } from 'vuex';
 
 export default {
   name: 'MainLayout',
-  
+
   components: {
     SearchBar,
     LanguageSwitcher,
     NotificationCenter,
     InstallPrompt
   },
-  
+
   data() {
     return {
       showLanguageSelector: false,
@@ -177,60 +187,60 @@ export default {
       showInstallPrompt: false
     };
   },
-  
+
   computed: {
     ...mapGetters({
       isAuthenticated: 'auth/isAuthenticated',
       currentUser: 'auth/currentUser'
     }),
-    
+
     cartItemCount() {
       return this.$store.getters['cart/cartItemCount'] || 0;
     },
-    
+
     currentLocation() {
       return this.$store.getters['location/currentAddress'];
     }
   },
-  
+
   mounted() {
     this.checkForAppInstallPrompt();
     document.addEventListener('click', this.closeMenus);
   },
-  
+
   beforeDestroy() {
     document.removeEventListener('click', this.closeMenus);
   },
-  
+
   methods: {
     ...mapActions({
       logoutUser: 'auth/logout'
     }),
-    
+
     toggleLanguageSelector(event) {
       event.stopPropagation();
       this.showLanguageSelector = !this.showLanguageSelector;
       this.showUserMenu = false;
     },
-    
+
     toggleUserMenu(event) {
       event.stopPropagation();
       this.showUserMenu = !this.showUserMenu;
       this.showLanguageSelector = false;
     },
-    
+
     closeMenus(event) {
-      const isDropdownClick = event.target.closest('.language-dropdown') || 
+      const isDropdownClick = event.target.closest('.language-dropdown') ||
                              event.target.closest('.user-dropdown');
-      const isToggleClick = event.target.closest('.language-toggle') || 
+      const isToggleClick = event.target.closest('.language-toggle') ||
                            event.target.closest('.user-menu-toggle');
-                           
+
       if (!isDropdownClick && !isToggleClick) {
         this.showLanguageSelector = false;
         this.showUserMenu = false;
       }
     },
-    
+
     async logout() {
       try {
         await this.logoutUser();
@@ -241,17 +251,17 @@ export default {
         this.$router.push('/login');
       }
     },
-    
+
     checkForAppInstallPrompt() {
       // Check if app has been installed or prompt has been shown recently
       const hasShownPrompt = localStorage.getItem('installPromptShown');
       const lastPromptDate = localStorage.getItem('installPromptDate');
       const now = new Date().getTime();
-      
+
       // Show prompt if not shown in the last 14 days and app is not installed
-      if ((!hasShownPrompt || now - lastPromptDate > 14 * 24 * 60 * 60 * 1000) && 
+      if ((!hasShownPrompt || now - lastPromptDate > 14 * 24 * 60 * 60 * 1000) &&
           !window.matchMedia('(display-mode: standalone)').matches) {
-        
+
         // Show prompt after a delay to not interrupt initial user experience
         setTimeout(() => {
           this.showInstallPrompt = true;
@@ -496,32 +506,61 @@ export default {
   .header-content {
     flex-direction: column;
   }
-  
+
   .header-left, .header-center, .header-right {
     width: 100%;
     margin: 10px 0;
   }
-  
+
   .footer-content {
     flex-direction: column;
   }
-  
+
   .footer-section {
     margin-bottom: 30px;
   }
-  
+
   .footer-bottom {
     flex-direction: column;
     text-align: center;
   }
-  
+
   .social-links {
     margin-top: 15px;
     justify-content: center;
   }
-  
+
   .social-links a {
     margin: 0 8px;
   }
+}
+
+/* Add the CSS styles for nav-links and nav-link */
+.nav-links {
+  display: flex;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  padding: 8px 15px;
+  margin: 0 5px;
+  color: var(--v-primary-base);
+  font-weight: 500;
+  text-decoration: none;
+  border-radius: 20px;
+  transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+  background-color: rgba(255, 82, 82, 0.1);
+}
+
+.nav-link.router-link-active {
+  background-color: rgba(255, 82, 82, 0.15);
+  color: var(--v-primary-darken1);
+  font-weight: 600;
 }
 </style>

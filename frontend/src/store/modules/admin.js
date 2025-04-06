@@ -41,12 +41,12 @@ const state = {
 
   // Notifications
   notifications: [],
-  
+
   // Content management
   banners: [],
   staticPages: [],
   siteConfig: null,
-  
+
   // Resource management
   pendingRestaurants: 0,
 
@@ -350,14 +350,14 @@ const actions = {
     try {
       // Close any existing connection
       dispatch('closeConnections');
-      
+
       // Get token from localStorage
       const token = localStorage.getItem('token');
       if (!token) {
         console.error('Cannot connect to WebSocket: No auth token');
         return;
       }
-      
+
       // Get WebSocket URL from config or environment
       let wsUrl;
       try {
@@ -369,33 +369,67 @@ const actions = {
         const host = window.location.host;
         wsUrl = `${protocol}//${host}`;
       }
-      
+
       // Check if backend service is running in development mode
       if (process.env.NODE_ENV !== 'production' && !wsUrl.includes('localhost')) {
         wsUrl = 'ws://localhost:3000';
       }
-      
+
       console.log(`Connecting to WebSocket at: ${wsUrl}`);
-      
-      // Wrap WebSocket connection in try-catch
+
+      // Import and use the adminWebSocket service instead of creating a new connection
+      import('@/services/adminWebSocket.service').then(module => {
+        const adminWebSocket = module.default;
+
+        // Override the baseUrl with our calculated wsUrl
+        adminWebSocket.baseUrl = wsUrl.replace('ws:', 'http:').replace('wss:', 'https:');
+
+        // Connect to the WebSocket
+        adminWebSocket.connect();
+
+        // Set up custom event handlers
+        if (adminWebSocket.socket) {
+          adminWebSocket.socket.on('connect', () => {
+            commit('SET_SOCKET', adminWebSocket.socket);
+            commit('SET_WS_CONNECTED', true);
+          });
+
+          adminWebSocket.socket.on('notification', (data) => {
+            commit('ADD_NOTIFICATION', data.notification);
+          });
+
+          adminWebSocket.socket.on('system_alert', (data) => {
+            commit('ADD_SYSTEM_ALERT', data.alert);
+          });
+
+          adminWebSocket.socket.on('stats_update', (data) => {
+            commit('SET_STATS', data.stats);
+          });
+        }
+      }).catch(error => {
+        console.error('Failed to import adminWebSocket service:', error);
+      });
+
+      // For backward compatibility, keep the old code commented out
+      /*
       try {
         // Connect to WebSocket
         const socket = new WebSocket(wsUrl);
-        
+
         socket.onopen = () => {
           console.log('Admin WebSocket connected');
           commit('SET_SOCKET', socket);
           commit('SET_WS_CONNECTED', true);
-          
+
           // Send authentication message
           socket.send(JSON.stringify({ type: 'auth', token }));
         };
-        
+
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
             console.log('Admin WebSocket message:', data);
-            
+
             // Handle different message types
             switch (data.type) {
               case 'notification':
@@ -415,22 +449,22 @@ const actions = {
             // Continue operation even with parsing errors
           }
         };
-        
+
         socket.onerror = (error) => {
           console.error('Admin WebSocket error:', error);
           commit('SET_WS_CONNECTED', false);
-          
+
           // Don't store the socket if there's an error
           if (error) {
             dispatch('closeConnections');
           }
         };
-        
+
         socket.onclose = (event) => {
           console.log(`Admin WebSocket disconnected (code: ${event.code}, reason: ${event.reason})`);
           commit('SET_WS_CONNECTED', false);
           commit('SET_SOCKET', null);
-          
+
           // Only auto-reconnect in production or if explicitly enabled
           // For development, don't continuously try to reconnect if backend is unavailable
           if (process.env.NODE_ENV === 'production' && event.code !== 1000 && event.code !== 1001) {
@@ -445,7 +479,8 @@ const actions = {
         commit('SET_WS_CONNECTED', false);
         commit('SET_SOCKET', null);
       }
-      
+      */
+
     } catch (error) {
       console.error('Error initializing WebSocket:', error);
       commit('SET_WS_CONNECTED', false);
@@ -654,12 +689,12 @@ const actions = {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Set filename based on format
       const timestamp = new Date().toISOString().split('T')[0];
       const extension = format === 'excel' ? 'xlsx' : format;
       link.setAttribute('download', `analytics-report-${timestamp}.${extension}`);
-      
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -676,13 +711,13 @@ const getters = {
   pendingRestaurantsCount: state => state.restaurantStats.pending,
   notificationCount: state => state.notifications.length,
   unreadNotificationCount: (_, getters) => getters.unreadNotifications.length,
-  
+
   activeSystemAlerts: state => state.systemAlerts.filter(alert => !alert.resolved),
   systemAlertCount: (_, getters) => getters.activeSystemAlerts.length,
-  
+
   isMonitoringRestaurant: state => restaurantId => state.monitoredEntities.restaurants.has(restaurantId),
   isMonitoringUser: state => userId => state.monitoredEntities.users.has(userId),
-  
+
   recentOrderActivities: state => state.recentActivities.orders,
   recentUserActivities: state => state.recentActivities.users,
   recentRestaurantActivities: state => state.recentActivities.restaurants,

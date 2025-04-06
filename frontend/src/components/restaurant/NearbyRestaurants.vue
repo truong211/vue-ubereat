@@ -133,6 +133,13 @@ export default {
       error.value = null
       
       try {
+        console.log('Fetching nearby restaurants with:', {
+          lat: props.userLocation.lat,
+          lng: props.userLocation.lng,
+          maxDistance: props.maxDistance || 5,
+          maxResults: props.maxResults || 8
+        });
+        
         const response = await restaurantAPI.getNearbyRestaurants(
           props.userLocation.lat,
           props.userLocation.lng,
@@ -185,8 +192,15 @@ export default {
         }
       } catch (err) {
         console.error('Error fetching nearby restaurants:', err)
-        error.value = err?.response?.data?.message || 'Could not load nearby restaurants'
-        restaurants.value = []
+        const errorMessage = err?.response?.data?.message || 
+                          err?.response?.message || 
+                          err?.message || 
+                          'Could not load nearby restaurants';
+        error.value = errorMessage;
+        restaurants.value = [];
+        
+        // Show a toast with the error message
+        toast.error(`Failed to load nearby restaurants: ${errorMessage}`);
       } finally {
         loading.value = false
       }

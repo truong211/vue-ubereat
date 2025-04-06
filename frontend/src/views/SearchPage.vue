@@ -274,7 +274,9 @@ const fetchRestaurants = async () => {
   
   try {
     const params = {
-      q: searchQuery.value,
+      // For the query parameter, use 'search' instead of 'q' to match the backend expectation
+      // and ensure it's a string
+      search: typeof searchQuery.value === 'string' ? searchQuery.value : '',
       cuisine: searchFilters.value.cuisines.join(','),
       priceRange: searchFilters.value.price.join(','),
       minRating: searchFilters.value.rating,
@@ -283,10 +285,13 @@ const fetchRestaurants = async () => {
       limit: 10 // Assuming a default limit
     };
     
+    // Log the exact params being sent to the API
+    console.log('Search parameters:', params);
+    
     // Include location coordinates if available
     if (userLocation.value) {
-      params.lat = userLocation.value.lat;
-      params.lng = userLocation.value.lng;
+      params.latitude = userLocation.value.lat;
+      params.longitude = userLocation.value.lng;
     }
     
     const response = await restaurantAPI.getAllRestaurants(params);
@@ -371,7 +376,11 @@ const applyFilters = () => {
   
   // Filter by search query
   if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase();
+    // Make sure searchQuery.value is a string before calling toLowerCase()
+    const query = typeof searchQuery.value === 'string' 
+      ? searchQuery.value.toLowerCase() 
+      : String(searchQuery.value).toLowerCase();
+    
     results = results.filter(restaurant => 
       restaurant.name.toLowerCase().includes(query) || 
       restaurant.cuisineType.toLowerCase().includes(query)

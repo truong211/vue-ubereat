@@ -35,9 +35,9 @@
               ></v-text-field>
             </v-col>
             <v-col cols="12" sm="4">
-              <v-btn 
-                color="primary" 
-                size="large" 
+              <v-btn
+                color="primary"
+                size="large"
                 block
                 @click="searchRestaurants"
                 class="hover-scale"
@@ -116,21 +116,34 @@
     <v-container class="pt-12">
       <!-- Promotional Banner -->
       <promotional-banner :banners="promotionalBanners"></promotional-banner>
-      
+
+      <!-- Featured Products Section -->
+      <featured-products
+        :max-items="8"
+        class="mb-8 mt-8"
+      ></featured-products>
+
       <!-- Personalized Recommendations (if logged in) -->
-      <personalized-recommendations 
+      <personalized-recommendations
         v-if="isLoggedIn"
         :is-logged-in="isLoggedIn"
         class="mb-8"
       ></personalized-recommendations>
-      
+
       <!-- Nearby Restaurants -->
-      <nearby-restaurants 
-        :user-location="userLocation" 
+      <nearby-restaurants
+        :user-location="userLocation"
         :max-results="4"
         class="mb-8"
         @update-location="updateLocation"
       ></nearby-restaurants>
+    </v-container>
+
+    <!-- Services Section -->
+    <v-container fluid class="py-8 grey lighten-4">
+      <v-container>
+        <services-section></services-section>
+      </v-container>
     </v-container>
 
     <!-- How it works section -->
@@ -148,7 +161,7 @@
         </v-col>
       </v-row>
     </v-container>
-    
+
     <!-- Categories section -->
     <v-container fluid class="grey lighten-4 py-8">
       <v-container>
@@ -160,8 +173,8 @@
         </div>
         <v-row>
           <v-col v-for="category in popularCategories" :key="category.id" cols="6" sm="4" md="3" lg="2">
-            <v-card 
-              @click="filterByCategory(category.id)" 
+            <v-card
+              @click="filterByCategory(category.id)"
               class="mx-auto category-card"
               hover
               elevation="2"
@@ -178,10 +191,10 @@
         </v-row>
       </v-container>
     </v-container>
-    
+
     <!-- Featured restaurants section -->
     <v-container class="py-8">
-      <featured-restaurants 
+      <featured-restaurants
         :max-items="6"
         @favorite-toggled="handleFavoriteToggled"
       ></featured-restaurants>
@@ -230,7 +243,7 @@
         </v-col>
       </v-row>
     </v-container>
-    
+
     <!-- Location update dialog -->
     <v-dialog v-model="locationDialog" max-width="500">
       <v-card>
@@ -255,17 +268,21 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
 import PromotionalBanner from '@/components/common/PromotionalBanner.vue'
+import ServicesSection from '@/components/common/ServicesSection.vue'
 import NearbyRestaurants from '@/components/restaurant/NearbyRestaurants.vue'
 import FeaturedRestaurants from '@/components/restaurant/FeaturedRestaurants.vue'
+import FeaturedProducts from '@/components/product/FeaturedProducts.vue'
 import PersonalizedRecommendations from '@/components/restaurant/PersonalizedRecommendations.vue'
 
 export default {
   name: 'HomeView',
-  
+
   components: {
     PromotionalBanner,
+    ServicesSection,
     NearbyRestaurants,
     FeaturedRestaurants,
+    FeaturedProducts,
     PersonalizedRecommendations
   },
 
@@ -273,19 +290,19 @@ export default {
     const { t } = useI18n()
     const router = useRouter()
     const toast = useToast()
-    
+
     const searchQuery = ref('')
     const showAdvancedSearch = ref(false)
     const isLoggedIn = ref(true) // Would be determined by auth state in real app
     const locationDialog = ref(false)
     const newLocation = ref('')
-    
+
     // User location
     const userLocation = ref({
       address: 'San Francisco, CA',
       coordinates: { lat: 37.7749, lng: -122.4194 }
     })
-    
+
     // Search filters
     const filters = ref({
       cuisine: null,
@@ -293,7 +310,7 @@ export default {
       price: null,
       dietary: null
     })
-    
+
     // Filter options
     const cuisineOptions = [
       { title: 'All Cuisines', value: null },
@@ -305,14 +322,14 @@ export default {
       { title: 'Thai', value: 'thai' },
       { title: 'Indian', value: 'indian' }
     ]
-    
+
     const sortOptions = [
       { title: 'Rating', value: 'rating' },
       { title: 'Delivery Time', value: 'deliveryTime' },
       { title: 'Distance', value: 'distance' },
       { title: 'Popularity', value: 'popularity' }
     ]
-    
+
     const priceOptions = [
       { title: 'All Prices', value: null },
       { title: '$', value: '1' },
@@ -320,7 +337,7 @@ export default {
       { title: '$$$', value: '3' },
       { title: '$$$$', value: '4' }
     ]
-    
+
     const dietaryOptions = [
       { title: 'None', value: null },
       { title: 'Vegetarian', value: 'vegetarian' },
@@ -365,7 +382,7 @@ export default {
         description: t('home.howItWorks.step3.description')
       }
     ]
-    
+
     // Promotional banners
     const promotionalBanners = ref([
       {
@@ -390,7 +407,7 @@ export default {
         image: '/images/banners/promo-banner3.jpg'
       }
     ])
-    
+
     const popularCategories = [
       { id: 1, name: 'Pizza', image: '/images/categories/pizza.jpg' },
       { id: 2, name: 'Burgers', image: '/images/categories/burger.jpg' },
@@ -405,7 +422,7 @@ export default {
       { id: 11, name: 'Breakfast', image: '/images/categories/breakfast.jpg' },
       { id: 12, name: 'Drinks', image: '/images/categories/drinks.jpg' },
     ]
-    
+
     const promotions = [
       {
         title: '50% OFF Your First Order',
@@ -420,60 +437,60 @@ export default {
         image: '/images/promotions/promo2.jpg'
       }
     ]
-    
+
     // Methods
     const searchRestaurants = () => {
       // Build query parameters based on search and filters
-      const query = { 
-        address: searchQuery.value 
+      const query = {
+        address: searchQuery.value
       }
-      
+
       // Add any selected filters
       if (filters.value.cuisine) query.cuisine = filters.value.cuisine
       if (filters.value.price) query.price = filters.value.price
       if (filters.value.dietary) query.dietary = filters.value.dietary
       if (filters.value.sort) query.sort = filters.value.sort
-      
+
       // Navigate to restaurants page with query params
       router.push({
         name: 'Restaurants',
         query
       })
     }
-    
+
     const filterByCategory = (categoryId) => {
       router.push({
         name: 'Restaurants',
         query: { category: categoryId }
       })
     }
-    
+
     const updateLocation = () => {
       locationDialog.value = true
     }
-    
+
     const confirmLocationUpdate = () => {
       if (newLocation.value) {
         userLocation.value = {
           ...userLocation.value,
           address: newLocation.value
         }
-        
+
         toast.success(`Location updated to ${newLocation.value}`)
-        
+
         // In a real app, geocoding would be done here to get coordinates
         // For this demo, we'll just update the address
-        
+
         locationDialog.value = false
         newLocation.value = ''
       }
     }
-    
+
     const handleFavoriteToggled = ({ id, isFavorite }) => {
       // This would typically update a user's favorites in the application state
       console.log(`Restaurant ${id} favorite status: ${isFavorite}`)
     }
-    
+
     onMounted(() => {
       // Check if user is logged in
       // In a real app this would be handled by auth service
@@ -565,7 +582,7 @@ export default {
   .slide-content {
     padding: 1rem;
   }
-  
+
   .search-overlay {
     position: relative;
     bottom: auto;
@@ -574,11 +591,11 @@ export default {
     width: 100%;
     margin: -2rem auto 2rem;
   }
-  
+
   .text-h2 {
     font-size: 2rem !important;
   }
-  
+
   .text-h5 {
     font-size: 1.2rem !important;
   }

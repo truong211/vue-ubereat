@@ -16,6 +16,12 @@ const routes: RouteRecordRaw[] = [
         name: 'Home',
         component: () => import('@/views/Home.vue')
       },
+      // Foods
+      {
+        path: 'foods',
+        name: 'Foods',
+        component: () => import('@/views/Foods.vue')
+      },
       // Restaurants
       {
         path: 'restaurants',
@@ -111,10 +117,10 @@ const routes: RouteRecordRaw[] = [
       }
     ]
   },
-  
+
   // Use the admin routes imported from admin.js
   adminRoutes,
-  
+
   {
     path: '/auth',
     component: () => import('@/layouts/AuthLayout.vue'),

@@ -763,14 +763,14 @@ export default {
   },
   methods: {
     ...mapActions({
-      fetchCart: 'cart/fetchCart',
-      updateCart: 'cart/updateCartItem',
+      fetchCartItems: 'cart/fetchCart',
+      updateCartItem: 'cart/updateCartItem',
       removeCartItem: 'cart/removeCartItem',
       clearCartItems: 'cart/clearCart',
-      applyPromo: 'cart/applyPromotion',
-      removePromo: 'cart/removePromotion',
-      setInstructions: 'cart/setSpecialInstructions',
-      setAddress: 'cart/setDeliveryAddress',
+      applyPromotion: 'cart/applyPromotion',
+      removePromotion: 'cart/removePromotion',
+      setSpecialInstructions: 'cart/setSpecialInstructions',
+      setDeliveryAddress: 'cart/setDeliveryAddress',
       scheduleDeliveryTime: 'cart/scheduleDelivery',
       cancelScheduledDeliveryTime: 'cart/cancelScheduledDelivery',
       fetchAddresses: 'user/fetchAddresses',
@@ -781,29 +781,63 @@ export default {
     async loadCart() {
       try {
         this.isLoading = true;
-        await this.fetchCart();
+        const cartData = await this.fetchCartItems();
         
-        // Set initial values from cart data
-        if (this.cart) {
-          this.specialInstructions = this.cart.specialInstructions || '';
-          this.isScheduledDelivery = !!this.cart.scheduledDelivery;
-          
-          if (this.cart.scheduledDelivery) {
-            this.deliveryTimeOption = 'scheduled';
-            const scheduledDate = new Date(this.cart.scheduledDelivery.time);
+        console.log('Cart data loaded:', cartData);
+        
+        if (!cartData || !cartData.items) {
+          console.warn('Empty cart or invalid cart data structure');
+          this.cart = {
+            items: [],
+            restaurant: null,
+            subtotal: 0,
+            deliveryFee: 0,
+            taxAmount: 0,
+            total: 0
+          };
+          return;
+        }
+        
+        // Store the cart data
+        this.cart = cartData;
+        
+        // Set special instructions if available
+        this.specialInstructions = cartData.specialInstructions || '';
+        
+        // Set delivery time options
+        if (cartData.scheduledDelivery) {
+          this.deliveryTimeOption = 'scheduled';
+          try {
+            const scheduledDate = new Date(cartData.scheduledDelivery.time);
             this.scheduledDate = format(scheduledDate, 'yyyy-MM-dd');
             this.scheduledTime = format(scheduledDate, 'HH:mm');
-          } else {
+          } catch (err) {
+            console.error('Error parsing scheduled delivery date:', err);
             this.deliveryTimeOption = 'asap';
           }
-          
-          if (this.cart.deliveryAddress) {
-            this.selectedAddressId = this.cart.deliveryAddress.id;
-          }
+        } else {
+          this.deliveryTimeOption = 'asap';
+        }
+        
+        // Set address if available
+        if (cartData.deliveryAddress) {
+          this.selectedAddressId = cartData.deliveryAddress.id;
         }
       } catch (error) {
         console.error('Failed to load cart:', error);
-        this.$toast.error('Failed to load your cart. Please try again.');
+        // Safe access to error properties
+        const errorMessage = error?.response?.data?.message || 'Failed to load your cart. Please try again.';
+        this.$toast.error(errorMessage);
+        
+        // Initialize with empty cart
+        this.cart = {
+          items: [],
+          restaurant: null,
+          subtotal: 0,
+          deliveryFee: 0,
+          taxAmount: 0,
+          total: 0
+        };
       } finally {
         this.isLoading = false;
       }
@@ -837,7 +871,7 @@ export default {
     
     async updateItemQuantity(itemId, quantity) {
       try {
-        await this.updateCart({
+        await this.updateCartItem({
           id: itemId,
           quantity: quantity
         });
@@ -882,7 +916,7 @@ export default {
         this.isApplyingPromo = true;
         this.promoError = '';
         
-        await this.applyPromo(this.promoCode);
+        await this.applyPromotion(this.promoCode);
         this.promoCode = '';
         this.$toast.success('Promotion applied successfully');
       } catch (error) {
@@ -895,7 +929,7 @@ export default {
     
     async removePromoCode() {
       try {
-        await this.removePromo();
+        await this.removePromotion();
         this.$toast.success('Promotion removed');
       } catch (error) {
         console.error('Failed to remove promotion:', error);
@@ -905,7 +939,7 @@ export default {
     
     async updateSpecialInstructions() {
       try {
-        await this.setInstructions(this.specialInstructions);
+        await this.setSpecialInstructions(this.specialInstructions);
       } catch (error) {
         console.error('Failed to update instructions:', error);
         this.$toast.error('Failed to save instructions. Please try again.');
@@ -937,7 +971,7 @@ export default {
       try {
         this.isSavingNotes = true;
         
-        await this.updateCart({
+        await this.updateCartItem({
           id: this.currentItemId,
           notes: this.itemNotes
         });
@@ -956,7 +990,7 @@ export default {
       if (!this.selectedAddressId) return;
       
       try {
-        await this.setAddress(this.selectedAddressId);
+        await this.setDeliveryAddress(this.selectedAddressId);
       } catch (error) {
         console.error('Failed to update delivery address:', error);
         this.$toast.error('Failed to update delivery address. Please try again.');

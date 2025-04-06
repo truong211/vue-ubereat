@@ -19,6 +19,7 @@ import users from './modules/users'
 import disputes from './modules/disputes'
 import favorites from './modules/favorites'
 import user from './modules/user'
+import product from './modules/product'
 
 // Create a new store instance.
 const store = createStore({
@@ -168,7 +169,8 @@ const store = createStore({
     users,
     disputes,
     favorites,
-    user
+    user,
+    product
   }
 })
 

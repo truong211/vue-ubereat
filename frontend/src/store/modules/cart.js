@@ -56,20 +56,43 @@ const actions = {
     
     try {
       const response = await cartService.getCartItems();
-      commit('SET_CART_ITEMS', response.data.items);
+      console.log('Cart response:', response.data);
+      
+      if (!response.data || !response.data.data) {
+        commit('SET_CART_ITEMS', []);
+        commit('UPDATE_CART_TOTALS', {
+          subtotal: 0,
+          deliveryFee: 0,
+          tax: 0,
+          total: 0
+        });
+        return { items: [] };
+      }
+      
+      const cartData = response.data.data;
+      
+      // Set cart items
+      commit('SET_CART_ITEMS', cartData.items || []);
       
       // Update cart totals
       commit('UPDATE_CART_TOTALS', {
-        subtotal: response.data.subtotal,
-        deliveryFee: response.data.deliveryFee,
-        tax: response.data.tax,
-        total: response.data.total
+        subtotal: cartData.subtotal || 0,
+        deliveryFee: cartData.deliveryFee || 0,
+        tax: cartData.taxAmount || 0,
+        total: cartData.total || 0
       });
       
-      return response.data;
+      return cartData;
     } catch (error) {
       console.error('Error fetching cart:', error);
       commit('SET_ERROR', 'Failed to load cart items');
+      commit('SET_CART_ITEMS', []);
+      commit('UPDATE_CART_TOTALS', {
+        subtotal: 0,
+        deliveryFee: 0,
+        tax: 0,
+        total: 0
+      });
       throw error;
     } finally {
       commit('SET_LOADING', false);
@@ -168,7 +191,7 @@ const actions = {
   async applyPromotion({ commit, dispatch }, code) {
     try {
       commit('SET_LOADING', true);
-      const response = await api.post('/cart/promotion', { code });
+      const response = await api.post('/api/cart/promotion', { code });
       await dispatch('fetchCart'); // Refresh cart with applied promotion
       return response.data.data.promotion;
     } catch (error) {
@@ -183,7 +206,7 @@ const actions = {
   async removePromotion({ commit, dispatch }) {
     try {
       commit('SET_LOADING', true);
-      await api.delete('/cart/promotion');
+      await api.delete('/api/cart/promotion');
       await dispatch('fetchCart'); // Refresh cart without promotion
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to remove promotion code');
@@ -197,7 +220,7 @@ const actions = {
   async setSpecialInstructions({ commit, dispatch }, instructions) {
     try {
       commit('SET_LOADING', true);
-      await api.post('/cart/instructions', { instructions });
+      await api.post('/api/cart/instructions', { instructions });
       await dispatch('fetchCart'); // Refresh cart with instructions
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to set instructions');
@@ -211,7 +234,7 @@ const actions = {
   async setDeliveryAddress({ commit, dispatch }, addressId) {
     try {
       commit('SET_LOADING', true);
-      await api.post('/cart/address', { addressId });
+      await api.post('/api/cart/address', { addressId });
       await dispatch('fetchCart'); // Refresh cart with delivery address
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to set delivery address');
@@ -225,7 +248,7 @@ const actions = {
   async scheduleDelivery({ commit, dispatch }, scheduledTime) {
     try {
       commit('SET_LOADING', true);
-      await api.post('/cart/schedule', { scheduledTime });
+      await api.post('/api/cart/schedule', { scheduledTime });
       await dispatch('fetchCart'); // Refresh cart with scheduled delivery
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to schedule delivery');
@@ -239,7 +262,7 @@ const actions = {
   async cancelScheduledDelivery({ commit, dispatch }) {
     try {
       commit('SET_LOADING', true);
-      await api.delete('/cart/schedule');
+      await api.delete('/api/cart/schedule');
       await dispatch('fetchCart'); // Refresh cart without scheduled delivery
     } catch (error) {
       commit('SET_ERROR', error.response?.data?.message || 'Failed to cancel scheduled delivery');

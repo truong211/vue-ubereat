@@ -25,13 +25,17 @@ exports.getAllProducts = async (req, res, next) => {
       isVegetarian,
       isVegan,
       isGlutenFree,
-      status = 'available'
+      status = 'available',
+      onSale = 'false'
     } = req.query;
 
     // Build filter object
-    const filter = {
-      status: status === 'all' ? { [Op.ne]: null } : status
-    };
+    const filter = {};
+
+    // Handle availability status
+    if (status !== 'all') {
+      filter.isAvailable = status === 'available' ? true : false;
+    }
 
     // Add search filter if provided
     if (search) {
@@ -67,8 +71,25 @@ exports.getAllProducts = async (req, res, next) => {
       filter.isGlutenFree = true;
     }
 
+    // Add onSale filter
+    if (onSale === 'true') {
+      filter.discountPrice = { [Op.ne]: null, [Op.gt]: 0 };
+    }
+
     // Calculate pagination
     const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Determine sort order
+    let orderOption;
+    if (sort === 'popular') {
+      // Since there's no isPopular column, use price as a fallback
+      // In a real app, you might want to use a different column or a more complex query
+      orderOption = [['price', 'ASC']];
+    } else if (sort === 'rating') {
+      orderOption = [['rating', 'DESC']];
+    } else {
+      orderOption = [[sort, order]];
+    }
 
     // Get products
     const products = await Product.findAndCountAll({
@@ -85,7 +106,7 @@ exports.getAllProducts = async (req, res, next) => {
           attributes: ['id', 'name', 'logo']
         }
       ],
-      order: [[sort, order]],
+      order: orderOption,
       limit: parseInt(limit),
       offset
     });
@@ -574,20 +595,20 @@ exports.getProductDetails = async (req, res, next) => {
       const now = new Date();
       const dayOfWeek = format(now, 'EEEE');
       const currentTime = format(now, 'HH:mm');
-      
+
       // Find if there's a schedule for this time
       const schedules = restaurant.menuAvailability.schedules || [];
       const matchingSchedule = schedules.find(schedule => {
-        return schedule.days.includes(dayOfWeek) && 
-               currentTime >= schedule.startTime && 
+        return schedule.days.includes(dayOfWeek) &&
+               currentTime >= schedule.startTime &&
                currentTime <= schedule.endTime;
       });
-      
+
       // If no matching schedule found, check default availability
       if (!matchingSchedule && !restaurant.menuAvailability.defaultAvailability) {
         isCurrentlyAvailable = false;
       }
-      
+
       // If schedule found, check if this category is included
       if (matchingSchedule) {
         isCurrentlyAvailable = matchingSchedule.categoryIds.includes(product.categoryId);

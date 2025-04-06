@@ -8,7 +8,7 @@ class AdminWebSocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectInterval = 3000;
-    this.baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    this.baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
   }
 
   connect() {
@@ -51,7 +51,7 @@ class AdminWebSocketService {
       console.log('Admin WebSocket disconnected:', reason);
       this.connected = false;
       store.dispatch('setWebSocketStatus', 'disconnected');
-      
+
       if (reason === 'io server disconnect' || reason === 'transport close') {
         this.attemptReconnect();
       }

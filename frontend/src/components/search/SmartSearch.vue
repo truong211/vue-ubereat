@@ -119,11 +119,8 @@ const handleSearch = debounce(async (query) => {
     searchResults.value = response.items || [];
     searchSuggestions.value = response.suggestions || [];
 
-    // Emit search event
-    emit('search', {
-      query,
-      results: searchResults.value
-    });
+    // Emit search event with just the query string instead of an object
+    emit('search', query);
   } catch (error) {
     console.error('Search error:', error);
     searchResults.value = [];

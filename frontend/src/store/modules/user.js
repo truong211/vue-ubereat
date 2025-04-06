@@ -277,7 +277,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get(`${API_URL}/api/user/profile`);
+        const response = await axios.get('/api/users/profile');
         commit('SET_PROFILE', response.data);
         return response.data;
       } catch (error) {
@@ -293,7 +293,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.put(`${API_URL}/api/user/profile`, profileData);
+        const response = await axios.patch('/api/users/profile', profileData);
         commit('SET_PROFILE', response.data);
         return response.data;
       } catch (error) {
@@ -310,7 +310,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get(`${API_URL}/api/user/addresses`);
+        const response = await axios.get('/api/users/addresses');
         commit('SET_ADDRESSES', response.data);
         return response.data;
       } catch (error) {
@@ -326,7 +326,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.post(`${API_URL}/api/user/addresses`, addressData);
+        const response = await axios.post('/api/users/addresses', addressData);
         commit('ADD_ADDRESS', response.data);
         return response.data;
       } catch (error) {
@@ -342,7 +342,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.put(`${API_URL}/api/user/addresses/${id}`, addressData);
+        const response = await axios.put(`/api/users/addresses/${id}`, addressData);
         commit('UPDATE_ADDRESS', response.data);
         return response.data;
       } catch (error) {
@@ -358,7 +358,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        await axios.delete(`${API_URL}/api/user/addresses/${addressId}`);
+        await axios.delete(`/api/users/addresses/${addressId}`);
         commit('REMOVE_ADDRESS', addressId);
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to delete address');
@@ -373,7 +373,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        await axios.put(`${API_URL}/api/user/addresses/${addressId}/default`);
+        await axios.put(`/api/users/addresses/${addressId}/default`);
         commit('SET_DEFAULT_ADDRESS', addressId);
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to set default address');
@@ -389,7 +389,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get(`${API_URL}/api/user/payment-methods`);
+        const response = await axios.get('/api/users/payment-methods');
         commit('SET_PAYMENT_METHODS', response.data);
         return response.data;
       } catch (error) {
@@ -405,7 +405,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.post(`${API_URL}/api/user/payment-methods`, methodData);
+        const response = await axios.post('/api/users/payment-methods', methodData);
         commit('ADD_PAYMENT_METHOD', response.data);
         return response.data;
       } catch (error) {
@@ -421,7 +421,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.put(`${API_URL}/api/user/payment-methods/${id}`, methodData);
+        const response = await axios.put(`/api/users/payment-methods/${id}`, methodData);
         commit('UPDATE_PAYMENT_METHOD', response.data);
         return response.data;
       } catch (error) {
@@ -437,7 +437,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        await axios.delete(`${API_URL}/api/user/payment-methods/${methodId}`);
+        await axios.delete(`/api/users/payment-methods/${methodId}`);
         commit('REMOVE_PAYMENT_METHOD', methodId);
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to delete payment method');
@@ -452,7 +452,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        await axios.put(`${API_URL}/api/user/payment-methods/${methodId}/default`);
+        await axios.put(`/api/users/payment-methods/${methodId}/default`);
         commit('SET_DEFAULT_PAYMENT_METHOD', { methodId, type });
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to set default payment method');
@@ -468,7 +468,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get(`${API_URL}/api/user/vouchers`);
+        const response = await axios.get('/api/promotions');
         commit('SET_VOUCHERS', response.data);
         return response.data;
       } catch (error) {
@@ -484,7 +484,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.post(`${API_URL}/api/user/vouchers`, { code });
+        const response = await axios.post('/api/promotions/validate', { code });
         commit('ADD_VOUCHER', response.data);
         return response.data;
       } catch (error) {
@@ -500,7 +500,7 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        await axios.delete(`${API_URL}/api/user/vouchers/${voucherId}`);
+        await axios.delete(`/api/promotions/${voucherId}`);
         commit('REMOVE_VOUCHER', voucherId);
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to remove voucher');
@@ -521,6 +521,58 @@ export default {
         return avatarUrl;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update avatar');
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+    
+    // Fix any remaining requests that might have duplicate api prefixes
+    async fetchNotifications({ commit }) {
+      commit('SET_LOADING_NOTIFICATIONS', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        // This endpoint should be just /api/notifications - no api prefix duplication
+        const response = await axios.get('/api/notifications');
+        commit('SET_NOTIFICATIONS', response.data);
+        return response.data;
+      } catch (error) {
+        commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch notifications');
+        throw error;
+      } finally {
+        commit('SET_LOADING_NOTIFICATIONS', false);
+      }
+    },
+    
+    async getNotificationPreferences({ commit }) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        const response = await axios.get('/api/notifications/preferences');
+        commit('SET_NOTIFICATION_PREFERENCES', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Error getting notification preferences:', error);
+        commit('SET_ERROR', error.message || 'Failed to get notification preferences');
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+    
+    async updateNotificationPreferences({ commit }, preferences) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        const response = await axios.put('/api/notifications/preferences', preferences);
+        commit('SET_NOTIFICATION_PREFERENCES', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Error updating notification preferences:', error);
+        commit('SET_ERROR', error.message || 'Failed to update notification preferences');
         throw error;
       } finally {
         commit('SET_LOADING', false);

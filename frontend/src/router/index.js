@@ -55,7 +55,7 @@ const routes = [
       }
     ]
   },
-  
+
   // Direct login and register routes
   {
     path: '/login',
@@ -69,7 +69,7 @@ const routes = [
     component: Register,
     meta: { guest: true }
   },
-  
+
   // Static pages
   {
     path: '/about',
@@ -86,7 +86,7 @@ const routes = [
     name: 'Promotions',
     component: () => import('@/views/static/Promotions.vue')
   },
-  
+
   // Protected routes that require authentication
   {
     path: '/profile',
@@ -147,7 +147,7 @@ const routes = [
       }
     ]
   },
-  
+
   // Cart and Order routes
   {
     path: '/cart',
@@ -183,52 +183,76 @@ const routes = [
       title: 'Theo dõi đơn hàng'
     }
   },
-  
+
   // Restaurant and Review routes
   {
     path: '/restaurant/:id',
-    component: () => import('@/layouts/MainLayout.vue'),
-    children: [
-      {
-        path: '',
-        name: 'RestaurantDetail',
-        component: () => import('@/views/RestaurantDetail.vue'),
-        props: true
-      },
-      {
-        path: 'reviews',
-        name: 'RestaurantReviews',
-        component: () => import('@/views/restaurant/Reviews.vue'),
-        props: true
-      },
-      {
-        path: 'analytics',
-        name: 'RestaurantAnalytics',
-        component: () => import('@/views/restaurant/RestaurantAnalytics.vue'),
-        meta: {
-          requiresAuth: true,
-          roles: ['restaurant', 'admin']
-        }
-      }
-    ]
+    name: 'RestaurantDetail',
+    component: () => import('@/views/RestaurantDetail.vue'),
+    props: true
+  },
+  {
+    path: '/restaurant/:id/reviews',
+    name: 'RestaurantReviews',
+    component: () => import('@/views/restaurant/Reviews.vue'),
+    props: true
+  },
+  {
+    path: '/restaurant/:id/analytics',
+    name: 'RestaurantAnalytics',
+    component: () => import('@/views/restaurant/RestaurantAnalytics.vue'),
+    meta: {
+      requiresAuth: true,
+      roles: ['restaurant', 'admin']
+    }
   },
   {
     path: '/restaurants',
-    component: () => import('@/layouts/MainLayout.vue'),
-    children: [
-      {
-        path: '',
-        name: 'Restaurants',
-        component: () => import('@/views/Restaurants.vue'),
-        props: (route) => ({ 
-          category: route.query.category,
-          address: route.query.address,
-          sort: route.query.sort
-        })
-      }
-    ]
+    name: 'Restaurants',
+    component: () => import('@/views/Restaurants.vue'),
+    props: (route) => ({
+      category: route.query.category,
+      address: route.query.address,
+      sort: route.query.sort
+    })
   },
-  
+
+  // Product routes
+  {
+    path: '/products',
+    name: 'Products',
+    component: () => import('@/views/Products.vue'),
+    props: (route) => ({
+      category: route.query.category,
+      restaurantId: route.query.restaurantId
+    })
+  },
+  {
+    path: '/products/:productId',
+    name: 'ProductDetail',
+    component: () => import('@/views/ProductDetail.vue'),
+    props: true
+  },
+  {
+    path: '/products/:productId/reviews',
+    name: 'ProductReviews',
+    component: () => import('@/views/product/Reviews.vue'),
+    props: true
+  },
+  {
+    path: '/products/category/:category',
+    name: 'ProductsByCategory',
+    component: () => import('@/views/Products.vue'),
+    props: true
+  },
+
+  // Foods route
+  {
+    path: '/foods',
+    name: 'Foods',
+    component: () => import('@/views/Foods.vue')
+  },
+
   // Import the admin routes
   adminRoutes,
 
@@ -246,7 +270,7 @@ const routes = [
       title: 'Tìm kiếm nhà hàng'
     }
   },
-  
+
   // Clear tokens utility page
   {
     path: '/clear-tokens',
@@ -254,7 +278,7 @@ const routes = [
     component: ClearTokens,
     meta: { guest: true }
   },
-  
+
   // Add settings routes after other main routes and before the 404 route
   {
     path: '/settings',
@@ -297,7 +321,7 @@ const routes = [
       }
     ]
   },
-  
+
   // 404 Not Found
   {
     path: '/:pathMatch(.*)*',
@@ -317,11 +341,11 @@ router.beforeEach(async (to, from, next) => {
   if (to.matched.some(record => record.meta.requiresAuth)) {
     // Check authentication status
     const isAuthenticated = store.getters['auth/isAuthenticated']
-    
+
     if (!isAuthenticated) {
       // If not authenticated, check if we can restore the session
       const restored = await store.dispatch('auth/checkAuth')
-      
+
       if (!restored) {
         // Redirect to login if session can't be restored
         next({
@@ -332,22 +356,22 @@ router.beforeEach(async (to, from, next) => {
       }
     }
   }
-  
+
   // Check if route is for guests only (login, register, etc.)
   if (to.matched.some(record => record.meta.guest)) {
     const isAuthenticated = store.getters['auth/isAuthenticated']
-    
+
     if (isAuthenticated) {
       // If already authenticated, redirect to home
       next({ path: '/' })
       return
     }
   }
-  
+
   // If role requirements are present, check user role
   if (to.meta.roles && to.meta.roles.length > 0) {
     const userRole = store.getters['auth/user']?.role
-    
+
     if (!to.meta.roles.includes(userRole)) {
       // If user doesn't have required role, redirect to appropriate page
       if (userRole === 'admin') {
@@ -360,7 +384,7 @@ router.beforeEach(async (to, from, next) => {
       return
     }
   }
-  
+
   next()
 })
 
@@ -369,7 +393,7 @@ router.beforeEach((to, from, next) => {
   // Check if route requires admin role
   if (to.matched.some(record => record.meta.requiresAdmin)) {
     const userRole = store.getters['auth/user']?.role
-    
+
     if (userRole !== 'admin') {
       // If not admin, redirect to home with error message
       store.dispatch('ui/showSnackbar', {

@@ -1,5 +1,7 @@
 const { validationResult } = require('express-validator');
-const { User, Address, Order } = require('../models');
+const User = require('../models/user.model');
+const Address = require('../models/address.model');
+const Order = require('../models/order.model');
 const { AppError } = require('../middleware/error.middleware');
 const fs = require('fs');
 const path = require('path');
@@ -95,26 +97,36 @@ exports.updateProfile = async (req, res, next) => {
     }
 
     const { fullName, phone, address } = req.body;
-    const user = await User.findByPk(req.user.id);
+    const userId = req.user.id;
+    
+    // Create update data object
+    const updateData = {};
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (phone !== undefined) updateData.phone = phone;
+    if (address !== undefined) updateData.address = address;
+    
+    // Use User.update method correctly - it expects (id, data) not ({data}, {where})
+    const updated = await User.update(userId, updateData);
+    
+    if (!updated) {
+      return next(new AppError('Failed to update user profile', 500));
+    }
+    
+    // Fetch the updated user record
+    const updatedUser = await User.findByPk(userId);
 
-    if (!user) {
+    if (!updatedUser) {
       return next(new AppError('User not found', 404));
     }
-
-    // Update fields if provided
-    if (fullName) user.fullName = fullName;
-    if (phone) user.phone = phone;
-    if (address) user.address = address;
-
-    await user.save();
 
     res.status(200).json({
       status: 'success',
       data: {
-        user
+        user: updatedUser
       }
     });
   } catch (error) {
+    console.error('Profile update error:', error);
     next(error);
   }
 };
@@ -130,7 +142,9 @@ exports.uploadProfileImage = async (req, res, next) => {
       return next(new AppError('Please upload an image', 400));
     }
 
-    const user = await User.findByPk(req.user.id);
+    const userId = req.user.id;
+    const user = await User.findByPk(userId);
+    
     if (!user) {
       return next(new AppError('User not found', 404));
     }
@@ -143,13 +157,22 @@ exports.uploadProfileImage = async (req, res, next) => {
       }
     }
 
-    user.profileImage = req.file.filename;
-    await user.save();
+    // Use User.update method to update the profile image
+    const updated = await User.update(userId, {
+      profileImage: req.file.filename
+    });
+    
+    if (!updated) {
+      return next(new AppError('Failed to update profile image', 500));
+    }
+    
+    // Fetch the updated user record
+    const updatedUser = await User.findByPk(userId);
 
     res.status(200).json({
       status: 'success',
       data: {
-        user,
+        user: updatedUser,
         message: 'Profile image updated successfully'
       }
     });

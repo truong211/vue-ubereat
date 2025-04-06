@@ -355,10 +355,14 @@ export default {
 
       loading.value = true
       try {
-        await store.dispatch('user/updateProfile', {
-          name: profile.name,
-          phone: profile.phone
-        })
+        // Ensure we're sending the exact fields expected by the backend
+        const userData = {
+          fullName: profile.name,
+          phone: profile.phone || '',
+          address: profile.address || ''
+        }
+
+        await store.dispatch('user/updateProfile', userData)
 
         editing.value = false
         showSuccessMessage('Cập nhật thông tin thành công')

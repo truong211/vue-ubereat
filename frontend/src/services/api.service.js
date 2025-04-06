@@ -12,17 +12,36 @@ export const apiClient = axios.create({
   timeout: 10000 // 10 seconds timeout
 });
 
-// Request interceptor for API calls
+// Request interceptor to ensure all requests have /api prefix
 apiClient.interceptors.request.use(
   config => {
+    // Add the token to Authorization header if available
     const token = localStorage.getItem('token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
+    
+    // Process URL to prevent duplicate /api prefixes
+    if (config.url) {
+      // Check if already contains /api prefix
+      if (config.url.startsWith('/api') || config.url.startsWith('http')) {
+        // URL already has /api or is an absolute URL - no need to add prefix
+        
+        // Fix any duplicate /api prefixes in the URL
+        if (config.url.includes('/api/api')) {
+          config.url = config.url.replace(/\/api\/api(.*)/, '/api$1');
+        }
+      } else {
+        // Add /api prefix for relative URLs that don't have it
+        config.url = `/api${config.url}`;
+      }
+    }
+    
+    console.debug(`API Request: ${config.method} ${config.url}`);
     return config;
   },
   error => {
-    Promise.reject(error);
+    return Promise.reject(error);
   }
 );
 

@@ -15,8 +15,13 @@
           <v-stepper-window>
             <!-- Step 1: Registration Form -->
             <v-stepper-window-item value="1">
-              <h2 class="text-h5 font-weight-bold text-center mb-4">Tạo tài khoản</h2>
-              
+              <div class="text-center mb-6">
+                <v-avatar size="80" color="primary" class="mb-4">
+                  <v-icon size="40" color="white">mdi-account-plus</v-icon>
+                </v-avatar>
+                <h2 class="text-h5 font-weight-bold">Tạo tài khoản</h2>
+              </div>
+
               <v-alert
                 v-if="message"
                 :type="messageType"
@@ -27,7 +32,7 @@
               >
                 {{ message }}
               </v-alert>
-              
+
               <v-form ref="form" @submit.prevent="register" v-model="isFormValid">
                 <!-- Name Field -->
                 <v-text-field
@@ -42,7 +47,7 @@
                   required
                   class="mb-3"
                 ></v-text-field>
-                
+
                 <!-- Email Field -->
                 <v-text-field
                   v-model="formData.email"
@@ -57,7 +62,7 @@
                   required
                   class="mb-3"
                 ></v-text-field>
-                
+
                 <!-- Phone Field -->
                 <v-text-field
                   v-model="formData.phone"
@@ -71,7 +76,7 @@
                   required
                   class="mb-3"
                 ></v-text-field>
-                
+
                 <!-- Password Field -->
                 <v-text-field
                   v-model="formData.password"
@@ -83,14 +88,14 @@
                   :rules="[
                     v => !!v || 'Vui lòng nhập mật khẩu',
                     v => v.length >= 8 || 'Mật khẩu phải có ít nhất 8 ký tự',
-                    v => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(v) || 
+                    v => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(v) ||
                         'Mật khẩu phải chứa ít nhất 1 chữ hoa, 1 chữ thường, 1 số và 1 ký tự đặc biệt'
                   ]"
                   prepend-inner-icon="mdi-lock"
                   required
                   class="mb-3"
                 ></v-text-field>
-                
+
                 <!-- Confirm Password Field -->
                 <v-text-field
                   v-model="formData.confirmPassword"
@@ -107,7 +112,7 @@
                   required
                   class="mb-4"
                 ></v-text-field>
-                
+
                 <!-- Terms and Conditions -->
                 <v-checkbox
                   v-model="formData.agreeTerms"
@@ -116,7 +121,7 @@
                   required
                   class="mb-4"
                 ></v-checkbox>
-                
+
                 <!-- Register Button -->
                 <v-btn
                   type="submit"
@@ -129,12 +134,12 @@
                 >
                   Đăng ký
                 </v-btn>
-                
+
                 <!-- Social Login Divider -->
                 <div class="text-center my-4 position-relative">
                   <span class="divider-text">hoặc đăng ký với</span>
                 </div>
-                
+
                 <!-- Social Registration Buttons -->
                 <div class="d-flex gap-2 mb-4">
                   <v-btn
@@ -148,7 +153,7 @@
                   >
                     Google
                   </v-btn>
-                  
+
                   <v-btn
                     variant="outlined"
                     color="primary"
@@ -161,7 +166,7 @@
                     Facebook
                   </v-btn>
                 </div>
-                
+
                 <!-- Login Link -->
                 <div class="text-center mt-4">
                   <span class="text-medium-emphasis">Đã có tài khoản?</span>
@@ -172,8 +177,13 @@
 
             <!-- Step 2: OTP Verification -->
             <v-stepper-window-item value="2">
-              <h2 class="text-h5 font-weight-bold text-center mb-4">Xác thực tài khoản</h2>
-              
+              <div class="text-center mb-6">
+                <v-avatar size="80" color="primary" class="mb-4">
+                  <v-icon size="40" color="white">mdi-shield-check</v-icon>
+                </v-avatar>
+                <h2 class="text-h5 font-weight-bold">Xác thực tài khoản</h2>
+              </div>
+
               <v-alert
                 v-if="message"
                 :type="messageType"
@@ -184,14 +194,14 @@
               >
                 {{ message }}
               </v-alert>
-              
+
               <div class="text-center mb-4">
                 <p class="mb-1">Chúng tôi đã gửi mã xác thực đến</p>
                 <p class="font-weight-bold" v-if="otpData.email">Email: {{ maskEmail(otpData.email) }}</p>
                 <p class="font-weight-bold" v-if="otpData.phone">Điện thoại: {{ maskPhone(otpData.phone) }}</p>
                 <p class="mt-2">Vui lòng nhập mã để hoàn tất đăng ký</p>
               </div>
-              
+
               <!-- OTP Input -->
               <div class="d-flex justify-center gap-2 mb-6">
                 <v-text-field
@@ -209,7 +219,7 @@
                   :ref="el => { if (el) otpRefs[index] = el }"
                 ></v-text-field>
               </div>
-              
+
               <!-- Action Buttons -->
               <div class="d-flex flex-column gap-4">
                 <v-btn
@@ -222,7 +232,7 @@
                 >
                   Xác thực
                 </v-btn>
-                
+
                 <v-btn
                   variant="text"
                   block
@@ -243,12 +253,12 @@
                   size="64"
                   class="mb-4"
                 ></v-icon>
-                
+
                 <h2 class="text-h4 font-weight-bold mb-2">Đăng ký thành công!</h2>
                 <p class="text-body-1 mb-6">
                   Cảm ơn bạn đã đăng ký. Tài khoản của bạn đã được tạo thành công.
                 </p>
-                
+
                 <v-btn
                   color="primary"
                   size="large"
@@ -272,20 +282,20 @@ import { useRouter } from 'vue-router';
 
 export default {
   name: 'Register',
-  
+
   setup() {
     const store = useStore();
     const router = useRouter();
-    
+
     // Form refs
     const form = ref(null);
     const isFormValid = ref(false);
     const showPassword = ref(false);
     const showConfirmPassword = ref(false);
-    
+
     // OTP refs
     const otpRefs = ref([]);
-    
+
     // Form data
     const formData = ref({
       name: '',
@@ -295,10 +305,10 @@ export default {
       confirmPassword: '',
       agreeTerms: false
     });
-    
+
     // OTP data
     const otpDigits = ref(['', '', '', '', '', '']);
-    
+
     // UI state
     const message = ref('');
     const messageType = ref('info');
@@ -308,7 +318,7 @@ export default {
     });
     const resendCountdown = ref(0);
     let countdownTimer = null;
-    
+
     // Stepper
     const currentStep = computed({
       get: () => String(store.getters['auth/verificationStep']),
@@ -319,26 +329,26 @@ export default {
         }
       }
     });
-    
+
     // Computed
     const isLoading = computed(() => store.getters['auth/loading']);
     const otpData = computed(() => store.getters['auth/otpData']);
     const isOtpComplete = computed(() => otpDigits.value.every(digit => digit !== ''));
-    
+
     // Methods
     const register = async () => {
       if (!isFormValid.value) return;
-      
+
       try {
         message.value = '';
-        
+
         // Validate passwords match
         if (formData.value.password !== formData.value.confirmPassword) {
           message.value = 'Mật khẩu không khớp';
           messageType.value = 'error';
           return;
         }
-        
+
         // Register user
         const response = await store.dispatch('auth/register', {
           name: formData.value.name,
@@ -346,12 +356,12 @@ export default {
           phone: formData.value.phone,
           password: formData.value.password
         });
-        
+
         if (response.success) {
           // Display success message
           message.value = response.message || 'Đăng ký thành công!';
           messageType.value = 'success';
-          
+
           // If verification is needed, set up OTP verification
           if (response.verificationRequired) {
             // Start resend countdown
@@ -363,67 +373,67 @@ export default {
             }, 2000);
           }
         }
-        
+
       } catch (error) {
         message.value = error.response?.data?.message || 'Đăng ký thất bại. Vui lòng thử lại.';
         messageType.value = 'error';
       }
     };
-    
+
     const verifyOTP = async () => {
       if (!isOtpComplete.value) return;
-      
+
       try {
         message.value = '';
-        
+
         // Combine OTP digits
         const otp = otpDigits.value.join('');
-        
+
         // Verify OTP
         if (otpData.value.email) {
           await store.dispatch('auth/verifyEmailOTP', otp);
         } else if (otpData.value.phone) {
           await store.dispatch('auth/verifyPhoneOTP', otp);
         }
-        
+
       } catch (error) {
         message.value = error || 'Xác thực thất bại. Vui lòng thử lại.';
         messageType.value = 'error';
       }
     };
-    
+
     const resendOTP = async () => {
       if (resendCountdown.value > 0) return;
-      
+
       try {
         message.value = '';
-        
+
         // Resend OTP
         if (otpData.value.email) {
           await store.dispatch('auth/resendEmailOTP');
         } else if (otpData.value.phone) {
           await store.dispatch('auth/resendPhoneOTP');
         }
-        
+
         // Start resend countdown
         startResendCountdown();
-        
+
         message.value = 'Mã xác thực đã được gửi lại';
         messageType.value = 'success';
-        
+
       } catch (error) {
         message.value = error || 'Không thể gửi lại mã. Vui lòng thử lại.';
         messageType.value = 'error';
       }
     };
-    
+
     const startResendCountdown = () => {
       resendCountdown.value = 30;
-      
+
       if (countdownTimer) {
         clearInterval(countdownTimer);
       }
-      
+
       countdownTimer = setInterval(() => {
         if (resendCountdown.value > 0) {
           resendCountdown.value -= 1;
@@ -432,22 +442,22 @@ export default {
         }
       }, 1000);
     };
-    
+
     const googleLogin = async () => {
       try {
         socialLoading.value.google = true;
         message.value = '';
-        
+
         // Your implementation will depend on how you set up Google Auth
         // This is a placeholder - you'll need to implement the actual OAuth flow
         const result = await window.gapi.auth2.getAuthInstance().signIn();
         const accessToken = result.getAuthResponse().id_token;
-        
-        await store.dispatch('auth/loginWithSocial', { 
-          provider: 'google', 
-          accessToken 
+
+        await store.dispatch('auth/loginWithSocial', {
+          provider: 'google',
+          accessToken
         });
-        
+
         // Redirect after successful login
         router.push('/');
       } catch (error) {
@@ -458,12 +468,12 @@ export default {
         socialLoading.value.google = false;
       }
     };
-    
+
     const facebookLogin = async () => {
       try {
         socialLoading.value.facebook = true;
         message.value = '';
-        
+
         // Your implementation will depend on how you set up Facebook Auth
         // This is a placeholder - you'll need to implement the actual OAuth flow
         const response = await new Promise((resolve) => {
@@ -471,15 +481,15 @@ export default {
             resolve(response);
           }, { scope: 'email,public_profile' });
         });
-        
+
         if (response.status === 'connected') {
           const accessToken = response.authResponse.accessToken;
-          
-          await store.dispatch('auth/loginWithSocial', { 
-            provider: 'facebook', 
-            accessToken 
+
+          await store.dispatch('auth/loginWithSocial', {
+            provider: 'facebook',
+            accessToken
           });
-          
+
           // Redirect after successful login
           router.push('/');
         } else {
@@ -493,11 +503,11 @@ export default {
         socialLoading.value.facebook = false;
       }
     };
-    
+
     const goToHome = () => {
       router.push('/');
     };
-    
+
     // Helper methods
     const maskEmail = (email) => {
       if (!email) return '';
@@ -505,19 +515,19 @@ export default {
       const maskedUsername = username.charAt(0) + '*'.repeat(username.length - 2) + username.charAt(username.length - 1);
       return `${maskedUsername}@${domain}`;
     };
-    
+
     const maskPhone = (phone) => {
       if (!phone) return '';
       return phone.slice(0, 3) + '*'.repeat(phone.length - 7) + phone.slice(-4);
     };
-    
+
     const onOtpDigitInput = (index) => {
       // Auto focus next input on digit entry
       if (otpDigits.value[index] && index < 5) {
         otpRefs.value[index + 1]?.focus();
       }
     };
-    
+
     const onOtpKeyDown = (event, index) => {
       // Handle backspace navigation
       if (event.key === 'Backspace') {
@@ -527,42 +537,42 @@ export default {
         }
       }
     };
-    
+
     const onOtpPaste = (event) => {
       event.preventDefault();
-      
+
       // Get clipboard data
       const pasteData = event.clipboardData.getData('text/plain').trim();
-      
+
       // Try to extract digits
       const digits = pasteData.replace(/\D/g, '').split('').slice(0, 6);
-      
+
       // Fill in digits
       digits.forEach((digit, index) => {
         if (index < 6) {
           otpDigits.value[index] = digit;
         }
       });
-      
+
       // Focus on the appropriate input
       if (digits.length < 6) {
         otpRefs.value[digits.length]?.focus();
       }
     };
-    
+
     // Lifecycle hooks
     onMounted(() => {
       // Reset verification step
       store.commit('auth/SET_VERIFICATION_STEP', 1);
     });
-    
+
     onUnmounted(() => {
       // Clear timers
       if (countdownTimer) {
         clearInterval(countdownTimer);
       }
     });
-    
+
     return {
       form,
       isFormValid,
@@ -603,11 +613,29 @@ export default {
   min-height: 100vh;
   padding: 20px;
   background-color: #f5f5f5;
+  background-image: url('/images/auth-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.register-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 0;
 }
 
 .register-form {
   width: 100%;
   max-width: 550px;
+  position: relative;
+  z-index: 1;
+  animation: fadeInUp 0.5s ease-out;
 }
 
 .divider-text {
@@ -643,5 +671,30 @@ export default {
 .otp-input :deep(input[type=number]::-webkit-inner-spin-button) {
   -webkit-appearance: none;
   margin: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Step transitions */
+.v-stepper-window-item {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 </style>

@@ -398,7 +398,10 @@ export default {
         loading.value = false;
       } catch (err) {
         console.error('Error fetching restaurant details:', err);
-        error.value = 'Could not load restaurant details. Please try again later.';
+        error.value = err?.response?.data?.message || 
+                     err?.response?.message || 
+                     err?.message || 
+                     'Could not load restaurant details. Please try again later.';
       } finally {
         loading.value = false;
       }
@@ -428,6 +431,9 @@ export default {
         await store.dispatch('cart/fetchCart');
       } catch (err) {
         console.error('Error fetching cart:', err);
+        toast.error(err?.response?.data?.message || 
+                    err?.message || 
+                    'Error loading your cart');
       }
     };
     
@@ -440,7 +446,10 @@ export default {
         });
         toast.success(`${item.name} added to cart`);
       } catch (err) {
-        toast.error('Failed to add item to cart');
+        console.error('Failed to add item to cart:', err);
+        toast.error(err?.response?.data?.message || 
+                    err?.message || 
+                    'Failed to add item to cart');
       }
     };
     
@@ -453,7 +462,10 @@ export default {
           quantity: item.quantity + 1
         });
       } catch (err) {
-        toast.error('Failed to update cart');
+        console.error('Failed to update cart:', err);
+        toast.error(err?.response?.data?.message || 
+                    err?.message || 
+                    'Failed to update cart');
       }
     };
     
@@ -470,7 +482,10 @@ export default {
           await store.dispatch('cart/removeFromCart', item.id);
         }
       } catch (err) {
-        toast.error('Failed to update cart');
+        console.error('Failed to update cart:', err);
+        toast.error(err?.response?.data?.message || 
+                    err?.message || 
+                    'Failed to update cart');
       }
     };
     
@@ -481,7 +496,10 @@ export default {
         await store.dispatch('cart/removeFromCart', item.id);
         toast.success('Item removed from cart');
       } catch (err) {
-        toast.error('Failed to remove item from cart');
+        console.error('Failed to remove item from cart:', err);
+        toast.error(err?.response?.data?.message || 
+                    err?.message || 
+                    'Failed to remove item from cart');
       }
     };
     

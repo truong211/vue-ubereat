@@ -7,6 +7,17 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => {
+          // Handle duplicate /api prefixes
+          return path.replace(/^\/api\/api(.*)/, '/api$1');
+        }
+      }
+    },
     hmr: {
       host: 'localhost',
       port: 5173,

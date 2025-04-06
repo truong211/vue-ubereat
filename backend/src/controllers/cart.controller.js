@@ -1,7 +1,7 @@
 const { validationResult } = require('express-validator');
-const { Cart, Product, Restaurant } = require('../models');
+const { Cart, Product, Restaurant, Promotion, Address } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
-const { Op } = require('sequelize');
+const db = require('../config/database');
 
 /**
  * Get user cart with details
@@ -10,22 +10,9 @@ const { Op } = require('sequelize');
  */
 exports.getCart = async (req, res, next) => {
   try {
-    const cart = await Cart.findAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Product,
-          as: 'product',
-          include: [
-            {
-              model: Restaurant,
-              as: 'restaurant',
-              attributes: ['id', 'name', 'deliveryFee', 'minOrderAmount', 'estimatedDeliveryTime', 'logo', 'rating']
-            }
-          ]
-        }
-      ]
-    });
+    // Get user's cart items with joined product and restaurant data
+    // This uses the custom findAll method we defined in the Cart model
+    const cart = await Cart.findAll({ userId: req.user.id });
 
     // Get the session data for any applied promotion
     let appliedPromotion = null;
@@ -33,7 +20,7 @@ exports.getCart = async (req, res, next) => {
       const promotion = await Promotion.findByPk(req.session.cartPromotion.promotionId);
       if (promotion && promotion.isActive) {
         appliedPromotion = {
-          ...promotion.toJSON(),
+          ...promotion,
           discountAmount: req.session.cartPromotion.discountAmount
         };
       } else {
@@ -45,9 +32,11 @@ exports.getCart = async (req, res, next) => {
     // Get delivery address if set in session
     let deliveryAddress = null;
     if (req.session && req.session.deliveryAddressId) {
-      deliveryAddress = await Address.findOne({
-        where: { id: req.session.deliveryAddressId, userId: req.user.id }
-      });
+      deliveryAddress = await Address.findByPk(req.session.deliveryAddressId);
+      // Only return the address if it belongs to the current user
+      if (deliveryAddress && deliveryAddress.user_id !== req.user.id) {
+        deliveryAddress = null;
+      }
     }
 
     // Get scheduled delivery time if set
@@ -55,10 +44,18 @@ exports.getCart = async (req, res, next) => {
 
     // Group cart items by restaurant
     const cartByRestaurant = cart.reduce((acc, item) => {
-      const restaurantId = item.product.restaurantId;
+      const restaurantId = item.restaurantId;
       if (!acc[restaurantId]) {
         acc[restaurantId] = {
-          restaurant: item.product.restaurant,
+          restaurant: {
+            id: item.restaurantId,
+            name: item.restaurant_name,
+            deliveryFee: item.deliveryFee,
+            minOrderAmount: item.minOrderAmount,
+            estimatedDeliveryTime: item.estimatedDeliveryTime,
+            logo: item.logo,
+            rating: item.rating
+          },
           items: [],
           subtotal: 0,
           itemOptions: 0, // Additional costs from options
@@ -80,11 +77,19 @@ exports.getCart = async (req, res, next) => {
         });
       }
       
-      const basePrice = item.product.discountPrice || item.product.price;
+      const basePrice = item.discountPrice || item.price;
       const itemTotal = item.quantity * (parseFloat(basePrice) + optionsTotal);
       
       acc[restaurantId].items.push({
-        ...item.toJSON(),
+        id: item.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        name: item.product_name,
+        price: item.price,
+        discountPrice: item.discountPrice,
+        image: item.image,
+        options: item.options,
+        notes: item.notes,
         itemTotal,
         optionsTotal
       });
@@ -175,19 +180,7 @@ exports.addToCart = async (req, res, next) => {
     } = req.body;
 
     // Check if product exists
-    const product = await Product.findByPk(productId, {
-      include: [
-        {
-          model: Restaurant,
-          as: 'restaurant'
-        },
-        {
-          model: ProductOption,
-          as: 'options',
-          include: [{ model: ProductOptionChoice, as: 'choices' }]
-        }
-      ]
-    });
+    const product = await Product.findByPk(productId);
 
     if (!product) {
       return next(new AppError('Product not found', 404));
@@ -197,9 +190,22 @@ exports.addToCart = async (req, res, next) => {
       return next(new AppError('Product is not available', 400));
     }
 
+    // Get the restaurant info
+    const restaurant = await Restaurant.findByPk(product.restaurantId);
+    
     // Check if restaurant is active
-    if (!product.restaurant.isActive) {
+    if (!restaurant.isActive) {
       return next(new AppError('Restaurant is not active', 400));
+    }
+
+    // Get product options (if needed)
+    let productOptions = [];
+    if (options) {
+      // Fetch product options from the database
+      productOptions = await db.query(
+        'SELECT * FROM product_options WHERE product_id = ?', 
+        [productId]
+      );
     }
 
     // Validate option selections against available options
@@ -211,16 +217,22 @@ exports.addToCart = async (req, res, next) => {
       // Validate each option
       for (const optionId in providedOptions) {
         const selectedOption = providedOptions[optionId];
-        const productOption = product.options.find(opt => opt.id.toString() === optionId);
+        const productOption = productOptions.find(opt => opt.id.toString() === optionId);
         
         if (!productOption) {
           return next(new AppError(`Option with ID ${optionId} not found for this product`, 400));
         }
         
+        // Get option choices
+        const optionChoices = await db.query(
+          'SELECT * FROM product_option_choices WHERE option_id = ?',
+          [optionId]
+        );
+        
         // Handle different option types (single, multiple)
         if (productOption.type === 'single' && typeof selectedOption === 'object') {
           // Validate the selected choice exists
-          const validChoice = productOption.choices.find(c => c.id.toString() === selectedOption.id.toString());
+          const validChoice = optionChoices.find(c => c.id.toString() === selectedOption.id.toString());
           if (!validChoice) {
             return next(new AppError(`Invalid choice for option ${productOption.name}`, 400));
           }
@@ -233,7 +245,7 @@ exports.addToCart = async (req, res, next) => {
           // Validate each selected choice
           const validChoices = [];
           for (const choice of selectedOption) {
-            const validChoice = productOption.choices.find(c => c.id.toString() === choice.id.toString());
+            const validChoice = optionChoices.find(c => c.id.toString() === choice.id.toString());
             if (!validChoice) {
               return next(new AppError(`Invalid choice for option ${productOption.name}`, 400));
             }
@@ -251,47 +263,46 @@ exports.addToCart = async (req, res, next) => {
     }
 
     // Check if user already has items from another restaurant
-    const existingCart = await Cart.findOne({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Product,
-          as: 'product',
-          where: {
-            restaurantId: { [Op.ne]: product.restaurantId }
-          }
-        }
-      ]
-    });
-
-    if (existingCart) {
-      return next(new AppError('You already have items from another restaurant in your cart. Please clear your cart first.', 400));
+    const existingCartItems = await Cart.findAll({ userId: req.user.id });
+    
+    if (existingCartItems.length > 0) {
+      // Check if any items are from a different restaurant
+      const existingRestaurantId = existingCartItems[0].restaurantId;
+      
+      if (existingRestaurantId && existingRestaurantId !== product.restaurantId) {
+        return next(new AppError('You already have items from another restaurant in your cart. Please clear your cart first.', 400));
+      }
     }
 
-    // Generate a unique key for this item based on product ID and selected options
-    // This allows the same product with different options to be separate cart items
-    const optionsHash = validatedOptions ? JSON.stringify(validatedOptions) : '';
-    const itemKey = `${productId}-${optionsHash}`;
-
     // Check if similar item exists in cart
-    const existingSimilarItem = await Cart.findOne({
-      where: {
-        userId: req.user.id,
-        productId,
-        options: validatedOptions
-      }
-    });
+    const existingSimilarItems = await db.query(
+      `SELECT * FROM ${Cart.tableName} WHERE userId = ? AND productId = ?`,
+      [req.user.id, productId]
+    );
+    
+    let existingSimilarItem = null;
+    if (existingSimilarItems.length > 0) {
+      // Check if options match
+      const optionsHash = validatedOptions ? JSON.stringify(validatedOptions) : '';
+      
+      existingSimilarItem = existingSimilarItems.find(item => {
+        const itemOptionsHash = item.options ? JSON.stringify(item.options) : '';
+        return itemOptionsHash === optionsHash;
+      });
+    }
 
     if (existingSimilarItem) {
       // Update quantity
-      existingSimilarItem.quantity += parseInt(quantity);
-      existingSimilarItem.notes = notes || existingSimilarItem.notes;
-      await existingSimilarItem.save();
+      const newQuantity = existingSimilarItem.quantity + parseInt(quantity);
+      const updatedNotes = notes || existingSimilarItem.notes;
       
-      // Return the updated cart item with product details
-      const updatedItem = await Cart.findByPk(existingSimilarItem.id, {
-        include: [{ model: Product, as: 'product' }]
+      await Cart.update(existingSimilarItem.id, {
+        quantity: newQuantity,
+        notes: updatedNotes
       });
+      
+      // Return the updated cart item
+      const updatedItem = await Cart.findByPk(existingSimilarItem.id);
 
       return res.status(200).json({
         status: 'success',
@@ -309,17 +320,12 @@ exports.addToCart = async (req, res, next) => {
         options: validatedOptions,
         notes
       });
-      
-      // Return the new cart item with product details
-      const newItem = await Cart.findByPk(cartItem.id, {
-        include: [{ model: Product, as: 'product' }]
-      });
 
       return res.status(201).json({
         status: 'success',
         message: 'Item added to cart',
         data: {
-          cartItem: newItem
+          cartItem
         }
       });
     }
@@ -468,51 +474,39 @@ exports.applyPromotion = async (req, res, next) => {
     const { code } = req.body;
     
     // Find active promotion by code
-    const promotion = await Promotion.findOne({
-      where: {
-        code: code.toUpperCase(),
-        isActive: true,
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
-      }
-    });
+    const promotions = await db.query(
+      `SELECT * FROM promotions 
+       WHERE code = ? 
+       AND is_active = 1
+       AND start_date <= NOW() 
+       AND end_date >= NOW()`,
+      [code.toUpperCase()]
+    );
     
-    if (!promotion) {
+    if (!promotions || promotions.length === 0) {
       return next(new AppError('Invalid or expired promotion code', 400));
     }
     
-    // Get user cart
-    const cart = await Cart.findAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Product,
-          as: 'product',
-          include: [
-            {
-              model: Restaurant,
-              as: 'restaurant'
-            }
-          ]
-        }
-      ]
-    });
+    const promotion = promotions[0];
     
-    if (cart.length === 0) {
+    // Get user cart
+    const cartItems = await Cart.findAll({ userId: req.user.id });
+    
+    if (cartItems.length === 0) {
       return next(new AppError('Your cart is empty', 400));
     }
     
     // Check if promotion is restaurant-specific
     if (promotion.restaurantId) {
-      const restaurantId = cart[0].product.restaurantId;
+      const restaurantId = cartItems[0].restaurantId;
       if (promotion.restaurantId !== restaurantId) {
         return next(new AppError('This promotion code is not valid for the selected restaurant', 400));
       }
     }
     
     // Calculate cart subtotal
-    const subtotal = cart.reduce((total, item) => {
-      return total + (item.quantity * (item.product.discountPrice || item.product.price));
+    const subtotal = cartItems.reduce((total, item) => {
+      return total + (item.quantity * (item.discountPrice || item.price));
     }, 0);
     
     // Check minimum order amount
@@ -527,13 +521,13 @@ exports.applyPromotion = async (req, res, next) => {
     
     // Check if user has already used this promotion
     if (promotion.userUsageLimit) {
-      const userUsageCount = await UserPromotion.count({
-        where: {
-          userId: req.user.id,
-          promotionId: promotion.id
-        }
-      });
+      const userPromotions = await db.query(
+        `SELECT COUNT(*) as count FROM user_promotions 
+         WHERE userId = ? AND promotionId = ?`,
+        [req.user.id, promotion.id]
+      );
       
+      const userUsageCount = userPromotions[0].count;
       if (userUsageCount >= promotion.userUsageLimit) {
         return next(new AppError('You have already used this promotion', 400));
       }
@@ -541,11 +535,12 @@ exports.applyPromotion = async (req, res, next) => {
     
     // Check if promotion is for new users only
     if (promotion.forNewUsersOnly) {
-      const userOrders = await Order.count({
-        where: { userId: req.user.id }
-      });
+      const userOrders = await db.query(
+        `SELECT COUNT(*) as count FROM orders WHERE userId = ?`,
+        [req.user.id]
+      );
       
-      if (userOrders > 0) {
+      if (userOrders[0].count > 0) {
         return next(new AppError('This promotion is for new users only', 400));
       }
     }
@@ -561,7 +556,16 @@ exports.applyPromotion = async (req, res, next) => {
     } else if (promotion.type === 'fixed_amount') {
       discountAmount = parseFloat(promotion.value);
     } else if (promotion.type === 'free_delivery') {
-      discountAmount = parseFloat(cart[0].product.restaurant.deliveryFee);
+      // Get the restaurant's delivery fee
+      const restaurantId = cartItems[0].restaurantId;
+      const restaurants = await db.query(
+        'SELECT deliveryFee FROM restaurants WHERE id = ?',
+        [restaurantId]
+      );
+      
+      if (restaurants && restaurants.length > 0) {
+        discountAmount = parseFloat(restaurants[0].deliveryFee);
+      }
     }
     
     // Store promotion in session
@@ -579,7 +583,7 @@ exports.applyPromotion = async (req, res, next) => {
       status: 'success',
       data: {
         promotion: {
-          ...promotion.toJSON(),
+          ...promotion,
           discountAmount
         }
       }
@@ -627,28 +631,31 @@ exports.updateCartItem = async (req, res, next) => {
     const { quantity, options, notes } = req.body;
 
     // Find cart item
-    const cartItem = await Cart.findOne({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
+    const cartItems = await db.query(
+      `SELECT * FROM ${Cart.tableName} WHERE id = ? AND userId = ?`,
+      [id, req.user.id]
+    );
 
-    if (!cartItem) {
+    if (!cartItems || cartItems.length === 0) {
       return next(new AppError('Cart item not found', 404));
     }
 
-    // Update cart item
-    cartItem.quantity = quantity || cartItem.quantity;
-    cartItem.options = options ? JSON.parse(options) : cartItem.options;
-    cartItem.notes = notes !== undefined ? notes : cartItem.notes;
+    // Prepare data to update
+    const updateData = {};
+    if (quantity) updateData.quantity = quantity;
+    if (notes !== undefined) updateData.notes = notes;
+    if (options) updateData.options = JSON.stringify(typeof options === 'string' ? JSON.parse(options) : options);
 
-    await cartItem.save();
+    // Update cart item
+    await Cart.update(id, updateData);
+
+    // Get updated cart item
+    const updatedCartItem = await Cart.findByPk(id);
 
     res.status(200).json({
       status: 'success',
       data: {
-        cartItem
+        cartItem: updatedCartItem
       }
     });
   } catch (error) {
@@ -666,19 +673,17 @@ exports.removeFromCart = async (req, res, next) => {
     const { id } = req.params;
 
     // Find cart item
-    const cartItem = await Cart.findOne({
-      where: {
-        id,
-        userId: req.user.id
-      }
-    });
+    const cartItems = await db.query(
+      `SELECT * FROM ${Cart.tableName} WHERE id = ? AND userId = ?`,
+      [id, req.user.id]
+    );
 
-    if (!cartItem) {
+    if (!cartItems || cartItems.length === 0) {
       return next(new AppError('Cart item not found', 404));
     }
 
     // Delete cart item
-    await cartItem.destroy();
+    await Cart.destroy(id);
 
     res.status(204).json({
       status: 'success',
@@ -697,11 +702,10 @@ exports.removeFromCart = async (req, res, next) => {
 exports.clearCart = async (req, res, next) => {
   try {
     // Delete all cart items for user
-    await Cart.destroy({
-      where: {
-        userId: req.user.id
-      }
-    });
+    await db.query(
+      `DELETE FROM ${Cart.tableName} WHERE userId = ?`,
+      [req.user.id]
+    );
 
     res.status(204).json({
       status: 'success',

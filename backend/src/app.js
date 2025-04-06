@@ -139,14 +139,14 @@ app.use('/api/pages', staticPageRoutes);
 app.use('/api/config', siteConfigRoutes);
 app.use('/api/tracking', authMiddleware, trackingRoutes);
 app.use('/api/notifications', authMiddleware, notificationRoutes);
+app.use('/api/favorites', authMiddleware, favoriteRoutes);
+app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/banners', bannerRoutes);
 app.use('/api/addresses', authMiddleware, addressRoutes);
-app.use('/api/favorites', authMiddleware, favoriteRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/review-responses', reviewResponseRoutes);
-app.use('/api/recommendations', recommendationRoutes);
 app.use('/api/faqs', faqRoutes);
 app.use('/api/delivery-configs', deliveryConfigRoutes);
 

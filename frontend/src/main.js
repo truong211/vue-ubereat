@@ -14,6 +14,7 @@ import socialAuth from './services/social-auth'
 import jwtAuth from './services/jwt-auth.js'
 import i18n from './i18n'
 import './assets/styles/global.css'
+import './assets/styles/navigation.css'
 import { pushNotificationService } from '@/services/push-notification.service'
 import axios from 'axios'
 import { clearAuthStorage } from './config'
@@ -25,12 +26,13 @@ if (import.meta.env.VITE_USE_FIREBASE === 'true') {
     .catch(error => console.warn('Failed to initialize Firebase:', error));
 }
 
-// Set axios default base URL to point to the backend server
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// If we need to set a baseURL for axios, we'll make sure it points to the correct port
+// Note: This is now commented out as we're using the Vite proxy instead
+// axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 
 // Add interceptor to log requests for debugging
 axios.interceptors.request.use(config => {
-  console.log(`Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
+  console.log(`Request: ${config.method.toUpperCase()} ${config.url}`);
   return config;
 });
 

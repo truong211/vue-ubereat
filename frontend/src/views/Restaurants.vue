@@ -1,11 +1,36 @@
 <template>
   <v-container>
+    <!-- Location Selector Banner -->
+    <v-card class="mb-6 location-banner" color="primary" variant="flat">
+      <v-card-text>
+        <v-row align="center">
+          <v-col cols="12">
+            <div class="d-flex align-center">
+              <v-icon size="large" class="mr-2">mdi-map-marker</v-icon>
+              <div class="location-display" @click="openLocationDialog">
+                <div class="text-subtitle-1 font-weight-bold">Delivery Location</div>
+                <div class="text-body-2">{{ locationQuery || 'Select your location' }}</div>
+              </div>
+              <v-spacer></v-spacer>
+              <v-btn
+                variant="outlined"
+                color="white"
+                @click="openLocationDialog"
+              >
+                Change
+              </v-btn>
+            </div>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+
     <!-- Search and Filters Section -->
     <v-card class="mb-6">
       <v-card-text>
         <v-row>
-          <!-- Location Search -->
-          <v-col cols="12" sm="6">
+          <!-- Location Search (Hidden, replaced by banner) -->
+          <v-col cols="12" sm="6" class="d-none">
             <v-text-field
               v-model="locationQuery"
               label="Delivery Location"
@@ -16,10 +41,10 @@
               @keyup.enter="handleLocationSearch"
             >
               <template v-slot:append>
-                <v-btn 
-                  icon 
-                  @click="handleGetCurrentLocation" 
-                  :loading="isLocating" 
+                <v-btn
+                  icon
+                  @click="handleGetCurrentLocation"
+                  :loading="isLocating"
                   :disabled="isLocating"
                   class="location-btn"
                 >
@@ -288,6 +313,74 @@
       </v-card>
     </div>
   </v-container>
+
+  <!-- Location Selection Dialog -->
+  <v-dialog v-model="locationDialog" max-width="600">
+    <v-card>
+      <v-card-title class="text-h5 pb-2">
+        Select Delivery Location
+      </v-card-title>
+      <v-card-text>
+        <v-row>
+          <v-col cols="12">
+            <v-text-field
+              v-model="tempLocationQuery"
+              label="Enter your address or city"
+              prepend-inner-icon="mdi-map-marker"
+              variant="outlined"
+              hide-details
+              class="mb-4"
+              @keyup.enter="confirmLocationSelection"
+            ></v-text-field>
+
+            <!-- Popular Cities -->
+            <div class="mt-4 mb-2">
+              <div class="text-subtitle-1 font-weight-bold mb-2">Popular Cities</div>
+              <v-chip-group>
+                <v-chip
+                  v-for="city in popularCities"
+                  :key="city"
+                  @click="selectCity(city)"
+                  class="mr-2 mb-2"
+                >
+                  {{ city }}
+                </v-chip>
+              </v-chip-group>
+            </div>
+
+            <!-- Use Current Location Button -->
+            <v-btn
+              prepend-icon="mdi-crosshairs-gps"
+              variant="outlined"
+              class="mt-4"
+              :loading="isLocating"
+              :disabled="isLocating"
+              @click="handleGetCurrentLocation"
+            >
+              Use my current location
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer></v-spacer>
+        <v-btn
+          color="grey-darken-1"
+          variant="text"
+          @click="locationDialog = false"
+        >
+          Cancel
+        </v-btn>
+        <v-btn
+          color="primary"
+          variant="flat"
+          @click="confirmLocationSelection"
+        >
+          Confirm Location
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -315,6 +408,20 @@ const {
 const showSuggestions = ref(false)
 const showLocationSuggestions = ref(false)
 const isLocating = ref(false)
+const locationDialog = ref(false)
+const tempLocationQuery = ref('')
+
+// Popular cities for quick selection
+const popularCities = [
+  'New York',
+  'Los Angeles',
+  'Chicago',
+  'Houston',
+  'Phoenix',
+  'Philadelphia',
+  'San Antonio',
+  'San Diego'
+]
 
 const categories = ref([
   { id: 1, name: 'Vietnamese' },
@@ -362,7 +469,7 @@ function selectSuggestion(suggestion) {
 function selectLocationSuggestion(suggestion) {
   locationQuery.value = suggestion
   showLocationSuggestions.value = false
-  
+
   // Trigger search with the selected location
   handleLocationSearch()
 }
@@ -389,10 +496,15 @@ async function handleGetCurrentLocation() {
     toast.success('Location updated successfully')
     // Trigger search with the new location
     await searchRestaurants()
+
+    // Close the dialog if it's open
+    if (locationDialog.value) {
+      locationDialog.value = false
+    }
   } catch (error) {
     console.error('Error getting location:', error)
     toast.error(error.message || 'Error getting your location')
-    
+
     // If error occurred, we'll show a dialog to manually enter location
     if (error.code === 1) { // PERMISSION_DENIED
       // Show an alert that helps users understand how to enable location
@@ -411,6 +523,28 @@ watch(locationQuery, () => {
   showLocationSuggestions.value = locationQuery.value.length >= 3
 })
 
+// Open location dialog
+function openLocationDialog() {
+  tempLocationQuery.value = locationQuery.value
+  locationDialog.value = true
+}
+
+// Select a city from the popular cities list
+function selectCity(city) {
+  tempLocationQuery.value = city
+}
+
+// Confirm location selection and close dialog
+function confirmLocationSelection() {
+  if (tempLocationQuery.value.trim()) {
+    locationQuery.value = tempLocationQuery.value
+    handleLocationSearch()
+    locationDialog.value = false
+  } else {
+    toast.error('Please enter a location')
+  }
+}
+
 onMounted(async () => {
   try {
     await searchRestaurants()
@@ -428,7 +562,7 @@ onMounted(async () => {
   z-index: 1;
 }
 
-.location-suggestions, 
+.location-suggestions,
 .search-suggestions {
   position: absolute;
   width: 100%;
@@ -439,5 +573,19 @@ onMounted(async () => {
   border: 1px solid #e0e0e0;
   border-radius: 0 0 4px 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.location-banner {
+  border-radius: 8px;
+}
+
+.location-display {
+  cursor: pointer;
+  flex-grow: 1;
+  transition: all 0.2s ease;
+}
+
+.location-display:hover {
+  opacity: 0.8;
 }
 </style>
