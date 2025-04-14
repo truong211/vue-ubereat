@@ -283,17 +283,24 @@
 </template>
 
 <script>
-import { mapActions, mapGetters } from 'vuex';
+import { defineComponent } from 'vue';
+import { useAuthStore } from '@/stores/auth';           // Import Pinia auth store
+import { useNotificationStore } from '@/stores/notification'; // Import Pinia notification store
 import { format } from 'date-fns';
 import productService from '@/services/product.service';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'ProductReviews',
   props: {
     productId: {
       type: [String, Number],
       required: true
     }
+  },
+  setup() {
+    const authStore = useAuthStore();
+    const notificationStore = useNotificationStore();
+    return { authStore, notificationStore }; // Expose store instances
   },
   data() {
     return {
@@ -332,10 +339,14 @@ export default {
     };
   },
   computed: {
-    ...mapGetters({
-      currentUserId: 'auth/getUserId',
-      isAuthenticated: 'auth/isAuthenticated'
-    }),
+    // Access getters/state from Pinia auth store
+    currentUserId() {
+      // Assuming 'user.id' or a 'getUserId' getter exists
+      return this.authStore.user?.id;
+    },
+    isAuthenticated() {
+      return this.authStore.isAuthenticated;
+    },
     breadcrumbs() {
       const items = [
         {
@@ -425,9 +436,7 @@ export default {
     }
   },
   methods: {
-    ...mapActions({
-      showToast: 'notification/showToast'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async fetchProduct() {
       try {
@@ -435,7 +444,8 @@ export default {
         this.product = response.data.data.product;
       } catch (error) {
         console.error('Error fetching product:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Failed to load product information',
           type: 'error'
         });
@@ -474,7 +484,8 @@ export default {
         });
       } catch (error) {
         console.error('Error fetching reviews:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Failed to load reviews',
           type: 'error'
         });
@@ -502,7 +513,8 @@ export default {
     
     openReviewDialog() {
       if (!this.isAuthenticated) {
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'You need to sign in to write a review',
           type: 'info'
         });
@@ -544,7 +556,8 @@ export default {
         
         await productService.submitReview(formData);
         
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Thank you for your review!',
           type: 'success'
         });
@@ -553,7 +566,8 @@ export default {
         this.fetchReviews(); // Refresh reviews
       } catch (error) {
         console.error('Error submitting review:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: error.response?.data?.message || 'Failed to submit review',
           type: 'error'
         });
@@ -569,7 +583,8 @@ export default {
     
     async markReviewHelpful(review) {
       if (!this.isAuthenticated) {
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'You need to sign in to mark reviews as helpful',
           type: 'info'
         });
@@ -586,7 +601,8 @@ export default {
           : Math.max(0, (review.helpfulCount || 0) - 1);
       } catch (error) {
         console.error('Error marking review as helpful:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Failed to mark review as helpful',
           type: 'error'
         });
@@ -597,7 +613,8 @@ export default {
       try {
         await productService.deleteReview(reviewId);
         
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Your review has been deleted',
           type: 'success'
         });
@@ -605,14 +622,15 @@ export default {
         this.fetchReviews(); // Refresh reviews
       } catch (error) {
         console.error('Error deleting review:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Failed to delete review',
           type: 'error'
         });
       }
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

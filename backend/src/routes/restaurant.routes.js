@@ -58,77 +58,20 @@ router.get('/:id', restaurantController.getRestaurantById);
 router.get('/:id/menu', restaurantController.getRestaurantMenu);
 router.get('/:id/reviews', restaurantController.getRestaurantReviews);
 
-const {
-  validateOperatingHours,
-  validateDeliverySettings,
-  validateAvailabilityStatus,
-  validateSpecialHolidays,
-  validateMenuAvailability,
-  validateTemporaryClosure
-} = require('../middleware/restaurantSettings.validator');
+// Add routes for restaurant creation and update
+router.post('/', authMiddleware, upload.fields([
+  { name: 'logo', maxCount: 1 },
+  { name: 'coverImage', maxCount: 1 }
+]), restaurantController.createRestaurant);
 
-// Restaurant settings routes - temporarily disabled for debugging
-console.log('Restaurant controller methods:', Object.keys(restaurantController));
-console.log('Restaurant Settings controller methods:', Object.keys(restaurantSettingsController));
+router.put('/:id', authMiddleware, upload.fields([
+  { name: 'logo', maxCount: 1 },
+  { name: 'coverImage', maxCount: 1 }
+]), restaurantController.updateRestaurant);
 
-// Comment out problematic routes until we fix the controller methods
-// router.patch(
-//   '/:id/settings',
-//   authMiddleware,
-//   restrictTo('restaurant'),
-//   restaurantController.updateRestaurantSettings
-// );
+router.delete('/:id', authMiddleware, restaurantController.deleteRestaurant);
 
-// router.patch(
-//   '/:id/settings/opening-hours',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateOperatingHours,
-//   restaurantSettingsController.updateOperatingHours
-// );
-
-// router.patch(
-//   '/:id/settings/delivery',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateDeliverySettings,
-//   restaurantSettingsController.updateDeliverySettings
-// );
-
-// Comment out this route if updateNotificationPreferences doesn't exist in either controller
-// router.patch(
-//   '/:id/settings/notifications',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateNotificationPreferences,
-//   restaurantSettingsController.updateNotificationPreferences
-// );
-
-// router.patch(
-//   '/:id/settings/holidays',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateSpecialHolidays,
-//   restaurantSettingsController.updateSpecialHolidays
-// );
-
-// New routes for menu availability and temporary closure
-// router.patch(
-//   '/:id/menu-availability',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateMenuAvailability,
-//   restaurantSettingsController.updateMenuAvailability
-// );
-
-// Comment out this route as well since it might be causing issues
-// router.patch(
-//   '/:id/temp-closure',
-//   authMiddleware,
-//   verifyRestaurantOwner,
-//   validateTemporaryClosure,
-//   restaurantController.updateTempClosure
-// );
+// Restaurant settings routes are now handled by restaurantSettings.routes.js
 
 router.get(
   '/:id/availability',

@@ -358,13 +358,21 @@
 
 <script>
 import Breadcrumb from '@/components/common/Breadcrumb.vue';
-import { mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useUserStore } from '@/stores/user'; // Import Pinia user store
+import { useAuthStore } from '@/stores/auth'; // Import Pinia auth store
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'Settings',
-  
+
   components: {
     Breadcrumb
+  },
+
+  setup() {
+    const userStore = useUserStore();
+    const authStore = useAuthStore();
+    return { userStore, authStore }; // Expose store instances
   },
   
   data() {
@@ -476,18 +484,13 @@ export default {
   },
   
   methods: {
-    ...mapActions({
-      updateProfile: 'user/updateProfile',
-      updateUserPassword: 'user/updatePassword',
-      updateUserPreferences: 'user/updatePreferences',
-      updatePrivacy: 'user/updatePrivacy',
-      deleteUserAccount: 'user/deleteAccount'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async loadUserData() {
       try {
         // In a real app, you would fetch the user's data from your store or API
-        const user = this.$store.getters['auth/currentUser'];
+        // Get user from Pinia auth store instance
+        const user = this.authStore.user; // Assuming 'user' is the state property or getter
         
         if (user) {
           this.personalInfo = {
@@ -512,7 +515,7 @@ export default {
     async updatePersonalInfo() {
       try {
         this.isUpdatingPersonal = true;
-        await this.updateProfile(this.personalInfo);
+        await this.userStore.updateProfile(this.personalInfo); // Call action on userStore
         this.$toast.success(this.$t('settings.personalInfoUpdated'));
       } catch (error) {
         console.error('Failed to update personal info:', error);
@@ -530,7 +533,8 @@ export default {
       
       try {
         this.isUpdatingSecurity = true;
-        await this.updateUserPassword({
+        // Call action on userStore
+        await this.userStore.updatePassword({
           currentPassword: this.securityInfo.currentPassword,
           newPassword: this.securityInfo.newPassword
         });
@@ -556,7 +560,8 @@ export default {
         this.isUpdatingSecurity = true;
         
         // In a real app, this would involve additional steps for 2FA setup
-        await this.updateUserPreferences({
+        // Call action on userStore (assuming updatePreferences handles 2FA toggle)
+        await this.userStore.updatePreferences({
           twoFactorEnabled: this.securityInfo.twoFactorEnabled
         });
         
@@ -582,7 +587,7 @@ export default {
     async savePreferences() {
       try {
         this.isUpdatingPreferences = true;
-        await this.updateUserPreferences(this.preferences);
+        await this.userStore.updatePreferences(this.preferences); // Call action on userStore
         
         // Apply language change immediately
         if (this.$i18n.locale !== this.preferences.language) {
@@ -604,7 +609,7 @@ export default {
     async savePrivacySettings() {
       try {
         this.isUpdatingPrivacy = true;
-        await this.updatePrivacy(this.privacySettings);
+        await this.userStore.updatePrivacy(this.privacySettings); // Call action on userStore
         this.$toast.success(this.$t('settings.privacyUpdated'));
       } catch (error) {
         console.error('Failed to update privacy settings:', error);
@@ -622,12 +627,13 @@ export default {
       
       try {
         this.isDeleting = true;
-        await this.deleteUserAccount({
+        // Call action on userStore
+        await this.userStore.deleteAccount({
           password: this.deleteAccountPassword
         });
         
         // Log out and redirect to homepage
-        await this.$store.dispatch('auth/logout');
+        await this.authStore.logout(); // Call action on authStore
         this.$router.push('/');
         this.$toast.success(this.$t('settings.accountDeleted'));
       } catch (error) {
@@ -639,7 +645,7 @@ export default {
       }
     }
   }
-}
+}); // Close defineComponent
 </script>
 
 <style scoped>

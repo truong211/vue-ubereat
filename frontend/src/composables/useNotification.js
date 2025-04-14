@@ -1,4 +1,4 @@
-import { useToast } from './useToast';
+import { useToast } from 'vue-toastification';
 
 /**
  * Composable for showing notifications
@@ -11,18 +11,42 @@ export function useNotification() {
    * Show a notification
    * @param {string} message - The notification message
    * @param {string} type - The notification type (success, error, info, warning)
-   * @param {number} timeout - The notification timeout in milliseconds
+   * @param {Object} options - Additional options for the notification
    */
-  const notify = (message, type = 'info', timeout = 5000) => {
-    if (toast && typeof toast.show === 'function') {
-      toast.show({
-        text: message,
-        color: getColorForType(type),
-        timeout
-      });
-    } else {
-      // Fallback to console if toast is not available
-      console.log(`[${type.toUpperCase()}] ${message}`);
+  const notify = (message, type = 'default', options = {}) => {
+    const defaultOptions = {
+      position: 'top-right',
+      timeout: 5000,
+      closeOnClick: true,
+      pauseOnFocusLoss: true,
+      pauseOnHover: true,
+      draggable: true,
+      draggablePercent: 0.6,
+      showCloseButtonOnHover: false,
+      hideProgressBar: false,
+      closeButton: 'button',
+      icon: true,
+      rtl: false
+    };
+    
+    const mergedOptions = { ...defaultOptions, ...options };
+    
+    switch (type) {
+      case 'success':
+        toast.success(message, mergedOptions);
+        break;
+      case 'error':
+        toast.error(message, mergedOptions);
+        break;
+      case 'warning':
+        toast.warning(message, mergedOptions);
+        break;
+      case 'info':
+        toast.info(message, mergedOptions);
+        break;
+      default:
+        toast(message, mergedOptions);
+        break;
     }
   };
   

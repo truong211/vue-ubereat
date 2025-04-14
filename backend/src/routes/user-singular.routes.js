@@ -7,6 +7,20 @@ const userController = require('../controllers/user.controller');
 router.use(protect);
 
 /**
+ * @route GET /api/user/profile
+ * @desc Get current user profile
+ * @access Private
+ */
+router.get('/profile', userController.getCurrentUserProfile);
+
+/**
+ * @route PUT /api/user/profile
+ * @desc Update current user profile
+ * @access Private
+ */
+router.put('/profile', userController.updateCurrentUserProfile);
+
+/**
  * @route GET /api/user/addresses
  * @desc Get user addresses - redirects to the plural route
  * @access Private

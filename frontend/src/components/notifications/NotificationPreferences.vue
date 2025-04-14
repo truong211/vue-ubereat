@@ -1,287 +1,177 @@
 <template>
-  <v-card class="notification-preferences">
-    <v-card-title class="text-h6">Notification Settings</v-card-title>
-    
-    <v-card-text>
-      <v-alert
-        v-if="statusMessage"
-        :type="statusType"
-        variant="tonal"
-        density="compact"
-        class="mb-4"
-        closable
-        @click:close="statusMessage = ''"
-      >
-        {{ statusMessage }}
-      </v-alert>
-
-      <!-- Push Notifications -->
-      <div class="setting-group mb-4">
-        <div class="d-flex align-center mb-2">
-          <div class="text-subtitle-1">Push Notifications</div>
-          <v-spacer></v-spacer>
-          <v-switch
-            v-model="pushEnabled"
-            :loading="isTogglingPush"
-            :disabled="!pushSupported"
-            hide-details
-            density="comfortable"
-            @update:model-value="togglePushNotifications"
-          ></v-switch>
-        </div>
-        <div v-if="!pushSupported" class="text-caption text-error">
-          Push notifications are not supported in your browser
-        </div>
+  <div class="notification-preferences">
+    <div class="notification-section">
+      <div class="notification-toggle">
+        <h3>{{ $t('notifications.push.title') }}</h3>
+        <p>{{ $t('notifications.push.description') }}</p>
+        <v-switch
+          v-model="pushEnabled"
+          :disabled="!pushSupported || loading.push"
+          @change="togglePushNotifications"
+        />
+        <p v-if="!pushSupported" class="error-text">
+          {{ $t('notifications.push.notSupported') }}
+        </p>
       </div>
 
-      <!-- Email Notifications -->
-      <div class="setting-group mb-4">
-        <div class="d-flex align-center mb-2">
-          <div class="text-subtitle-1">Email Notifications</div>
-          <v-spacer></v-spacer>
-          <v-switch
-            v-model="emailEnabled"
-            :loading="isTogglingEmail"
-            hide-details
-            density="comfortable"
-            @update:model-value="toggleEmailNotifications"
-          ></v-switch>
-        </div>
+      <div class="notification-toggle">
+        <h3>{{ $t('notifications.email.title') }}</h3>
+        <p>{{ $t('notifications.email.description') }}</p>
+        <v-switch
+          v-model="emailEnabled"
+          :disabled="loading.email"
+          @change="toggleEmailNotifications"
+        />
       </div>
 
-      <!-- SMS Notifications -->
-      <div class="setting-group mb-4">
-        <div class="d-flex align-center mb-2">
-          <div class="text-subtitle-1">SMS Notifications</div>
-          <v-spacer></v-spacer>
-          <v-switch
-            v-model="smsEnabled"
-            :loading="isTogglingSms"
-            :disabled="!phoneVerified"
-            hide-details
-            density="comfortable"
-            @update:model-value="toggleSmsNotifications"
-          ></v-switch>
-        </div>
-        <div v-if="!phoneVerified" class="text-caption text-error">
-          Please verify your phone number to enable SMS notifications
-        </div>
+      <div class="notification-toggle">
+        <h3>{{ $t('notifications.sms.title') }}</h3>
+        <p>{{ $t('notifications.sms.description') }}</p>
+        <v-switch
+          v-model="smsEnabled"
+          :disabled="!phoneVerified || loading.sms"
+          @change="toggleSmsNotifications"
+        />
+        <p v-if="!phoneVerified" class="error-text">
+          {{ $t('notifications.sms.verifyPhone') }}
+        </p>
       </div>
+    </div>
 
-      <!-- Notification Types -->
-      <v-divider class="my-4"></v-divider>
-      
-      <div class="text-subtitle-1 mb-3">Receive notifications for:</div>
-      <v-list density="compact">
-        <v-list-item v-for="type in notificationTypes" :key="type.value">
-          <template v-slot:prepend>
-            <v-checkbox
-              v-model="enabledTypes"
-              :value="type.value"
-              hide-details
-              density="comfortable"
-            ></v-checkbox>
-          </template>
-          <v-list-item-title>{{ type.label }}</v-list-item-title>
-          <v-list-item-subtitle>{{ type.description }}</v-list-item-subtitle>
-        </v-list-item>
-      </v-list>
-    </v-card-text>
-
-    <v-card-actions>
-      <v-spacer></v-spacer>
-      <v-btn
-        color="primary"
-        :loading="isSavingSettings"
-        @click="saveSettings"
-      >
-        Save Changes
-      </v-btn>
-    </v-card-actions>
-  </v-card>
+    <div class="notification-types" v-if="showNotificationTypes">
+      <h3>{{ $t('notifications.types.title') }}</h3>
+      <v-checkbox
+        v-for="type in notificationTypes"
+        :key="type.id"
+        v-model="selectedTypes"
+        :label="$t(type.label)"
+        :value="type.id"
+        @change="updateNotificationTypes"
+      />
+    </div>
+  </div>
 </template>
 
 <script>
 import { ref, onMounted } from 'vue'
-import { useStore } from 'vuex'
+import { useNotificationStore } from '@/stores/notification'
+import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 
 export default {
   name: 'NotificationPreferences',
-
+  
   setup() {
-    const store = useStore()
+    const notificationStore = useNotificationStore()
+    const authStore = useAuthStore()
+    const uiStore = useUiStore()
 
-    // State
     const pushEnabled = ref(false)
-    const pushSupported = ref(false)
     const emailEnabled = ref(false)
     const smsEnabled = ref(false)
+    const pushSupported = ref(false)
     const phoneVerified = ref(false)
-    const enabledTypes = ref([])
-    const statusMessage = ref('')
-    const statusType = ref('info')
+    const selectedTypes = ref([])
+    const loading = ref({
+      push: false,
+      email: false,
+      sms: false
+    })
 
-    // Loading states
-    const isTogglingPush = ref(false)
-    const isTogglingEmail = ref(false)
-    const isTogglingSms = ref(false)
-    const isSavingSettings = ref(false)
-
-    // Notification types
     const notificationTypes = [
-      {
-        value: 'order_status',
-        label: 'Order Status Updates',
-        description: 'Get notified about your order status changes'
-      },
-      {
-        value: 'driver_location',
-        label: 'Driver Location Updates',
-        description: 'Track your delivery in real-time'
-      },
-      {
-        value: 'promotions',
-        label: 'Promotions & Offers',
-        description: 'Stay updated with latest deals and offers'
-      },
-      {
-        value: 'chat',
-        label: 'Chat Messages',
-        description: 'Messages from drivers and support'
-      },
-      {
-        value: 'system',
-        label: 'System Updates',
-        description: 'Important updates about your account'
-      }
+      { id: 'orders', label: 'notifications.types.orders' },
+      { id: 'promotions', label: 'notifications.types.promotions' },
+      { id: 'account', label: 'notifications.types.account' },
+      { id: 'delivery', label: 'notifications.types.delivery' }
     ]
 
-    // Methods
+    const showNotificationTypes = computed(() => 
+      pushEnabled.value || emailEnabled.value || smsEnabled.value
+    )
+
     const initializeSettings = async () => {
       try {
-        // Check push notification support
-        pushSupported.value = 'Notification' in window && 'serviceWorker' in navigator
-
-        // Get current notification settings
-        const settings = await store.dispatch('notifications/getPreferences') || {}
-        pushEnabled.value = settings?.push || false
-        emailEnabled.value = settings?.email || false
-        smsEnabled.value = settings?.sms || false
-        enabledTypes.value = settings?.enabledTypes || []
-
-        // Check phone verification status
-        const user = store.state.auth.user
-        phoneVerified.value = user?.phoneVerified || false
+        const settings = await notificationStore.getNotificationSettings()
+        pushEnabled.value = settings.push
+        emailEnabled.value = settings.email
+        smsEnabled.value = settings.sms
+        selectedTypes.value = settings.types || []
+        pushSupported.value = 'Notification' in window
+        phoneVerified.value = authStore.user?.phoneVerified || false
       } catch (error) {
+        uiStore.showError('Error loading notification settings')
         console.error('Failed to load notification settings:', error)
-        showStatus('Failed to load settings', 'error')
       }
     }
 
     const togglePushNotifications = async () => {
-      if (!pushSupported.value) return
-
-      isTogglingPush.value = true
+      loading.value.push = true
       try {
-        if (pushEnabled.value) {
-          await store.dispatch('notifications/requestPushPermission')
-        } else {
-          await store.dispatch('notifications/unsubscribeFromPush')
-        }
+        await notificationStore.updatePushNotifications(pushEnabled.value)
+        uiStore.showSuccess('Push notification settings updated')
       } catch (error) {
-        console.error('Failed to toggle push notifications:', error)
         pushEnabled.value = !pushEnabled.value
-        showStatus('Failed to update push notification settings', 'error')
+        uiStore.showError('Failed to update push notifications')
+        console.error('Push notification toggle failed:', error)
       } finally {
-        isTogglingPush.value = false
+        loading.value.push = false
       }
     }
 
     const toggleEmailNotifications = async () => {
-      isTogglingEmail.value = true
+      loading.value.email = true
       try {
-        await store.dispatch('notifications/updatePreferences', {
-          email: emailEnabled.value
-        })
+        await notificationStore.updateEmailNotifications(emailEnabled.value)
+        uiStore.showSuccess('Email notification settings updated')
       } catch (error) {
-        console.error('Failed to toggle email notifications:', error)
         emailEnabled.value = !emailEnabled.value
-        showStatus('Failed to update email notification settings', 'error')
+        uiStore.showError('Failed to update email notifications')
+        console.error('Email notification toggle failed:', error)
       } finally {
-        isTogglingEmail.value = false
+        loading.value.email = false
       }
     }
 
     const toggleSmsNotifications = async () => {
-      if (!phoneVerified.value) return
-
-      isTogglingSms.value = true
+      loading.value.sms = true
       try {
-        await store.dispatch('notifications/updatePreferences', {
-          sms: smsEnabled.value
-        })
+        await notificationStore.updateSmsNotifications(smsEnabled.value)
+        uiStore.showSuccess('SMS notification settings updated')
       } catch (error) {
-        console.error('Failed to toggle SMS notifications:', error)
         smsEnabled.value = !smsEnabled.value
-        showStatus('Failed to update SMS notification settings', 'error')
+        uiStore.showError('Failed to update SMS notifications')
+        console.error('SMS notification toggle failed:', error)
       } finally {
-        isTogglingSms.value = false
+        loading.value.sms = false
       }
     }
 
-    const saveSettings = async () => {
-      isSavingSettings.value = true
+    const updateNotificationTypes = async () => {
       try {
-        await store.dispatch('notifications/updatePreferences', {
-          push: pushEnabled.value,
-          email: emailEnabled.value,
-          sms: smsEnabled.value,
-          enabledTypes: enabledTypes.value
-        })
-        showStatus('Settings saved successfully', 'success')
+        await notificationStore.updateNotificationTypes(selectedTypes.value)
+        uiStore.showSuccess('Notification types updated')
       } catch (error) {
-        console.error('Failed to save notification settings:', error)
-        showStatus('Failed to save settings', 'error')
-      } finally {
-        isSavingSettings.value = false
+        uiStore.showError('Failed to update notification types')
+        console.error('Notification types update failed:', error)
       }
     }
 
-    const showStatus = (message, type = 'info') => {
-      statusMessage.value = message
-      statusType.value = type
-    }
-
-    // Initialize
-    onMounted(() => {
-      initializeSettings()
-    })
+    onMounted(initializeSettings)
 
     return {
-      // State
       pushEnabled,
-      pushSupported,
       emailEnabled,
       smsEnabled,
+      pushSupported,
       phoneVerified,
-      enabledTypes,
-      statusMessage,
-      statusType,
-      
-      // Loading states
-      isTogglingPush,
-      isTogglingEmail,
-      isTogglingSms,
-      isSavingSettings,
-      
-      // Data
+      selectedTypes,
+      loading,
       notificationTypes,
-      
-      // Methods
+      showNotificationTypes,
       togglePushNotifications,
       toggleEmailNotifications,
       toggleSmsNotifications,
-      saveSettings
+      updateNotificationTypes
     }
   }
 }
@@ -289,11 +179,43 @@ export default {
 
 <style scoped>
 .notification-preferences {
-  max-width: 600px;
-  margin: 0 auto;
+  padding: 20px;
 }
 
-.setting-group {
-  padding: 8px 0;
+.notification-section {
+  margin-bottom: 30px;
 }
+
+.notification-toggle {
+  margin-bottom: 24px;
+}
+
+.notification-toggle h3 {
+  margin-bottom: 8px;
+  font-size: 1.1em;
+  font-weight: 500;
+}
+
+.notification-toggle p {
+  margin-bottom: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.error-text {
+  color: #ff5252;
+  font-size: 0.9em;
+  margin-top: 4px;
+}
+
+.notification-types {
+  border-top: 1px solid #e0e0e0;
+  padding-top: 20px;
+}
+
+.notification-types h3 {
+  margin-bottom: 16px;
+  font-size: 1.1em;
+  font-weight: 500;
+}
+</style>
 </style>

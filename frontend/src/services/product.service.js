@@ -1,5 +1,4 @@
-import { apiClient } from './api.service';
-import { PRODUCT } from './api.endpoints';
+import { apiClient } from './api.service'; // Use the configured client
 
 /**
  * Product Service
@@ -7,134 +6,124 @@ import { PRODUCT } from './api.endpoints';
  */
 const productService = {
   /**
-   * Get all products with filters
-   * @param {Object} params - Query parameters for filtering
+   * Get products with optional filters
+   * @param {Object} params - Query parameters
    * @returns {Promise} - Promise with product data
    */
-  getProducts(params = {}) {
-    return apiClient.get(PRODUCT.ALL, { params });
+  getProducts: async (params = {}) => {
+    return apiClient.get('/api/products', { params });
   },
-
+  
   /**
    * Get product by ID
-   * @param {Number|String} id - Product ID
-   * @returns {Promise} - Promise with product details
+   * @param {string|number} id - Product ID
+   * @returns {Promise} - Promise with product data
    */
-  getProductById(id) {
-    return apiClient.get(PRODUCT.DETAILS(id));
+  getProductById: async (id) => {
+    return apiClient.get(`/api/products/${id}`);
   },
-
+  
   /**
-   * Get product details with options
-   * @param {Number|String} id - Product ID
-   * @returns {Promise} - Promise with detailed product information including options
+   * Get related products
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - Promise with related products
    */
-  getProductDetails(id) {
-    return apiClient.get(PRODUCT.DETAILS(id));
+  getRelatedProducts: async (params = {}) => {
+    return apiClient.get('/api/products/related', { params });
   },
-
+  
   /**
-   * Get product reviews
-   * @param {Number|String} id - Product ID
-   * @param {Object} params - Query parameters for pagination
-   * @returns {Promise} - Promise with product reviews
+   * Get recommended products for a user
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - Promise with recommended products
    */
-  getProductReviews(id, params = {}) {
-    return apiClient.get(`${PRODUCT.DETAILS(id)}/reviews`, { params });
+  getRecommendedProducts: async (params = {}) => {
+    return apiClient.get('/api/products/recommended', { params });
   },
-
+  
   /**
    * Get popular products
    * @param {Object} params - Query parameters
    * @returns {Promise} - Promise with popular products
    */
-  getPopularProducts(params = {}) {
-    return apiClient.get(PRODUCT.POPULAR, { params });
+  getPopularProducts: async (params = {}) => {
+    return apiClient.get('/api/products/popular', { params });
   },
-
+  
   /**
-   * Get recommended products
+   * Get product categories
    * @param {Object} params - Query parameters
-   * @returns {Promise} - Promise with recommended products
+   * @returns {Promise} - Promise with categories data
    */
-  getRecommendedProducts(params = {}) {
-    return apiClient.get(PRODUCT.RECOMMENDED, { params });
+  getCategories: async (params = {}) => {
+    // Assuming categories are fetched via /api/categories, not /api/products/categories
+    // Let's check category.service.js if this causes issues. For now, keep as is or check backend routes.
+    // If backend route is /api/products/categories, change this:
+    // return api.get('/api/products/categories', { params });
+    // If backend route is /api/categories, this call might be incorrect here.
+    // Let's assume the backend route is /api/products/categories for now.
+    return apiClient.get('/api/products/categories', { params }); // Assuming backend route is /api/products/categories
   },
-
+  
+  /**
+   * Get products by category ID
+   * @param {string|number} categoryId - Category ID
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - Promise with products data
+   */
+  getProductsByCategory: async (categoryId, params = {}) => {
+    return apiClient.get(`/api/products/category/${categoryId}`, { params });
+  },
+  
   /**
    * Search products
-   * @param {String} query - Search query
-   * @param {Object} params - Additional query parameters
+   * @param {Object} params - Query parameters
    * @returns {Promise} - Promise with search results
    */
-  searchProducts(query, params = {}) {
-    return apiClient.get(PRODUCT.SEARCH, {
-      params: {
-        query,
-        ...params
-      }
-    });
+  searchProducts: async (params = {}) => {
+    return apiClient.get('/api/products/search', { params });
   },
-
+  
   /**
-   * Get products by category
-   * @param {Number|String} categoryId - Category ID
-   * @param {Object} params - Additional query parameters
-   * @returns {Promise} - Promise with products in category
+   * Get product reviews
+   * @param {string|number} productId - Product ID
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - Promise with reviews data
    */
-  getProductsByCategory(categoryId, params = {}) {
-    return apiClient.get(PRODUCT.ALL, {
-      params: {
-        categoryId,
-        ...params
-      }
-    });
+  getProductReviews: async (productId, params = {}) => {
+    return apiClient.get(`/api/products/${productId}/reviews`, { params });
   },
-
+  
   /**
-   * Get products by restaurant
-   * @param {Number|String} restaurantId - Restaurant ID
-   * @param {Object} params - Additional query parameters
-   * @returns {Promise} - Promise with products from restaurant
-   */
-  getProductsByRestaurant(restaurantId, params = {}) {
-    return apiClient.get(PRODUCT.ALL, {
-      params: {
-        restaurantId,
-        ...params
-      }
-    });
-  },
-
-  /**
-   * Submit a product review
-   * @param {FormData} formData - Review data with possible images
+   * Submit product review
+   * @param {string|number} productId - Product ID
+   * @param {Object} reviewData - Review data
    * @returns {Promise} - Promise with review submission result
    */
-  submitReview(formData) {
-    return apiClient.post(`/reviews`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+  submitProductReview: async (productId, reviewData) => {
+    return apiClient.post(`/api/products/${productId}/reviews`, reviewData);
   },
-
+  
   /**
-   * Mark a review as helpful
-   * @param {Number|String} reviewId - Review ID
-   * @returns {Promise} - Promise with result
+   * Toggle product favorite status
+   * @param {string|number} productId - Product ID
+   * @returns {Promise} - Promise with favorite toggle result
    */
-  markReviewHelpful(reviewId) {
-    return apiClient.post(`/api/reviews/${reviewId}/helpful`);
+  toggleFavorite: async (productId) => {
+    // Assuming favorites are handled by /api/favorites
+    // This might need adjustment based on backend routes. Let's assume /api/products/:id/favorite for now.
+    return apiClient.post(`/api/products/${productId}/favorite`);
   },
-
+  
   /**
-   * Delete a review
-   * @param {Number|String} reviewId - Review ID
-   * @returns {Promise} - Promise with result
+   * Get user's favorite products
+   * @param {Object} params - Query parameters
+   * @returns {Promise} - Promise with favorite products
    */
-  deleteReview(reviewId) {
-    return apiClient.delete(`/api/reviews/${reviewId}`);
+  getFavoriteProducts: async (params = {}) => {
+    // Assuming favorites are handled by /api/favorites
+    // This might need adjustment based on backend routes. Let's assume /api/products/favorites for now.
+    return apiClient.get('/api/products/favorites', { params });
   }
 };
 

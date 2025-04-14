@@ -1,27 +1,5 @@
-import { InjectionKey } from 'vue'
-import { Store, createStore, useStore as baseUseStore } from 'vuex'
-import auth, { AuthState } from './auth'
-import user, { UserState } from './modules/user'
+import { createPinia } from 'pinia'
 
-export interface RootState {
-  auth: AuthState;
-  user: UserState;
-}
+const pinia = createPinia()
 
-// Define injection key
-export const key: InjectionKey<Store<RootState>> = Symbol()
-
-// Create store
-export const store = createStore<RootState>({
-  modules: {
-    auth,
-    user
-  }
-})
-
-// Define typed useStore hook
-export function useStore() {
-  return baseUseStore(key) as Store<RootState>
-}
-
-export default store
+export default pinia

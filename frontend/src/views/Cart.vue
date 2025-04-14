@@ -640,11 +640,24 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { defineComponent } from 'vue';
 import { format, addHours, addDays, addMinutes, isAfter, parse } from 'date-fns';
+import { useCartStore } from '@/stores/cart';
+import { useAuthStore } from '@/stores/auth';
+import { useUserStore } from '@/stores/user';
+import { useNotificationStore } from '@/stores/notification';
+// Removed addressService import
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'CartView',
+  setup() {
+    const cartStore = useCartStore();
+    const authStore = useAuthStore();
+    const userStore = useUserStore();
+    const notificationStore = useNotificationStore();
+    return { cartStore, authStore, userStore, notificationStore }; // Expose store instances
+  },
+
   data() {
     return {
       isLoading: true,
@@ -654,15 +667,15 @@ export default {
       isApplyingPromo: false,
       isProcessing: false,
       isClearing: false,
-      
+
       // Dialogs
       showClearCartDialog: false,
       showNotesDialog: false,
       showAddressDialog: false,
-      
+
       // Address Management
       isLoadingAddresses: true,
-      addresses: [],
+      // addresses: [], // Will be fetched from userStore
       selectedAddressId: null,
       isEditingAddress: false,
       isSavingAddress: false,
@@ -679,12 +692,12 @@ export default {
         instructions: '',
         isDefault: false
       },
-      
+
       // Item Notes
       currentItemId: null,
       itemNotes: '',
       isSavingNotes: false,
-      
+
       // Delivery Time Settings
       deliveryTimeOption: 'asap',
       isScheduledDelivery: false,
@@ -696,10 +709,17 @@ export default {
     };
   },
   computed: {
-    ...mapState({
-      cart: state => state.cart.cart,
-      user: state => state.auth.user
-    }),
+    // Access state from Pinia stores
+    cart() {
+      return this.cartStore.cart;
+    },
+    user() {
+      return this.authStore.user;
+    },
+    // Access addresses from userStore
+    addresses() {
+        return this.userStore.addresses || [];
+    },
     
     currentDate() {
       return format(new Date(), 'yyyy-MM-dd');
@@ -759,29 +779,15 @@ export default {
   },
   created() {
     this.loadCart();
-    this.loadAddresses();
+    this.loadAddresses(); // Keep calling this method
   },
   methods: {
-    ...mapActions({
-      fetchCartItems: 'cart/fetchCart',
-      updateCartItem: 'cart/updateCartItem',
-      removeCartItem: 'cart/removeCartItem',
-      clearCartItems: 'cart/clearCart',
-      applyPromotion: 'cart/applyPromotion',
-      removePromotion: 'cart/removePromotion',
-      setSpecialInstructions: 'cart/setSpecialInstructions',
-      setDeliveryAddress: 'cart/setDeliveryAddress',
-      scheduleDeliveryTime: 'cart/scheduleDelivery',
-      cancelScheduledDeliveryTime: 'cart/cancelScheduledDelivery',
-      fetchAddresses: 'user/fetchAddresses',
-      createAddress: 'user/createAddress',
-      updateAddress: 'user/updateAddress'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async loadCart() {
       try {
         this.isLoading = true;
-        const cartData = await this.fetchCartItems();
+        const cartData = await this.cartStore.fetchCart(); // Call action on cartStore
         
         console.log('Cart data loaded:', cartData);
         
@@ -824,10 +830,10 @@ export default {
           this.selectedAddressId = cartData.deliveryAddress.id;
         }
       } catch (error) {
-        console.error('Failed to load cart:', error);
-        // Safe access to error properties
-        const errorMessage = error?.response?.data?.message || 'Failed to load your cart. Please try again.';
-        this.$toast.error(errorMessage);
+        console.error('Failed to load cart:', error); // Log the actual error object
+        // Safely construct the error message for the user
+        const userMessage = error?.response?.data?.message || error?.message || 'An unexpected error occurred while loading your cart. Please try again.';
+        this.notificationStore.showToast({ message: userMessage, type: 'error' });
         
         // Initialize with empty cart
         this.cart = {
@@ -846,10 +852,13 @@ export default {
     async loadAddresses() {
       try {
         this.isLoadingAddresses = true;
-        const addresses = await this.fetchAddresses();
+        // Call the service directly instead of the mapped action
+        // Call action on userStore
+        await this.userStore.fetchAddresses();
+        // Addresses are now available via computed property this.addresses
         
         // Ensure addresses is always an array
-        this.addresses = Array.isArray(addresses) ? addresses : [];
+        // No need to set this.addresses directly, computed property handles it
         
         // If no address is selected and we have addresses, select the default one
         if (!this.selectedAddressId && this.addresses.length > 0) {
@@ -857,13 +866,13 @@ export default {
           this.selectedAddressId = defaultAddress.id;
           
           // Update cart with the selected address
-          await this.updateDeliveryAddress();
+          // No need to call updateDeliveryAddress here, selection will trigger it if needed
         }
       } catch (error) {
         console.error('Failed to load addresses:', error);
         // Safe access to error properties
         const errorMessage = error?.response?.data?.message || 'Failed to load your delivery addresses.';
-        this.$toast.error(errorMessage);
+        this.notificationStore.showToast({ message: errorMessage, type: 'error' });
       } finally {
         this.isLoadingAddresses = false;
       }
@@ -871,23 +880,24 @@ export default {
     
     async updateItemQuantity(itemId, quantity) {
       try {
-        await this.updateCartItem({
+        // Call action on cartStore
+        await this.cartStore.updateCartItem({
           id: itemId,
           quantity: quantity
         });
       } catch (error) {
         console.error('Failed to update quantity:', error);
-        this.$toast.error('Failed to update quantity. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to update quantity. Please try again.', type: 'error' });
       }
     },
     
     async removeItem(itemId) {
       try {
-        await this.removeCartItem(itemId);
-        this.$toast.success('Item removed from cart');
+        await this.cartStore.removeCartItem(itemId); // Call action on cartStore
+        this.notificationStore.showToast({ message: 'Item removed from cart', type: 'success' });
       } catch (error) {
         console.error('Failed to remove item:', error);
-        this.$toast.error('Failed to remove item. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to remove item. Please try again.', type: 'error' });
       }
     },
     
@@ -898,12 +908,12 @@ export default {
     async clearCart() {
       try {
         this.isClearing = true;
-        await this.clearCartItems();
+        await this.cartStore.clearCart(); // Call action on cartStore
         this.showClearCartDialog = false;
-        this.$toast.success('Cart cleared successfully');
+        this.notificationStore.showToast({ message: 'Cart cleared successfully', type: 'success' });
       } catch (error) {
         console.error('Failed to clear cart:', error);
-        this.$toast.error('Failed to clear cart. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to clear cart. Please try again.', type: 'error' });
       } finally {
         this.isClearing = false;
       }
@@ -916,9 +926,9 @@ export default {
         this.isApplyingPromo = true;
         this.promoError = '';
         
-        await this.applyPromotion(this.promoCode);
+        await this.cartStore.applyPromotion(this.promoCode); // Call action on cartStore
         this.promoCode = '';
-        this.$toast.success('Promotion applied successfully');
+        this.notificationStore.showToast({ message: 'Promotion applied successfully', type: 'success' });
       } catch (error) {
         console.error('Failed to apply promotion:', error);
         this.promoError = error.response?.data?.message || 'Invalid promotion code';
@@ -929,20 +939,20 @@ export default {
     
     async removePromoCode() {
       try {
-        await this.removePromotion();
-        this.$toast.success('Promotion removed');
+        await this.cartStore.removePromotion(); // Call action on cartStore
+        this.notificationStore.showToast({ message: 'Promotion removed', type: 'success' });
       } catch (error) {
         console.error('Failed to remove promotion:', error);
-        this.$toast.error('Failed to remove promotion. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to remove promotion. Please try again.', type: 'error' });
       }
     },
     
     async updateSpecialInstructions() {
       try {
-        await this.setSpecialInstructions(this.specialInstructions);
+        await this.cartStore.setSpecialInstructions(this.specialInstructions); // Call action on cartStore
       } catch (error) {
         console.error('Failed to update instructions:', error);
-        this.$toast.error('Failed to save instructions. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to save instructions. Please try again.', type: 'error' });
       }
     },
     
@@ -971,16 +981,17 @@ export default {
       try {
         this.isSavingNotes = true;
         
-        await this.updateCartItem({
+        // Call action on cartStore
+        await this.cartStore.updateCartItem({
           id: this.currentItemId,
           notes: this.itemNotes
         });
         
         this.showNotesDialog = false;
-        this.$toast.success('Special instructions saved');
+        this.notificationStore.showToast({ message: 'Special instructions saved', type: 'success' });
       } catch (error) {
         console.error('Failed to save notes:', error);
-        this.$toast.error('Failed to save special instructions. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to save special instructions. Please try again.', type: 'error' });
       } finally {
         this.isSavingNotes = false;
       }
@@ -990,10 +1001,10 @@ export default {
       if (!this.selectedAddressId) return;
       
       try {
-        await this.setDeliveryAddress(this.selectedAddressId);
+        await this.cartStore.setDeliveryAddress(this.selectedAddressId); // Call action on cartStore
       } catch (error) {
         console.error('Failed to update delivery address:', error);
-        this.$toast.error('Failed to update delivery address. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to update delivery address. Please try again.', type: 'error' });
       }
     },
     
@@ -1010,23 +1021,23 @@ export default {
         this.isSavingAddress = true;
         
         if (this.isEditingAddress) {
-          await this.updateAddress(this.addressForm);
-          this.$toast.success('Address updated successfully');
+          await this.userStore.updateAddress(this.addressForm); // Call action on userStore
+          this.notificationStore.showToast({ message: 'Address updated successfully', type: 'success' });
         } else {
-          const newAddress = await this.createAddress(this.addressForm);
+          const newAddress = await this.userStore.createAddress(this.addressForm); // Call action on userStore
           this.selectedAddressId = newAddress.id;
-          await this.updateDeliveryAddress();
-          this.$toast.success('Address added successfully');
+          await this.cartStore.setDeliveryAddress(newAddress.id); // Update cart with new address ID
+          this.notificationStore.showToast({ message: 'Address added successfully', type: 'success' });
         }
         
-        await this.loadAddresses();
+        // No need to call loadAddresses, userStore should update automatically
         this.showAddressDialog = false;
         
         // Reset form
         this.resetAddressForm();
       } catch (error) {
         console.error('Failed to save address:', error);
-        this.$toast.error('Failed to save address. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to save address. Please try again.', type: 'error' });
       } finally {
         this.isSavingAddress = false;
       }
@@ -1052,19 +1063,19 @@ export default {
       if (this.deliveryTimeOption === 'asap' && this.isScheduledDelivery) {
         // Cancel scheduled delivery
         try {
-          await this.cancelScheduledDeliveryTime();
+          await this.cartStore.cancelScheduledDelivery(); // Call action on cartStore
           this.isScheduledDelivery = false;
-          this.$toast.success('Delivery set to ASAP');
+          this.notificationStore.showToast({ message: 'Delivery set to ASAP', type: 'success' });
         } catch (error) {
           console.error('Failed to cancel scheduled delivery:', error);
-          this.$toast.error('Failed to update delivery time. Please try again.');
+          this.notificationStore.showToast({ message: 'Failed to update delivery time. Please try again.', type: 'error' });
         }
       }
     },
     
     async scheduleDelivery() {
       if (!this.isValidScheduleTime) {
-        this.$toast.error('Please select a valid future time for delivery (at least 45 minutes from now)');
+        this.notificationStore.showToast({ message: 'Please select a valid future time for delivery (at least 45 minutes from now)', type: 'error' });
         return;
       }
       
@@ -1078,13 +1089,13 @@ export default {
           new Date()
         );
         
-        await this.scheduleDeliveryTime(scheduledDateTime.toISOString());
+        await this.cartStore.scheduleDelivery(scheduledDateTime.toISOString()); // Call action on cartStore
         
         this.isScheduledDelivery = true;
-        this.$toast.success('Delivery time scheduled successfully');
+        this.notificationStore.showToast({ message: 'Delivery time scheduled successfully', type: 'success' });
       } catch (error) {
         console.error('Failed to schedule delivery:', error);
-        this.$toast.error('Failed to schedule delivery time. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to schedule delivery time. Please try again.', type: 'error' });
       } finally {
         this.isScheduling = false;
       }
@@ -1098,7 +1109,7 @@ export default {
         
         // Verify everything is set before proceeding
         if (!this.selectedAddressId) {
-          this.$toast.error('Please select a delivery address');
+          this.notificationStore.showToast({ message: 'Please select a delivery address', type: 'error' });
           return;
         }
         
@@ -1106,13 +1117,13 @@ export default {
         this.$router.push({ name: 'Checkout' });
       } catch (error) {
         console.error('Failed to proceed to checkout:', error);
-        this.$toast.error('Failed to proceed to checkout. Please try again.');
+        this.notificationStore.showToast({ message: 'Failed to proceed to checkout. Please try again.', type: 'error' });
       } finally {
         this.isProcessing = false;
       }
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

@@ -1,24 +1,24 @@
-const { DataTypes } = require('sequelize');
-
 module.exports = (sequelize, DataTypes) => {
   const Notification = sequelize.define('Notification', {
     id: {
       type: DataTypes.INTEGER,
-      autoIncrement: true,
-      primaryKey: true
+      primaryKey: true,
+      autoIncrement: true
     },
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: true, // Allow null for system-wide notifications
+      allowNull: false,
       references: {
-        model: 'Users',
+        model: 'users',
         key: 'id'
       }
     },
     type: {
-      type: DataTypes.STRING(50),
+      type: DataTypes.STRING,
       allowNull: false,
-      comment: 'Type of notification (ORDER_STATUS, DRIVER_LOCATION, SYSTEM, PROMOTION, etc.)'
+      validate: {
+        isIn: [['order_status', 'chat', 'promotion', 'system', 'account']]
+      }
     },
     title: {
       type: DataTypes.STRING,
@@ -30,47 +30,15 @@ module.exports = (sequelize, DataTypes) => {
     },
     data: {
       type: DataTypes.JSON,
-    },
-    priority: {
-      type: DataTypes.ENUM('low', 'medium', 'high'),
-      defaultValue: 'low'
-    },
-    isSystemWide: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-      comment: 'If true, notification is visible to all users'
-    },
-    validUntil: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      comment: 'Optional expiry date for the notification'
+      defaultValue: {}
     },
     isRead: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
-    readAt: {
-      type: DataTypes.DATE,
-      allowNull: true
-    },
-    active: {
+    isArchived: {
       type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    endpoint: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      unique: true,
-      comment: 'Subscription endpoint URL'
-    },
-    subscription: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Stringified web push subscription data'
-    },
-    userAgent: {
-      type: DataTypes.STRING(255),
-      allowNull: true
+      defaultValue: false
     },
     createdAt: {
       type: DataTypes.DATE,
@@ -81,21 +49,27 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.NOW
     }
   }, {
-    tableName: 'Notifications',
+    tableName: 'notifications',
     timestamps: true,
-    indexes: [],
-    sync: {
-      alter: false,
-      force: false
-    }
+    indexes: [
+      {
+        fields: ['userId']
+      },
+      {
+        fields: ['type']
+      },
+      {
+        fields: ['createdAt']
+      }
+    ]
   });
 
-  Notification.associate = function(models) {
-    // Commented out to fix loading issues
-    // Notification.belongsTo(models.User, {
-    //   foreignKey: 'userId',
-    //   as: 'user'
-    // });
+  // Associate with User model
+  Notification.associate = (models) => {
+    Notification.belongsTo(models.User, {
+      foreignKey: 'userId',
+      as: 'user'
+    });
   };
 
   return Notification;

@@ -3,7 +3,7 @@ import { useMapService } from './useMapService';
 
 export function useRestaurantSearch() {
   const { calculateDistance, formatDistance } = useMapService();
-  
+
   // State
   const restaurants = ref([]);
   const filteredRestaurants = ref([]);
@@ -17,7 +17,7 @@ export function useRestaurantSearch() {
     totalItems: 0
   });
   const locationQuery = ref('');
-  
+
   // Search suggestions
   const suggestions = ref([]);
   const locationSuggestions = ref([]);
@@ -32,9 +32,9 @@ export function useRestaurantSearch() {
     distance: null,
     priceRange: null,
   };
-  
+
   const filters = ref({...defaultFilters});
-  
+
   // Filter options
   const cuisineOptions = [
     { title: 'All Cuisines', value: null },
@@ -47,7 +47,7 @@ export function useRestaurantSearch() {
     { title: 'American', value: 'American' },
     { title: 'Fast Food', value: 'Fast Food' }
   ];
-  
+
   const sortOptions = [
     { title: 'Rating (High to Low)', value: 'rating' },
     { title: 'Name (A-Z)', value: 'name_asc' },
@@ -55,7 +55,7 @@ export function useRestaurantSearch() {
     { title: 'Distance (Near to Far)', value: 'distance' },
     { title: 'Delivery Time (Fast to Slow)', value: 'delivery_time' }
   ];
-  
+
   const ratingOptions = [
     { title: 'Any Rating', value: null },
     { title: '4.5+ of 5', value: 4.5 },
@@ -63,14 +63,14 @@ export function useRestaurantSearch() {
     { title: '3.5+ of 5', value: 3.5 },
     { title: '3.0+ of 5', value: 3.0 }
   ];
-  
+
   const deliveryTimeOptions = [
     { title: 'Any Time', value: null },
     { title: 'Under 30 min', value: 30 },
     { title: 'Under 45 min', value: 45 },
     { title: 'Under 60 min', value: 60 }
   ];
-  
+
   const distanceOptions = [
     { title: 'Any Distance', value: null },
     { title: 'Under 1km', value: 1 },
@@ -78,14 +78,15 @@ export function useRestaurantSearch() {
     { title: 'Under 5km', value: 5 },
     { title: 'Under 10km', value: 10 }
   ];
-  
+
   const priceRangeOptions = [
     { title: 'Any Price', value: null },
-    { title: '$', value: 'low' },
-    { title: '$$', value: 'medium' },
-    { title: '$$$', value: 'high' }
+    { title: '$', value: '$' },
+    { title: '$$', value: '$$' },
+    { title: '$$$', value: '$$$' },
+    { title: '$$$$', value: '$$$$' }
   ];
-  
+
   /**
    * Search for restaurants based on current filters
    * This would typically make an API call to the backend
@@ -95,7 +96,7 @@ export function useRestaurantSearch() {
   const searchRestaurants = async (params) => {
     loading.value = true;
     error.value = null;
-    
+
     try {
       // Apply any new params to filters
       if (params) {
@@ -104,41 +105,41 @@ export function useRestaurantSearch() {
           ...params
         };
       }
-      
+
       // Handle location query if present
       if (params?.locationQuery) {
         // In a real app, you would geocode the location query to get coordinates
         // For now, we'll just use it as a filter
         console.log(`Searching restaurants near ${params.locationQuery}`);
-        
+
         // Simulate getting coordinates from the location query
         // In a real app, you would call a geocoding service
         const fakeCoordinates = {
           lat: 40.7128, // Example coordinates for New York
           lng: -74.0060
         };
-        
+
         // Set user location with the fake coordinates
         setUserLocation({
           ...fakeCoordinates,
           address: params.locationQuery
         });
       }
-      
+
       // In a real app, you would call your API here
       // const response = await axios.get('/api/restaurants', { params: filters.value });
       // restaurants.value = response.data.restaurants;
-      
+
       // For now, let's simulate API filtering and sorting
       const results = simulateApiFiltering(restaurants.value, filters.value);
-      
+
       // Update filtered results
       filteredRestaurants.value = results;
-      
+
       // Simulate pagination
       pagination.value.totalItems = results.length;
       pagination.value.totalPages = Math.ceil(results.length / pagination.value.limit);
-      
+
       return results;
     } catch (err) {
       error.value = 'Failed to search restaurants';
@@ -148,7 +149,7 @@ export function useRestaurantSearch() {
       loading.value = false;
     }
   };
-  
+
   /**
    * Simulate API filtering and sorting (for demo purposes)
    * In a real app, this would be done by your backend API
@@ -158,61 +159,61 @@ export function useRestaurantSearch() {
    */
   const simulateApiFiltering = (data, filters) => {
     let results = [...data];
-    
+
     // Filter by search term
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      results = results.filter(restaurant => 
-        restaurant.name.toLowerCase().includes(searchLower) || 
+      results = results.filter(restaurant =>
+        restaurant.name.toLowerCase().includes(searchLower) ||
         (restaurant.cuisine && restaurant.cuisine.toLowerCase().includes(searchLower))
       );
     }
-    
+
     // Filter by cuisine
     if (filters.cuisine) {
-      results = results.filter(restaurant => 
+      results = results.filter(restaurant =>
         restaurant.cuisine === filters.cuisine
       );
     }
-    
+
     // Filter by category
     if (filters.category_id) {
-      results = results.filter(restaurant => 
+      results = results.filter(restaurant =>
         restaurant.category_ids?.includes(filters.category_id)
       );
     }
-    
+
     // Filter by minimum rating
     if (filters.rating) {
-      results = results.filter(restaurant => 
+      results = results.filter(restaurant =>
         (restaurant.rating || 0) >= filters.rating
       );
     }
-    
+
     // Filter by maximum delivery time
     if (filters.deliveryTime) {
       results = results.filter(restaurant => {
-        const deliveryTime = typeof restaurant.delivery_time === 'string' 
-          ? parseInt(restaurant.delivery_time.split('-')[1] || restaurant.delivery_time, 10) 
+        const deliveryTime = typeof restaurant.delivery_time === 'string'
+          ? parseInt(restaurant.delivery_time.split('-')[1] || restaurant.delivery_time, 10)
           : restaurant.delivery_time;
         return (deliveryTime || 60) <= filters.deliveryTime;
       });
     }
-    
+
     // Filter by maximum distance
     if (filters.distance && userLocation.value) {
-      results = results.filter(restaurant => 
+      results = results.filter(restaurant =>
         (restaurant.distance || 999) <= filters.distance
       );
     }
-    
+
     // Filter by price range
     if (filters.priceRange) {
-      results = results.filter(restaurant => 
+      results = results.filter(restaurant =>
         restaurant.price_range === filters.priceRange
       );
     }
-    
+
     // Sort results
     if (filters.sortBy) {
       switch (filters.sortBy) {
@@ -232,40 +233,40 @@ export function useRestaurantSearch() {
           break;
         case 'delivery_time':
           results.sort((a, b) => {
-            const aTime = typeof a.delivery_time === 'string' 
-              ? parseInt(a.delivery_time.split('-')[0] || a.delivery_time, 10) 
+            const aTime = typeof a.delivery_time === 'string'
+              ? parseInt(a.delivery_time.split('-')[0] || a.delivery_time, 10)
               : a.delivery_time || 60;
-            const bTime = typeof b.delivery_time === 'string' 
-              ? parseInt(b.delivery_time.split('-')[0] || b.delivery_time, 10) 
+            const bTime = typeof b.delivery_time === 'string'
+              ? parseInt(b.delivery_time.split('-')[0] || b.delivery_time, 10)
               : b.delivery_time || 60;
             return aTime - bTime;
           });
           break;
       }
     }
-    
+
     return results;
   };
-  
+
   /**
    * Update user's location and recalculate distances
    * @param {Object} location - User location with lat and lng properties
    */
   const setUserLocation = (location) => {
     userLocation.value = location;
-    
+
     // Update restaurant distances
     if (restaurants.value.length > 0) {
       calculateRestaurantDistances();
     }
   };
-  
+
   /**
    * Calculate distances between user and all restaurants
    */
   const calculateRestaurantDistances = () => {
     if (!userLocation.value) return;
-    
+
     restaurants.value = restaurants.value.map(restaurant => {
       if (restaurant.latitude && restaurant.longitude) {
         const distance = calculateDistance(
@@ -279,7 +280,7 @@ export function useRestaurantSearch() {
       }
       return restaurant;
     });
-    
+
     filteredRestaurants.value = filteredRestaurants.value.map(restaurant => {
       if (restaurant.latitude && restaurant.longitude) {
         const distance = calculateDistance(
@@ -294,7 +295,7 @@ export function useRestaurantSearch() {
       return restaurant;
     });
   };
-  
+
   /**
    * Reset filters to default values
    */
@@ -302,7 +303,7 @@ export function useRestaurantSearch() {
     filters.value = { ...defaultFilters };
     searchRestaurants();
   };
-  
+
   /**
    * Load more restaurants (pagination)
    */
@@ -313,7 +314,7 @@ export function useRestaurantSearch() {
       page: pagination.value.page
     });
   };
-  
+
   /**
    * Change to a specific page
    * @param {number} page - Page number to load
@@ -325,7 +326,7 @@ export function useRestaurantSearch() {
       page
     });
   };
-  
+
   /**
    * Get user's current location using browser geolocation API
    * @returns {Promise} Promise resolving to location data
@@ -333,43 +334,43 @@ export function useRestaurantSearch() {
   const getCurrentLocation = async () => {
     try {
       loading.value = true;
-      
+
       if (!navigator.geolocation) {
         throw new Error('Geolocation is not supported by this browser.');
       }
-      
+
       return new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             try {
               const { latitude, longitude } = position.coords;
-              
+
               // Set user location
               const locationData = {
                 lat: latitude,
                 lng: longitude,
                 address: "Current Location" // Default if reverse geocoding fails
               };
-              
+
               // Try to get address using reverse geocoding
               try {
                 // Add cache-busting parameter to avoid CORS issues
                 const timestamp = new Date().getTime();
                 const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&_=${timestamp}`;
-                
+
                 const response = await fetch(url, {
                   headers: {
                     'Accept': 'application/json',
                     'User-Agent': 'FoodDeliveryApp'
                   }
                 });
-                
+
                 if (!response.ok) {
                   throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 if (data && data.display_name) {
                   locationData.address = data.display_name;
                 }
@@ -377,13 +378,13 @@ export function useRestaurantSearch() {
                 console.error('Error getting address from coordinates:', geocodeError);
                 // Continue with "Current Location" if reverse geocoding fails
               }
-              
+
               // Update the locationQuery to show in the UI
               locationQuery.value = locationData.address;
-              
+
               // Set user location
               setUserLocation(locationData);
-              
+
               // Return the location data
               resolve(locationData);
             } catch (err) {
@@ -395,7 +396,7 @@ export function useRestaurantSearch() {
           (error) => {
             loading.value = false;
             console.error('Geolocation error:', error);
-            
+
             let errorMessage = 'Unable to get your location.';
             switch(error.code) {
               case error.PERMISSION_DENIED:
@@ -408,7 +409,7 @@ export function useRestaurantSearch() {
                 errorMessage = 'The request to get your location timed out.';
                 break;
             }
-            
+
             reject(new Error(errorMessage));
           },
           {
@@ -424,17 +425,17 @@ export function useRestaurantSearch() {
       throw error;
     }
   };
-  
+
   /**
    * Get location suggestions based on partial query
-   * @param {string} query - Partial location query 
+   * @param {string} query - Partial location query
    */
   const getLocationSuggestions = async (query) => {
     if (!query || query.length < 3) {
       locationSuggestions.value = [];
       return;
     }
-    
+
     try {
       // In a real app, you would make an API call to a geocoding service
       // For now, let's simulate some location suggestions
@@ -445,34 +446,34 @@ export function useRestaurantSearch() {
         `${query}, Houston, TX`,
         `${query}, Phoenix, AZ`
       ];
-      
+
       locationSuggestions.value = mockSuggestions;
     } catch (error) {
       console.error('Error getting location suggestions:', error);
       locationSuggestions.value = [];
     }
   };
-  
+
   // Watch for changes in location query to update suggestions
   watch(locationQuery, (newQuery) => {
     getLocationSuggestions(newQuery);
   });
-  
+
   // Initialize when user location changes
   watch(userLocation, () => {
     if (userLocation.value) {
       // Add coordinates to filters
       filters.value.latitude = userLocation.value.lat;
       filters.value.longitude = userLocation.value.lng;
-      
+
       // Recalculate distances
       calculateRestaurantDistances();
-      
+
       // Reapply filters with the new location
       searchRestaurants();
     }
   });
-  
+
   // Initialize mock data for demonstration
   const initMockData = () => {
     restaurants.value = [
@@ -547,14 +548,14 @@ export function useRestaurantSearch() {
         cuisineType: ['American', 'Burgers']
       }
     ];
-    
+
     // Initialize the filtered restaurants with all restaurants
     filteredRestaurants.value = [...restaurants.value];
   };
-  
+
   // Call this function to initialize the mock data
   initMockData();
-  
+
   // Export composable functions and state
   return {
     // State
@@ -566,7 +567,7 @@ export function useRestaurantSearch() {
     pagination,
     filters,
     locationQuery,
-    
+
     // Options
     cuisineOptions,
     sortOptions,
@@ -574,7 +575,7 @@ export function useRestaurantSearch() {
     deliveryTimeOptions,
     distanceOptions,
     priceRangeOptions,
-    
+
     // Methods
     searchRestaurants,
     setUserLocation,
@@ -584,10 +585,10 @@ export function useRestaurantSearch() {
     changePage,
     getCurrentLocation,
     getLocationSuggestions,
-    
+
     // Utilities
     formatDistance,
-    
+
     // Search suggestions
     suggestions,
     locationSuggestions

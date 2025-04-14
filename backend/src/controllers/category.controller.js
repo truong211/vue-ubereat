@@ -1,4 +1,5 @@
 const { Category, Restaurant, Product } = require('../models');
+const db = require('../config/database');
 const { AppError } = require('../middleware/error.middleware');
 const { validationResult } = require('express-validator');
 
@@ -10,23 +11,24 @@ const { validationResult } = require('express-validator');
 exports.getAllCategories = async (req, res, next) => {
   try {
     const { restaurantId } = req.query;
-    
+
     const filter = {};
     if (restaurantId) {
       filter.restaurantId = restaurantId;
     }
 
-    const categories = await Category.findAll({
-      where: filter,
-      include: [
-        {
-          model: Restaurant,
-          as: 'restaurant',
-          attributes: ['id', 'name']
-        }
-      ],
-      order: [['displayOrder', 'ASC']]
-    });
+    // Use direct SQL query
+    let sql = 'SELECT c.*, r.name as restaurant_name FROM categories c LEFT JOIN restaurants r ON c.restaurantId = r.id';
+    const params = [];
+
+    if (restaurantId) {
+      sql += ' WHERE c.restaurantId = ?';
+      params.push(restaurantId);
+    }
+
+    sql += ' ORDER BY c.displayOrder ASC';
+
+    const categories = await db.query(sql, params);
 
     res.status(200).json({
       status: 'success',

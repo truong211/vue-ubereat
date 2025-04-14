@@ -168,7 +168,7 @@
             <v-btn color="primary" class="mt-4" @click="clearFilters">Xóa bộ lọc</v-btn>
           </v-card>
 
-          <!-- Grid view -->
+          <!-- Grid view with ProductCard component -->
           <v-row v-else-if="viewMode === 'grid'">
             <v-col
               v-for="product in products"
@@ -178,217 +178,19 @@
               md="4"
               xl="3"
             >
-              <v-hover v-slot="{ isHovering, props }">
-                <v-card
-                  v-bind="props"
-                  :elevation="isHovering ? 4 : 1"
-                  :class="{ 'on-hover': isHovering }"
-                  class="product-card h-100"
-                  @click="goToProductDetails(product.id)"
-                >
-                  <div class="position-relative">
-                    <v-img
-                      :src="product.image || '/img/product-placeholder.jpg'"
-                      height="180"
-                      cover
-                      :gradient="isHovering ? 'to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.5)' : undefined"
-                      class="position-relative"
-                    >
-                      <div class="product-badges">
-                        <v-chip
-                          v-if="product.isPopular"
-                          color="red"
-                          size="small"
-                          label
-                          class="mb-1"
-                        >
-                          Phổ biến
-                        </v-chip>
-                        <v-chip
-                          v-if="product.discountPrice"
-                          color="green"
-                          size="small"
-                          label
-                        >
-                          Giảm giá
-                        </v-chip>
-                        <v-chip
-                          v-if="product.isVegetarian"
-                          color="success-lighten-1"
-                          size="small"
-                          label
-                          class="mt-1"
-                        >
-                          Chay
-                        </v-chip>
-                      </div>
-                    </v-img>
-
-                    <v-btn
-                      v-if="isHovering"
-                      size="small"
-                      color="primary"
-                      class="add-to-cart-btn"
-                      @click.stop="addToCart(product)"
-                      prepend-icon="mdi-cart-plus"
-                      variant="elevated"
-                      rounded
-                    >
-                      Thêm vào giỏ
-                    </v-btn>
-                  </div>
-
-                  <v-card-item>
-                    <v-card-title class="px-0 text-h6 text-truncate">{{ product.name }}</v-card-title>
-                    <div v-if="product.restaurant" class="text-subtitle-2 text-medium-emphasis mb-2">
-                      {{ product.restaurant.name }}
-                    </div>
-                    <v-card-subtitle class="px-0 pb-0 text-truncate">
-                      {{ product.description }}
-                    </v-card-subtitle>
-                  </v-card-item>
-
-                  <v-card-text class="pt-0">
-                    <div class="d-flex align-center mb-2">
-                      <v-rating
-                        :model-value="product.rating || 0"
-                        color="amber"
-                        density="compact"
-                        size="small"
-                        readonly
-                        half-increments
-                      ></v-rating>
-                      <span class="text-body-2 ml-1">
-                        {{ product.rating || 0 }} ({{ product.reviewCount || 0 }})
-                      </span>
-                    </div>
-
-                    <div class="d-flex align-center">
-                      <div class="text-h6 font-weight-bold">
-                        {{ formatCurrency(product.discountPrice || product.price) }}
-                      </div>
-                      <div v-if="product.discountPrice" class="text-decoration-line-through text-medium-emphasis ml-2">
-                        {{ formatCurrency(product.price) }}
-                      </div>
-                      <v-spacer></v-spacer>
-                      <v-chip
-                        v-if="product.preparationTime"
-                        size="small"
-                        color="grey-lighten-3"
-                      >
-                        <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-                        {{ product.preparationTime }} phút
-                      </v-chip>
-                    </div>
-                  </v-card-text>
-                </v-card>
-              </v-hover>
+              <ProductCard 
+                :product="product" 
+                @add-to-cart="updateCartCount"
+              />
             </v-col>
           </v-row>
 
-          <!-- List view -->
-          <div v-else class="list-view">
-            <v-card
-              v-for="product in products"
-              :key="product.id"
-              class="mb-4 product-list-item"
-              @click="goToProductDetails(product.id)"
-            >
-              <div class="d-flex">
-                <v-img
-                  :src="product.image || '/img/product-placeholder.jpg'"
-                  width="150"
-                  height="150"
-                  cover
-                  class="rounded-s"
-                ></v-img>
-
-                <div class="flex-grow-1 d-flex flex-column pa-3">
-                  <div class="d-flex justify-space-between align-start">
-                    <div>
-                      <div class="d-flex align-center">
-                        <h3 class="text-h6 font-weight-bold">{{ product.name }}</h3>
-                        <div class="product-badges-inline ml-2">
-                          <v-chip
-                            v-if="product.isPopular"
-                            color="red"
-                            size="x-small"
-                            label
-                            class="mr-1"
-                          >
-                            Phổ biến
-                          </v-chip>
-                          <v-chip
-                            v-if="product.isVegetarian"
-                            color="success-lighten-1"
-                            size="x-small"
-                            label
-                          >
-                            Chay
-                          </v-chip>
-                        </div>
-                      </div>
-                      <div v-if="product.restaurant" class="text-subtitle-2 text-medium-emphasis mb-1">
-                        {{ product.restaurant.name }}
-                      </div>
-                    </div>
-
-                    <div class="price-container text-right">
-                      <div class="text-h6 font-weight-bold">
-                        {{ formatCurrency(product.discountPrice || product.price) }}
-                      </div>
-                      <div v-if="product.discountPrice" class="text-decoration-line-through text-medium-emphasis">
-                        {{ formatCurrency(product.price) }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <p class="text-body-2 text-medium-emphasis mt-2 product-description">
-                    {{ product.description }}
-                  </p>
-
-                  <v-spacer></v-spacer>
-
-                  <div class="d-flex justify-space-between align-center mt-2">
-                    <div class="d-flex align-center">
-                      <v-rating
-                        :model-value="product.rating || 0"
-                        color="amber"
-                        density="compact"
-                        size="small"
-                        readonly
-                        half-increments
-                      ></v-rating>
-                      <span class="text-body-2 ml-1">
-                        {{ product.rating || 0 }} ({{ product.reviewCount || 0 }})
-                      </span>
-                    </div>
-
-                    <div class="d-flex align-center">
-                      <v-chip
-                        v-if="product.preparationTime"
-                        size="small"
-                        color="grey-lighten-3"
-                        class="mr-2"
-                      >
-                        <v-icon size="small" class="mr-1">mdi-clock-outline</v-icon>
-                        {{ product.preparationTime }} min
-                      </v-chip>
-
-                      <v-btn
-                        color="primary"
-                        variant="text"
-                        density="comfortable"
-                        @click.stop="addToCart(product)"
-                      >
-                        <v-icon class="mr-1">mdi-cart-plus</v-icon>
-                        Add to Cart
-                      </v-btn>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </v-card>
+          <!-- List view with ProductList component -->
+          <div v-else-if="viewMode === 'list'">
+            <ProductList 
+              :products="products"
+              @add-to-cart="updateCartCount"
+            />
           </div>
 
           <!-- Pagination -->
@@ -408,12 +210,15 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useCartStore } from '@/stores/cart'; // Import Pinia cart store
 import { apiClient } from '@/services/api.service';
 import { PRODUCT } from '@/services/api.endpoints';
 import { debounce } from 'lodash';
+import ProductCard from '@/components/product/ProductCard.vue';
+import ProductList from '@/components/product/ProductList.vue';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'ProductsPage',
   props: {
     category: {
@@ -424,6 +229,14 @@ export default {
       type: [String, Number],
       default: null
     }
+  },
+  components: {
+    ProductCard,
+    ProductList
+  },
+  setup() {
+    const cartStore = useCartStore();
+    return { cartStore }; // Expose store instance
   },
   data() {
     return {
@@ -556,9 +369,7 @@ export default {
     this.fetchProducts();
   },
   methods: {
-    ...mapActions({
-      addToCartAction: 'cart/addToCart'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
 
     async fetchProducts() {
       this.loading = true;
@@ -753,9 +564,12 @@ export default {
 
     async addToCart(product) {
       try {
-        await this.addToCartAction({
+        // Call action on cartStore instance
+        await this.cartStore.addToCart({
           productId: product.id,
           quantity: 1
+          // Pass other necessary product details if required by the Pinia action
+          // e.g., name: product.name, price: product.price
         });
 
         this.$toast.success(`${product.name} added to your cart`);
@@ -763,9 +577,14 @@ export default {
         console.error('Error adding to cart:', error);
         this.$toast.error(error.response?.data?.message || 'Failed to add item to cart');
       }
+    },
+
+    updateCartCount() {
+      // If you need to update cart count or perform other actions
+      this.cartStore.getCartCount(); // Call action on cartStore instance
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

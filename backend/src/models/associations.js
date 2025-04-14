@@ -16,7 +16,7 @@ module.exports = function defineAssociations(db) {
     // Extract models (will be undefined if not yet loaded)
     const user = db.users || db.user;
     const review = db.reviews || db.review;
-    const reviewVote = db.reviewVotes || db.reviewVote;
+    const reviewVote = db.reviewVotes || db.reviewVote || db.ReviewVote;
     const reviewReport = db.reviewReports || db.reviewReport;
     const restaurant = db.restaurants || db.restaurant;
     const order = db.orders || db.order;
@@ -59,12 +59,18 @@ module.exports = function defineAssociations(db) {
       user.hasMany(review, { as: 'moderatedReviews', foreignKey: 'moderatedBy' });
     }
     
-    // Review vote associations
-    if (reviewVote && user && review) {
-      reviewVote.belongsTo(user, { as: 'user', foreignKey: 'userId' });
-      reviewVote.belongsTo(review, { as: 'review', foreignKey: 'reviewId' });
-      review.hasMany(reviewVote, { as: 'votes', foreignKey: 'reviewId' });
-      user.hasMany(reviewVote, { as: 'reviewVotes', foreignKey: 'userId' });
+    // Review vote associations - skip if ReviewVote isn't properly defined
+    if (reviewVote && user && review && typeof reviewVote === 'function') {
+      try {
+        reviewVote.belongsTo(user, { as: 'user', foreignKey: 'userId' });
+        reviewVote.belongsTo(review, { as: 'review', foreignKey: 'reviewId' });
+        review.hasMany(reviewVote, { as: 'votes', foreignKey: 'reviewId' });
+        user.hasMany(reviewVote, { as: 'reviewVotes', foreignKey: 'userId' });
+      } catch (err) {
+        console.log('Skipping ReviewVote associations - using Sequelize model instead');
+      }
+    } else {
+      console.log('ReviewVote model not available or not properly initialized');
     }
     
     // Review report associations

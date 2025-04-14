@@ -1,0 +1,16 @@
+This directory contains grocery product images:
+
+1. bananas.jpg - Fresh Organic Bananas
+2. milk.jpg - Organic Whole Milk
+3. chicken.jpg - Fresh Chicken Breast
+4. bread.jpg - Artisan Sourdough Bread
+5. rice.jpg - Organic Brown Rice
+6. juice.jpg - Fresh Orange Juice
+7. nuts.jpg - Mixed Nuts
+8. paper-towels.jpg - Paper Towels
+9. avocados.jpg - Fresh Avocados
+10. yogurt.jpg - Greek Yogurt
+11. salmon.jpg - Fresh Salmon Fillet
+12. eggs.jpg - Organic Eggs
+
+Note: Please add actual product images in this directory. For now, you can use placeholder images that match the dimensions (recommended: 500x500px).

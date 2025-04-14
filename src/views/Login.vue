@@ -65,6 +65,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { storeToRefs } from 'pinia';
 
 export default {
   name: 'Login',
@@ -72,20 +73,22 @@ export default {
   setup() {
     const router = useRouter();
     const authStore = useAuthStore();
+    const { loading: isLoading } = storeToRefs(authStore);
     
     const formData = ref({
       email: '',
       password: '',
     });
     
-    const isLoading = ref(false);
     const message = ref('');
     const messageType = ref('');
     
     const login = async () => {
+      if (isLoading.value) return;
+      
       try {
-        isLoading.value = true;
         message.value = '';
+        messageType.value = '';
         
         // Login with email/password
         await authStore.login(formData.value.email, formData.value.password);
@@ -95,8 +98,6 @@ export default {
       } catch (error) {
         message.value = error.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập.';
         messageType.value = 'error';
-      } finally {
-        isLoading.value = false;
       }
     };
     

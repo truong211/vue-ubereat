@@ -390,8 +390,21 @@ export default {
       
       try {
         loading.value = true;
+        
+        // Check for access token before making request
+        const accessToken = localStorage.getItem('accessToken');
+        const refreshToken = localStorage.getItem('refreshToken');
+        
+        if (!accessToken || !refreshToken) {
+          throw new Error('Authentication token not found');
+        }
+        
         // Use axios instead of fetch for consistency
-        const response = await axios.get('/api/admin/notifications');
+        const response = await axios.get('/api/admin/notifications', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
         
         if (isDestroyed.value) return;
         
@@ -410,6 +423,7 @@ export default {
         if (isDestroyed.value) return;
         
         console.error('Failed to load notifications:', error);
+        
         // Emit error to parent component
         emit('error', error.message || 'Failed to load notifications');
         
@@ -417,7 +431,7 @@ export default {
         notifications.value = [{
           id: Date.now(),
           title: 'Notification Service',
-          message: 'Unable to load notifications from server',
+          message: error.message || 'Unable to load notifications from server',
           type: 'system',
           priority: 'low',
           read: false,
@@ -425,6 +439,9 @@ export default {
           icon: 'mdi-bell-off',
           color: 'warning'
         }];
+        
+        // If there's an authorization error, let the axios interceptors handle it
+        // The interceptor will attempt to refresh the token or redirect if needed
       } finally {
         if (!isDestroyed.value) {
           loading.value = false;

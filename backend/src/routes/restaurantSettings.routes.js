@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect, restrictTo } = require('../middleware/auth.middleware');
+const { authMiddleware: protect, restrictTo } = require('../middleware/auth.middleware');
 const settingsController = require('../controllers/restaurantSettings.controller');
 const settingsValidator = require('../middleware/restaurantSettings.validator');
 
@@ -8,7 +8,7 @@ const settingsValidator = require('../middleware/restaurantSettings.validator');
 router.use(protect);
 
 // Get restaurant settings
-router.get('/:id/settings', settingsController.getRestaurantSettings);
+router.get('/:id', settingsController.getRestaurantSettings);
 
 // Update operating hours
 router.patch(

@@ -1,5 +1,6 @@
-const { DataTypes } = require('sequelize');
-
+/**
+ * Address model with Sequelize implementation
+ */
 module.exports = (sequelize, DataTypes) => {
   const Address = sequelize.define('Address', {
     id: {
@@ -7,29 +8,42 @@ module.exports = (sequelize, DataTypes) => {
       primaryKey: true,
       autoIncrement: true
     },
-    user_id: { // Renamed from userId
+    userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: 'users', // Use table name string
+        model: 'users',
         key: 'id'
       }
     },
     name: {
       type: DataTypes.STRING(100),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
-    address_line_1: { // Renamed from addressLine1
+    addressType: {
+      type: DataTypes.ENUM('home', 'work', 'other'),
+      defaultValue: 'home'
+    },
+    addressLine1: {
       type: DataTypes.STRING(255),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
-    address_line_2: { // Renamed from addressLine2
+    addressLine2: {
       type: DataTypes.STRING(255),
       allowNull: true
     },
     city: {
       type: DataTypes.STRING(100),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
     district: {
       type: DataTypes.STRING(100),
@@ -41,32 +55,29 @@ module.exports = (sequelize, DataTypes) => {
     },
     state: {
       type: DataTypes.STRING(100),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
-    postal_code: { // Renamed from postalCode
+    postalCode: {
       type: DataTypes.STRING(20),
-      allowNull: false
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
     },
     country: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      defaultValue: 'Vietnam'
+      defaultValue: 'Vietnam',
+      validate: {
+        notEmpty: true
+      }
     },
-    phone: {
-      type: DataTypes.STRING(15),
-      allowNull: true
-    },
-    is_default: { // Renamed from isDefault
+    isDefault: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
-    },
-    type: {
-      type: DataTypes.ENUM('home', 'work', 'other'),
-      defaultValue: 'home'
-    },
-    instructions: {
-      type: DataTypes.TEXT,
-      allowNull: true
     },
     latitude: {
       type: DataTypes.DECIMAL(10, 8),
@@ -76,17 +87,30 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.DECIMAL(11, 8),
       allowNull: true
     },
-    place_id: { // Renamed from placeId
+    deliveryInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      comment: 'Additional notes for delivery, e.g., doorbell not working'
+    },
+    contactPhone: {
+      type: DataTypes.STRING(20),
+      allowNull: true
+    },
+    contactName: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
+    placeId: {
       type: DataTypes.STRING(100),
       allowNull: true,
       comment: 'Google Maps or other map provider place ID'
     },
-    formatted_address: { // Renamed from formattedAddress
+    formattedAddress: {
       type: DataTypes.STRING(255),
       allowNull: true,
       comment: 'Fully formatted address from map provider'
     },
-    has_elevator: { // Renamed from hasElevator
+    hasElevator: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
     },
@@ -94,47 +118,67 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: true
     },
-    apartment_number: { // Renamed from apartmentNumber
+    apartmentNumber: {
       type: DataTypes.STRING(20),
       allowNull: true
-    },
-    delivery_notes: { // Renamed from deliveryNotes
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Additional notes for delivery, e.g., doorbell not working'
-    },
-    contact_name: { // Renamed from contactName
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    contact_phone: { // Renamed from contactPhone
-      type: DataTypes.STRING(15),
-      allowNull: true
     }
-    // created_at, updated_at handled by timestamps + underscored
   }, {
+    tableName: 'addresses',
     timestamps: true,
-    underscored: true, // Added underscored
-    tableName: 'addresses', // Table name is already correct
     indexes: [
       {
-        fields: ['user_id'], // Updated field name
-        name: 'idx_address_user'
+        name: 'idx_address_user',
+        fields: ['userId']
       },
       {
         fields: ['latitude', 'longitude'],
         name: 'idx_address_location'
+      },
+      {
+        fields: ['userId', 'isDefault'],
+        name: 'idx_user_default_address'
       }
     ]
   });
 
-  // Define associations using the associate method pattern
-  Address.associate = function(models) {
-    Address.belongsTo(models.user, { 
-      foreignKey: 'user_id', 
-      as: 'user' 
+  Address.associate = (models) => {
+    Address.belongsTo(models.User, {
+      foreignKey: 'userId',
+      as: 'user',
+      onDelete: 'CASCADE'
     });
   };
+
+  // Hook to ensure only one default address per user
+  Address.beforeCreate = async (address, options) => {
+    if (address.isDefault) {
+      await updateDefaultAddress(address, options);
+    }
+  };
+
+  Address.beforeUpdate = async (address, options) => {
+    if (address.changed('isDefault') && address.isDefault) {
+      await updateDefaultAddress(address, options);
+    }
+  };
+
+  // Helper function to update default address
+  async function updateDefaultAddress(address, options) {
+    try {
+      await sequelize.models.Address.update(
+        { isDefault: false },
+        {
+          where: {
+            userId: address.userId,
+            id: { [sequelize.Sequelize.Op.ne]: address.id || 0 }
+          },
+          transaction: options.transaction
+        }
+      );
+    } catch (error) {
+      console.error('Error updating default address status:', error);
+    }
+  }
 
   return Address;
 };

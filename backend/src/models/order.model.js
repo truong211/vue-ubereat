@@ -1,172 +1,203 @@
-const db = require('../config/database');
+const { Model } = require('sequelize');
 
-/**
- * Order model with direct SQL implementation
- */
-const Order = {
-  tableName: 'orders',
-  
-  findByPk: async (id) => {
-    try {
-      const results = await db.query('SELECT * FROM orders WHERE id = ?', [id]);
-      return results[0];
-    } catch (error) {
-      console.error('Error in Order.findByPk:', error);
-      throw error;
-    }
-  },
-  
-  findOne: async (where) => {
-    try {
-      const whereClause = Object.entries(where)
-        .map(([key, value]) => `${key} = ?`)
-        .join(' AND ');
-      const values = Object.values(where);
-      
-      const results = await db.query(`SELECT * FROM orders WHERE ${whereClause} LIMIT 1`, values);
-      return results[0];
-    } catch (error) {
-      console.error('Error in Order.findOne:', error);
-      throw error;
-    }
-  },
-  
-  findAll: async (options = {}) => {
-    try {
-      let sql = 'SELECT * FROM orders';
-      const values = [];
-      
-      if (options.where) {
-        const whereClause = Object.entries(options.where)
-          .map(([key, value]) => `${key} = ?`)
-          .join(' AND ');
-        sql += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.where));
+module.exports = (sequelize, DataTypes) => {
+  class Order extends Model {
+    static associate(models) {
+      if (!models) {
+        console.error('No models object provided to Order.associate');
+        return;
       }
-      
-      if (options.order) {
-        sql += ` ORDER BY ${options.order}`;
+
+      const { User, Restaurant, OrderItem, Review } = models;
+
+      if (User) {
+        this.belongsTo(User, {
+          foreignKey: 'userId',
+          as: 'customer',
+          onDelete: 'NO ACTION'
+        });
+
+        this.belongsTo(User, {
+          foreignKey: 'driverId',
+          as: 'driver',
+          onDelete: 'SET NULL'
+        });
       }
-      
-      if (options.limit) {
-        sql += ` LIMIT ${parseInt(options.limit)}`;
+
+      if (Restaurant) {
+        this.belongsTo(Restaurant, {
+          foreignKey: 'restaurantId',
+          as: 'restaurant',
+          onDelete: 'NO ACTION'
+        });
       }
-      
-      if (options.offset) {
-        sql += ` OFFSET ${parseInt(options.offset)}`;
+
+      if (OrderItem) {
+        this.hasMany(OrderItem, {
+          foreignKey: 'orderId',
+          as: 'items',
+          onDelete: 'CASCADE'
+        });
       }
-      
-      return await db.query(sql, values);
-    } catch (error) {
-      console.error('Error in Order.findAll:', error);
-      throw error;
-    }
-  },
-  
-  create: async (data) => {
-    try {
-      // Handle JSON fields
-      const processedData = { ...data };
-      ['items', 'deliveryAddress', 'paymentInfo'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
-        }
-      });
-      
-      const columns = Object.keys(processedData).join(', ');
-      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
-      const values = Object.values(processedData);
-      
-      const result = await db.query(
-        `INSERT INTO orders (${columns}) VALUES (${placeholders})`, 
-        values
-      );
-      
-      return { id: result.insertId, ...data };
-    } catch (error) {
-      console.error('Error in Order.create:', error);
-      throw error;
-    }
-  },
-  
-  update: async (id, data) => {
-    try {
-      // Handle JSON fields
-      const processedData = { ...data };
-      ['items', 'deliveryAddress', 'paymentInfo'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
-        }
-      });
-      
-      const setClauses = Object.keys(processedData)
-        .map(key => `${key} = ?`)
-        .join(', ');
-      const values = [...Object.values(processedData), id];
-      
-      const result = await db.query(
-        `UPDATE orders SET ${setClauses} WHERE id = ?`,
-        values
-      );
-      
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in Order.update:', error);
-      throw error;
-    }
-  },
-  
-  destroy: async (id) => {
-    try {
-      const result = await db.query('DELETE FROM orders WHERE id = ?', [id]);
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in Order.destroy:', error);
-      throw error;
-    }
-  },
-  
-  count: async (where = {}) => {
-    try {
-      let sql = 'SELECT COUNT(*) as count FROM orders';
-      const values = [];
-      
-      if (Object.keys(where).length > 0) {
-        const whereClause = Object.entries(where)
-          .map(([key, value]) => `${key} = ?`)
-          .join(' AND ');
-        sql += ` WHERE ${whereClause}`;
-        values.push(...Object.values(where));
+
+      if (Review) {
+        this.hasOne(Review, {
+          foreignKey: 'orderId',
+          as: 'review',
+          onDelete: 'SET NULL'
+        });
       }
-      
-      const results = await db.query(sql, values);
-      return results[0].count;
-    } catch (error) {
-      console.error('Error in Order.count:', error);
-      throw error;
-    }
-  },
-  
-  sum: async (field, options = {}) => {
-    try {
-      let sql = `SELECT SUM(${field}) as total FROM orders`;
-      const values = [];
-      
-      if (options.where) {
-        const whereClause = Object.entries(options.where)
-          .map(([key, value]) => `${key} = ?`)
-          .join(' AND ');
-        sql += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.where));
-      }
-      
-      const results = await db.query(sql, values);
-      return results[0].total || 0;
-    } catch (error) {
-      console.error(`Error in Order.sum(${field}):`, error);
-      throw error;
     }
   }
-};
 
-module.exports = Order;
+  Order.init({
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    orderNumber: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      unique: true
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    restaurantId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'restaurants',
+        key: 'id'
+      }
+    },
+    status: {
+      type: DataTypes.ENUM(
+        'pending',
+        'confirmed',
+        'preparing',
+        'ready_for_pickup',
+        'out_for_delivery',
+        'delivered',
+        'cancelled'
+      ),
+      defaultValue: 'pending'
+    },
+    subtotal: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false
+    },
+    tax: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false
+    },
+    deliveryFee: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0
+    },
+    tip: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0
+    },
+    discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0
+    },
+    total: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false
+    },
+    paymentMethod: {
+      type: DataTypes.ENUM('credit_card', 'debit_card', 'paypal', 'cash', 'stripe', 'momo', 'vnpay'),
+      allowNull: false,
+      defaultValue: 'credit_card'
+    },
+    paymentStatus: {
+      type: DataTypes.ENUM('pending', 'paid', 'failed', 'refunded'),
+      allowNull: false,
+      defaultValue: 'pending'
+    },
+    paymentInfo: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
+    paymentIntentId: {
+      type: DataTypes.STRING(100),
+      allowNull: true
+    },
+    deliveryMethod: {
+      type: DataTypes.ENUM('delivery', 'pickup'),
+      allowNull: false,
+      defaultValue: 'delivery'
+    },
+    deliveryAddress: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    deliveryInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    estimatedDeliveryTime: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    actualDeliveryTime: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    driverId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'users',
+        key: 'id'
+      }
+    },
+    specialInstructions: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    isRated: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    }
+  }, {
+    sequelize,
+    modelName: 'Order',
+    tableName: 'orders',
+    timestamps: true,
+    hooks: {
+      beforeCreate: async (order) => {
+        if (!order.orderNumber) {
+          const date = new Date();
+          const prefix = 'ORD';
+          const randomPart = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+          const timestamp = Math.floor(date.getTime() / 1000).toString().slice(-6);
+          order.orderNumber = `${prefix}${timestamp}${randomPart}`;
+        }
+      }
+    }
+  });
+
+  return Order;
+};

@@ -221,24 +221,30 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useOrdersStore } from '@/stores/orders'; // Import Pinia orders store
 import { format, parseISO } from 'date-fns';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'OrdersView',
   
+  setup() {
+    const ordersStore = useOrdersStore();
+    return { ordersStore }; // Expose store instance
+  },
+
   data() {
     return {
       isLoading: true,
       activeTab: 'all',
       currentPage: 1,
-      perPage: 5,
+      perPage: 5, // Consider making this configurable or dynamic
       totalOrders: 0,
       showCancelOrderDialog: false,
       selectedOrderId: null,
       cancellationReason: '',
       isCancelling: false,
-      
+
       // Order status flow (same as in OrderDetails view)
       orderStatusFlow: [
         { value: 'pending', label: 'Pending', icon: 'mdi-clock-outline' },
@@ -252,10 +258,13 @@ export default {
   },
   
   computed: {
-    ...mapState({
-      orders: state => state.orders.orders,
-      error: state => state.orders.error
-    }),
+    // Access state from Pinia orders store
+    orders() {
+      return this.ordersStore.orders;
+    },
+    error() {
+      return this.ordersStore.error;
+    },
     
     totalPages() {
       return Math.ceil(this.totalOrders / this.perPage);
@@ -301,10 +310,7 @@ export default {
   },
   
   methods: {
-    ...mapActions({
-      fetchOrders: 'orders/fetchOrders',
-      cancelOrderAction: 'orders/cancelOrder'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async loadOrders() {
       try {
@@ -318,7 +324,8 @@ export default {
           statusFilter = this.activeTab;
         }
         
-        const response = await this.fetchOrders({
+        // Call action on ordersStore instance
+        const response = await this.ordersStore.fetchOrders({
           page: this.currentPage,
           limit: this.perPage,
           status: statusFilter
@@ -441,7 +448,8 @@ export default {
       try {
         this.isCancelling = true;
         
-        await this.cancelOrderAction({
+        // Call action on ordersStore instance
+        await this.ordersStore.cancelOrder({
           id: this.selectedOrderId,
           cancellationReason: this.cancellationReason
         });
@@ -461,7 +469,7 @@ export default {
       }
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

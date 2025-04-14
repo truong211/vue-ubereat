@@ -9,6 +9,60 @@ const db = require('../config/database');
 const logger = require('../utils/logger');
 
 /**
+ * Get current user profile
+ * @route GET /api/user/profile
+ * @access Private
+ */
+exports.getCurrentUserProfile = async (req, res, next) => {
+  try {
+    // Access the user from req.user which is set by the auth middleware
+    const userId = req.user.id;
+    
+    // Direct SQL query to get user details, excluding password
+    const user = await User.findOne({
+      where: { id: userId },
+      attributes: ['id', 'username', 'email', 'fullName', 'phone', 'role', 'profileImage', 'createdAt', 'updatedAt']
+    });
+    
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found'
+      });
+    }
+    
+    
+    // Get addresses
+    let addresses = [];
+    try {
+      addresses = await Address.findAll({
+        where: { userId },
+        attributes: ['id', 'name', 'addressLine1', 'addressLine2', 'city', 'state', 'postalCode', 'country', 'phone', 'isDefault', 'type', 'instructions', 'latitude', 'longitude', 'createdAt', 'updatedAt'],
+        order: [['isDefault', 'DESC']]
+      });
+    } catch (error) {
+      logger.error('Error fetching user addresses:', error);
+      // Continue even if addresses fetch fails
+    }
+    
+    // Return user data directly, matching what the frontend expects in checkAuth
+    return res.status(200).json(
+      {
+        ...user,
+        addresses
+      }
+    );
+  } catch (error) {
+    logger.error('Error fetching user profile:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch user profile',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Get users with optional role filtering
  * @route GET /api/users
  * @access Public with optional auth
@@ -31,18 +85,20 @@ exports.getUsers = async (req, res, next) => {
     conditions.push('isActive = ?');
     params.push(true);
     
-    // Build the WHERE clause
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    // Build the Sequelize where object
+    const where = {};
+    if (roles) {
+      const roleArray = roles.split(',');
+      where.role = roleArray;
+    }
+    where.isActive = true;
     
     // Execute the query
-    const query = `
-      SELECT id, username, email, fullName, phone, role, profileImage, createdAt, updatedAt 
-      FROM users 
-      ${whereClause} 
-      ORDER BY fullName ASC
-    `;
-    
-    const users = await db.query(query, params);
+    const users = await User.findAll({
+      where,
+      attributes: ['id', 'username', 'email', 'fullName', 'phone', 'role', 'profileImage', 'createdAt', 'updatedAt'],
+      order: [['fullName', 'ASC']]
+    });
     
     res.status(200).json({
       status: 'success',
@@ -196,10 +252,10 @@ exports.uploadProfileImage = async (req, res, next) => {
 exports.getAddresses = async (req, res, next) => {
   try {
     // Use direct SQL query instead of Sequelize models
-    const addresses = await db.query(
-      'SELECT * FROM addresses WHERE userId = ? ORDER BY isDefault DESC, createdAt DESC',
-      [req.user.id]
-    );
+    const addresses = await Address.findAll({
+      where: { userId: req.user.id },
+      order: [['isDefault', 'DESC'], ['createdAt', 'DESC']]
+    });
 
     res.status(200).json({
       status: 'success',
@@ -468,5 +524,121 @@ exports.getOrderDetails = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * Update current user profile
+ * @route PUT /api/user/profile
+ * @access Private
+ */
+exports.updateCurrentUserProfile = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { fullName, phone, email, profileImage } = req.body;
+    
+    // Build update fields
+    const updates = [];
+    const values = [];
+    
+    if (fullName !== undefined) {
+      updates.push('fullName = ?');
+      values.push(fullName);
+    }
+    
+    if (phone !== undefined) {
+      updates.push('phone = ?');
+      values.push(phone);
+    }
+    
+    if (email !== undefined) {
+      // Check if email is already in use by another user
+      const [existingUsers] = await db.query(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [email, userId]
+      );
+      
+      if (existingUsers && existingUsers.length > 0) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Email is already in use by another user'
+        });
+      }
+      
+      updates.push('email = ?');
+      values.push(email);
+    }
+    
+    if (profileImage !== undefined) {
+      updates.push('profileImage = ?');
+      values.push(profileImage);
+    }
+    
+    // Add updatedAt timestamp
+    updates.push('updatedAt = NOW()');
+    
+    // If no updates, return the current user
+    if (updates.length === 0) {
+      const [users] = await db.query(
+        'SELECT id, username, email, fullName, phone, role, profileImage, createdAt, updatedAt FROM users WHERE id = ?',
+        [userId]
+      );
+      
+      if (!users || users.length === 0) {
+        return res.status(404).json({
+          status: 'error',
+          message: 'User not found'
+        });
+      }
+      
+      return res.status(200).json(users[0]);
+    }
+    
+    // Execute update query
+    values.push(userId);
+    await db.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+    
+    // Get updated user data
+    const [users] = await db.query(
+      'SELECT id, username, email, fullName, phone, role, profileImage, createdAt, updatedAt FROM users WHERE id = ?',
+      [userId]
+    );
+    
+    if (!users || users.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found after update'
+      });
+    }
+    
+    const user = users[0];
+    
+    // Get addresses
+    let addresses = [];
+    try {
+      [addresses] = await db.query(
+        'SELECT id, name, addressLine1, addressLine2, city, state, postalCode, country, phone, isDefault, type, instructions, latitude, longitude, createdAt, updatedAt FROM addresses WHERE userId = ? ORDER BY isDefault DESC',
+        [userId]
+      );
+    } catch (error) {
+      logger.error('Error fetching user addresses:', error);
+      // Continue even if addresses fetch fails
+    }
+    
+    // Return updated user data
+    return res.status(200).json({
+      ...user,
+      addresses
+    });
+  } catch (error) {
+    logger.error('Error updating user profile:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to update user profile',
+      error: error.message
+    });
   }
 };

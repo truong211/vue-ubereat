@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Create restaurants table
 CREATE TABLE IF NOT EXISTS restaurants (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  userId INT NOT NULL,
+  ownerId INT NOT NULL,
   name VARCHAR(100) NOT NULL,
   description TEXT,
   address TEXT NOT NULL,
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   longitude DECIMAL(11, 8),
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (userId) REFERENCES users(id)
+  FOREIGN KEY (ownerId) REFERENCES users(id)
 );
 
 -- Create categories table
@@ -734,3 +734,20 @@ VALUES
 ('restaurant1', 'restaurant1@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Restaurant One', '5556667777', 'restaurant', NULL, 1, NOW(), NOW()),
 ('driver1', 'driver1@example.com', '$2a$10$YdMD8aXA9YZl1E.XtKC4/.fFdL8L16QlSVN3mnnF.pUWziyMxpBAO', 'Driver One', '1112223333', 'driver', NULL, 1, NOW(), NOW());
 -- Password for all accounts is 'password123'
+
+-- Add openingHours column to restaurants table if it doesn't exist already
+ALTER TABLE restaurants 
+ADD COLUMN IF NOT EXISTS openingHours JSON AFTER coverImage;
+
+-- If your MySQL version doesn't support ADD COLUMN IF NOT EXISTS, you can use this alternative:
+-- This procedure will only add the column if it doesn't already exist
+DELIMITER //
+CREATE PROCEDURE AddColumnIfNotExists()
+BEGIN
+    DECLARE CONTINUE HANDLER FOR 1060 BEGIN END;  -- Ignore "Duplicate column" error
+    ALTER TABLE restaurants ADD COLUMN openingHours JSON AFTER coverImage;
+END //
+DELIMITER ;
+
+CALL AddColumnIfNotExists();
+DROP PROCEDURE IF EXISTS AddColumnIfNotExists;

@@ -9,60 +9,101 @@ module.exports = (sequelize, DataTypes) => {
     },
     userId: {
       type: DataTypes.INTEGER,
-      allowNull: false
+      allowNull: true, // Changed to allow null for system-wide notifications
+      references: {
+        model: 'Users',
+        key: 'id'
+      }
     },
     title: {
-      type: DataTypes.STRING,
+      type: DataTypes.STRING(100),
       allowNull: false
     },
-    message: {
+    content: {
       type: DataTypes.TEXT,
       allowNull: false
     },
     type: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: 'general'
+      type: DataTypes.ENUM('order', 'promotion', 'system', 'payment', 'delivery', 'account'),
+      defaultValue: 'system'
     },
-    data: {
-      type: DataTypes.JSONB,
-      allowNull: true
-    },
-    read: {
+    isRead: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false
     },
-    readAt: {
+    isSystemWide: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    validUntil: {
       type: DataTypes.DATE,
       allowNull: true
     },
-    endpoint: {
-      type: DataTypes.STRING,
-      allowNull: true,
-      unique: true
-    },
-    subscription: {
-      type: DataTypes.TEXT,
+    data: {
+      type: DataTypes.JSON,
       allowNull: true
     },
-    userAgent: {
-      type: DataTypes.STRING,
+    image: {
+      type: DataTypes.STRING(255),
       allowNull: true
     },
-    active: {
-      type: DataTypes.BOOLEAN,
-      allowNull: true,
-      defaultValue: true
+    link: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    priority: {
+      type: DataTypes.ENUM('low', 'normal', 'high'),
+      defaultValue: 'normal'
     }
   }, {
-    tableName: 'notifications'
+    tableName: 'notifications',
+    timestamps: true
   });
 
   Notification.associate = function(models) {
     Notification.belongsTo(models.User, {
       foreignKey: 'userId',
-      as: 'user'
+      as: 'user',
+      onDelete: 'CASCADE'
+    });
+  };
+
+  // Static method to find unread notifications for a user
+  Notification.findUnreadByUser = async function(userId) {
+    return this.findAll({
+      where: {
+        [sequelize.Op.or]: [
+          { userId },
+          { isSystemWide: true }
+        ],
+        isRead: false
+      },
+      order: [['createdAt', 'DESC']]
+    });
+  };
+
+  // Static method to find all notifications for a user
+  Notification.findAllByUser = async function(userId, limit = 20, offset = 0) {
+    return this.findAll({
+      where: {
+        [sequelize.Op.or]: [
+          { userId },
+          { isSystemWide: true }
+        ]
+      },
+      order: [['createdAt', 'DESC']],
+      limit,
+      offset
+    });
+  };
+
+  // Static method to create a system-wide notification
+  Notification.createSystemWide = async function(data) {
+    return this.create({
+      ...data,
+      isSystemWide: true,
+      userId: null
     });
   };
 

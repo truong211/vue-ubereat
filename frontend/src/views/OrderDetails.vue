@@ -425,27 +425,33 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useOrdersStore } from '@/stores/orders'; // Import Pinia orders store
 import { format, parseISO } from 'date-fns';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'OrderDetailsView',
   
+  setup() {
+    const ordersStore = useOrdersStore();
+    return { ordersStore }; // Expose store instance
+  },
+
   data() {
     return {
       isLoading: true,
-      
+
       // Review
       rating: 0,
       review: '',
       isSubmittingReview: false,
       showReviewSuccessDialog: false,
-      
+
       // Cancellation
       showCancelDialog: false,
       cancellationReason: '',
       isCancelling: false,
-      
+
       // Order status flow
       orderStatusFlow: [
         { value: 'pending', label: 'Pending', icon: 'mdi-clock-outline' },
@@ -459,9 +465,11 @@ export default {
   },
   
   computed: {
-    ...mapState({
-      order: state => state.orders.currentOrder
-    }),
+    // Access state from Pinia orders store
+    order() {
+      // Assuming 'currentOrder' is a state property or getter in the Pinia store
+      return this.ordersStore.currentOrder;
+    },
     
     orderId() {
       return this.$route.params.id;
@@ -473,16 +481,12 @@ export default {
   },
   
   methods: {
-    ...mapActions({
-      fetchOrderById: 'orders/fetchOrderDetails',
-      rateOrderAction: 'orders/submitReview',
-      cancelOrderAction: 'orders/cancelOrder'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async loadOrderDetails() {
       try {
         this.isLoading = true;
-        await this.fetchOrderById(this.orderId);
+        await this.ordersStore.fetchOrderDetails(this.orderId); // Call action on ordersStore
       } catch (error) {
         console.error('Failed to load order details:', error);
         this.$toast.error('Failed to load order details. Please try again.');
@@ -635,7 +639,8 @@ export default {
       try {
         this.isSubmittingReview = true;
         
-        await this.rateOrderAction({
+        // Call action on ordersStore
+        await this.ordersStore.submitReview({
           id: this.orderId,
           rating: this.rating,
           review: this.review
@@ -660,7 +665,8 @@ export default {
       try {
         this.isCancelling = true;
         
-        await this.cancelOrderAction({
+        // Call action on ordersStore
+        await this.ordersStore.cancelOrder({
           id: this.orderId,
           cancellationReason: this.cancellationReason
         });
@@ -683,7 +689,7 @@ export default {
       this.$toast.info('Receipt download functionality will be implemented soon');
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

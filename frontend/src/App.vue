@@ -1,45 +1,42 @@
 <template>
   <v-app>
-    <!-- Remove the entire app bar since it's redundant with MainLayout -->
+    <!-- Main Layout wraps the router view -->
+    <main-layout>
+      <router-view v-slot="{ Component }">
+        <transition name="fade" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
+    </main-layout>
 
-    <!-- Main content -->
-    <v-main>
-      <main-layout>
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+    <!-- Global components outside the main layout flow -->
 
-        <!-- Toast Notifications -->
-        <v-snackbar
-          v-model="toast.show"
-          :color="toast.color"
-          :timeout="toast.timeout"
-          location="top"
-        >
-          {{ toast.text }}
+    <!-- Toast Notifications -->
+    <v-snackbar
+      v-model="toast.show"
+      :color="toast.color"
+      :timeout="toast.timeout"
+      location="top"
+    >
+      {{ toast.text }}
+      <template v-slot:actions>
+        <v-btn
+          variant="text"
+          icon="mdi-close"
+          @click="toast.show = false"
+        ></v-btn>
+      </template>
+    </v-snackbar>
 
-          <template v-slot:actions>
-            <v-btn
-              variant="text"
-              icon="mdi-close"
-              @click="toast.show = false"
-            ></v-btn>
-          </template>
-        </v-snackbar>
-
-        <!-- Order Chat Dialog -->
-        <order-chat-dialog
-          v-if="isChatOpen"
-          :order-id="activeChatOrderId"
-          :driver-id="activeChatDriverId"
-          :driver-name="activeChatDriverName"
-          :is-open="isChatOpen"
-          @close="closeChat"
-        />
-      </main-layout>
-    </v-main>
+    <!-- Order Chat Dialog -->
+    <order-chat-dialog
+      v-if="isChatOpen"
+      :order-id="activeChatOrderId"
+      :driver-id="activeChatDriverId"
+      :driver-name="activeChatDriverName"
+      :is-open="isChatOpen"
+      @close="closeChat"
+    />
 
     <!-- Support Chat -->
     <support-chat></support-chat>
@@ -50,18 +47,21 @@
       :notification="currentNotification"
       v-if="currentNotification"
     ></notification-toast>
+
   </v-app>
 </template>
 
 <script>
 import MainLayout from '@/components/layout/MainLayout.vue';
 import OrderChatDialog from '@/components/order/OrderChatDialog.vue';
-import NotificationCenter from '@/components/notifications/NotificationCenter.vue'
+import NotificationCenter from '@/components/notifications/NotificationCenter.vue' // Kept as it wasn't explicitly asked to be removed
 import NotificationToast from '@/components/notifications/NotificationToast.vue'
 import SupportChat from '@/components/support/SupportChat.vue'
+// Removed AppHeader and AppFooter imports
 import { computed, onMounted } from 'vue';
-import { useStore } from 'vuex';
 import { useToast } from '@/composables/useToast';
+import { useChatStore } from '@/stores/chat.js';
+import { useNotificationStore } from '@/stores/notifications.js';
 
 export default {
   name: 'App',
@@ -69,40 +69,42 @@ export default {
   components: {
     MainLayout,
     OrderChatDialog,
-    NotificationCenter,
+    NotificationCenter, // Kept as it wasn't explicitly asked to be removed
     NotificationToast,
-    SupportChat
+    SupportChat,
+    // Removed AppHeader and AppFooter components
   },
 
   setup() {
-    const store = useStore();
+    const chatStore = useChatStore();
+    const notificationStore = useNotificationStore();
 
     // Get toast state from our composable
     const { state: toastState } = useToast();
 
-    // Chat state
-    const isChatOpen = computed(() => store.getters['chat/isChatOpen']);
-    const activeChat = computed(() => store.getters['chat/activeChat']);
+    // Chat state using Pinia store
+    const isChatOpen = computed(() => chatStore.isChatOpen);
+    const activeChat = computed(() => chatStore.activeChat);
     const activeChatOrderId = computed(() => activeChat.value?.orderId || '');
     const activeChatDriverId = computed(() => activeChat.value?.driverId || '');
     const activeChatDriverName = computed(() => activeChat.value?.driverName || 'Driver');
 
     const closeChat = () => {
-      store.dispatch('chat/closeChatDialog');
+      chatStore.closeChatDialog();
     };
 
     // Initialize notifications system
     onMounted(async () => {
-      await store.dispatch('notifications/init')
-    })
+      await notificationStore.initNotifications();
+    });
 
-    // Computed properties for toast notifications
+    // Computed properties for notifications using Pinia store
     const showNotification = computed({
-      get: () => store.state.notifications.showNotification,
-      set: (value) => store.commit('notifications/SET_SHOW_NOTIFICATION', value)
-    })
+      get: () => notificationStore.showNotification,
+      set: (value) => notificationStore.setShowNotification(value)
+    });
 
-    const currentNotification = computed(() => store.state.notifications.currentNotification)
+    const currentNotification = computed(() => notificationStore.currentNotification);
 
     return {
       toast: toastState,

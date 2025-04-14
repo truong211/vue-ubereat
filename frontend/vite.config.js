@@ -4,18 +4,21 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [vue()],
+  publicDir: 'public',
   server: {
     port: 5173,
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => {
-          // Handle duplicate /api prefixes
-          return path.replace(/^\/api\/api(.*)/, '/api$1');
-        }
+      },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+        ws: true
       }
     },
     hmr: {

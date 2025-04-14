@@ -38,6 +38,9 @@ const upload = multer({
 // Get all products with filters
 router.get('/', productController.getAllProducts);
 
+// Get recommended products - Moved BEFORE the :id route to fix routing issue
+router.get('/recommended', productController.getRecommendedProducts);
+
 // Get product by ID
 router.get('/:id', productController.getProductById);
 
@@ -88,9 +91,7 @@ router.post('/',
     body('spicyLevel')
       .optional()
       .isInt({ min: 0, max: 5 })
-      .withMessage('Spicy level must be between 0 and 5'),
-    body('preparationTime')
-      .optional()
+      .withMessage('Spicy level must be between 0 and 5')
       .isInt({ min: 0 })
       .withMessage('Preparation time must be a non-negative number'),
     body('nutritionalInfo')

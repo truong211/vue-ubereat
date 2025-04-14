@@ -174,6 +174,20 @@
                   hide-details
                 ></v-switch>
               </v-col>
+
+              <v-col cols="12">
+                <v-select
+                  v-model="categoryForm.restaurantId"
+                  label="Restaurant"
+                  :items="restaurants"
+                  item-title="name"
+                  item-value="id"
+                  persistent-hint
+                  hint="Required for new categories"
+                  :rules="[v => !!v || 'Restaurant is required']"
+                  required
+                ></v-select>
+              </v-col>
             </v-row>
           </v-form>
         </v-card-text>
@@ -241,12 +255,14 @@ export default {
     const isFormValid = ref(false)
     const updatingStatus = ref(null)
     const imagePreview = ref(null)
+    const restaurants = ref([])
     
     const categoryForm = ref({
       name: '',
       description: '',
       image: null,
-      active: true
+      active: true,
+      restaurantId: null
     })
     
     const editingCategory = ref(null)
@@ -300,7 +316,8 @@ export default {
           name: category.name,
           description: category.description || '',
           image: null,
-          active: category.active
+          active: category.active,
+          restaurantId: category.restaurantId || (restaurants.value.length > 0 ? restaurants.value[0].id : null)
         }
         imagePreview.value = null
       } else {
@@ -309,7 +326,8 @@ export default {
           name: '',
           description: '',
           image: null,
-          active: true
+          active: true,
+          restaurantId: restaurants.value.length > 0 ? restaurants.value[0].id : null
         }
         imagePreview.value = null
       }
@@ -317,16 +335,26 @@ export default {
     }
     
     const handleImageChange = (file) => {
-      if (!file) {
+      // Clear the preview if file is null, undefined, or an empty array
+      if (!file || (Array.isArray(file) && file.length === 0)) {
         imagePreview.value = null
         return
       }
       
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        imagePreview.value = e.target.result
+      // If file is an array (multiple files), take the first one
+      const fileToRead = Array.isArray(file) ? file[0] : file
+      
+      // Make sure we have a valid file before trying to read it
+      if (fileToRead instanceof Blob) {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          imagePreview.value = e.target.result
+        }
+        reader.readAsDataURL(fileToRead)
+      } else {
+        console.warn('Invalid file input:', fileToRead)
+        imagePreview.value = null
       }
-      reader.readAsDataURL(file)
     }
     
     const saveCategory = async () => {
@@ -340,10 +368,20 @@ export default {
         const formData = new FormData()
         formData.append('name', categoryForm.value.name)
         formData.append('description', categoryForm.value.description)
-        formData.append('active', categoryForm.value.active)
+        formData.append('isActive', categoryForm.value.active)
+        formData.append('restaurantId', categoryForm.value.restaurantId)
         
+        // Handle image upload safely
         if (categoryForm.value.image) {
-          formData.append('image', categoryForm.value.image)
+          // If it's an array (multiple files), take the first one
+          const fileToUpload = Array.isArray(categoryForm.value.image) 
+            ? categoryForm.value.image[0] 
+            : categoryForm.value.image
+          
+          // Make sure we have a valid file before trying to upload it
+          if (fileToUpload instanceof Blob) {
+            formData.append('image', fileToUpload)
+          }
         }
         
         if (editingCategory.value) {
@@ -409,7 +447,7 @@ export default {
       try {
         await store.dispatch('admin/updateCategory', {
           id: category.id,
-          data: { active: category.active }
+          data: { isActive: category.active }
         })
         store.dispatch('ui/showSnackbar', {
           text: `Category ${category.active ? 'activated' : 'deactivated'} successfully`,
@@ -443,8 +481,29 @@ export default {
       }
     }
     
+    // Load restaurants for dropdown
+    const fetchRestaurants = async () => {
+      try {
+        const response = await store.dispatch('admin/fetchRestaurants')
+        if (response?.data?.restaurants) {
+          restaurants.value = response.data.restaurants
+        } else if (Array.isArray(response?.data)) {
+          restaurants.value = response.data
+        } else if (Array.isArray(response)) {
+          restaurants.value = response
+        } else {
+          console.warn('Unexpected response format for restaurants:', response)
+          restaurants.value = []
+        }
+      } catch (error) {
+        console.error('Failed to fetch restaurants:', error)
+        restaurants.value = []
+      }
+    }
+    
     onMounted(() => {
       loadCategories()
+      fetchRestaurants()
     })
     
     return {
@@ -470,7 +529,8 @@ export default {
       saveCategory,
       confirmDelete,
       deleteCategory,
-      toggleCategory
+      toggleCategory,
+      restaurants
     }
   }
 }

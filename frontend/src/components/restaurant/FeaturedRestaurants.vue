@@ -1,281 +1,236 @@
 <template>
   <div class="featured-restaurants">
     <div class="d-flex justify-space-between align-center mb-6">
-      <div>
-        <h2 class="text-h4">{{ title }}</h2>
-        <p class="text-subtitle-2 text-medium-emphasis">{{ subtitle }}</p>
-      </div>
-      <router-link to="/restaurants" class="text-decoration-none">
-        <v-btn variant="text" color="primary" class="hover-scale">
-          {{ viewAllText }}
-        </v-btn>
-      </router-link>
+      <h2 class="text-h4">{{ title || 'Nhà hàng nổi bật' }}</h2>
+      <v-btn variant="text" color="primary" :to="viewAllLink" class="hover-scale">
+        {{ viewAllText || 'Xem tất cả' }}
+        <v-icon end>mdi-arrow-right</v-icon>
+      </v-btn>
     </div>
-    
-    <v-row v-if="loading">
-      <v-col v-for="i in 3" :key="i" cols="12" sm="6" md="4">
-        <v-skeleton-loader type="card" height="300"></v-skeleton-loader>
-      </v-col>
-    </v-row>
-    
-    <v-row v-else>
-      <v-col v-for="restaurant in featuredRestaurants" :key="restaurant.id" cols="12" sm="6" md="4">
-        <v-card 
-          @click="goToRestaurant(restaurant.id)" 
-          class="restaurant-card h-100" 
-          hover
-          elevation="3"
-        >
-          <v-img 
-            :src="restaurant.image" 
-            height="200" 
+
+    <div v-if="loading" class="d-flex justify-center my-4">
+      <v-progress-circular indeterminate color="primary"></v-progress-circular>
+    </div>
+
+    <v-row v-else-if="restaurants.length > 0">
+      <v-col v-for="restaurant in restaurants" :key="restaurant.id" cols="12" sm="6" md="4">
+        <v-card class="h-100 restaurant-card" @click="viewRestaurantDetails(restaurant.id)" hover>
+          <v-img
+            :src="restaurant.image || '/images/restaurants/default.jpg'"
+            height="200"
             cover
             class="restaurant-image"
           >
             <template v-slot:placeholder>
-              <div class="loading-skeleton"></div>
+              <v-row class="fill-height ma-0" align="center" justify="center">
+                <v-progress-circular indeterminate color="primary"></v-progress-circular>
+              </v-row>
             </template>
-            
-            <div class="d-flex justify-space-between pa-2">
-              <v-chip
-                v-if="restaurant.promotion"
-                color="primary"
-                size="small"
-                class="promotion-chip"
-              >
-                {{ restaurant.promotion }}
-              </v-chip>
-              
-              <v-chip
-                v-if="restaurant.deliveryFee === 0"
-                color="success"
-                size="small"
-              >
-                Free Delivery
-              </v-chip>
+
+            <!-- Rating badge -->
+            <div class="rating-badge">
+              <v-icon color="amber-darken-2" size="small">mdi-star</v-icon>
+              <span>{{ restaurant.rating.toFixed(1) }}</span>
             </div>
-            
-            <div class="image-overlay d-flex flex-column justify-end pa-4">
-              <div class="d-flex align-center">
-                <v-chip 
-                  v-if="restaurant.isOpen !== undefined" 
-                  :color="restaurant.isOpen ? 'success' : 'error'" 
-                  size="x-small"
-                  class="mr-2"
-                >
-                  {{ restaurant.isOpen ? 'Open' : 'Closed' }}
-                </v-chip>
-                
-                <v-chip
-                  v-for="(tag, index) in restaurant.tags?.slice(0, 2)"
-                  :key="index"
-                  size="x-small"
-                  class="mr-2"
-                  variant="outlined"
-                  color="white"
-                >
-                  {{ tag }}
-                </v-chip>
-              </div>
-            </div>
-          </v-img>
-          
-          <v-card-title class="d-flex align-start justify-space-between">
-            <span class="text-truncate">{{ restaurant.name }}</span>
+
+            <!-- Favorite button -->
             <v-btn
               icon
-              variant="text"
-              density="comfortable"
-              color="red"
+              variant="flat"
+              color="white"
+              size="small"
+              class="favorite-btn"
+              :class="{ 'is-favorite': restaurant.isFavorite }"
               @click.stop="toggleFavorite(restaurant)"
             >
               <v-icon>{{ restaurant.isFavorite ? 'mdi-heart' : 'mdi-heart-outline' }}</v-icon>
             </v-btn>
-          </v-card-title>
-          
-          <v-card-subtitle class="pt-0">
-            <div class="d-flex align-center mb-1">
-              <v-rating
-                :model-value="restaurant.rating"
-                color="amber"
-                density="compact"
-                half-increments
-                readonly
+          </v-img>
+
+          <v-card-title class="text-truncate">{{ restaurant.name }}</v-card-title>
+
+          <v-card-text>
+            <div class="d-flex align-center mb-2">
+              <v-icon size="small" color="grey-darken-1" class="mr-1">mdi-map-marker</v-icon>
+              <span class="text-caption text-truncate">{{ restaurant.address }}</span>
+            </div>
+
+            <div class="d-flex align-center mb-2">
+              <v-icon size="small" color="grey-darken-1" class="mr-1">mdi-clock-outline</v-icon>
+              <span class="text-caption">{{ restaurant.deliveryTime }} phút</span>
+              
+              <v-spacer></v-spacer>
+              
+              <v-chip
+                v-if="restaurant.priceLevel"
+                size="x-small"
+                color="grey"
+                class="ml-2"
+              >
+                {{ getPriceLevel(restaurant.priceLevel) }}
+              </v-chip>
+            </div>
+
+            <div class="text-truncate">
+              <v-chip
+                v-for="(cuisine, index) in restaurant.cuisines.slice(0, 3)"
+                :key="index"
                 size="small"
-              ></v-rating>
-              <span class="ml-2 text-body-2">{{ restaurant.rating }} ({{ restaurant.reviewCount }})</span>
+                class="mr-1 mb-1"
+                variant="flat"
+                color="grey-lighten-3"
+              >
+                {{ cuisine }}
+              </v-chip>
+              <span v-if="restaurant.cuisines.length > 3" class="text-caption">+{{ restaurant.cuisines.length - 3 }}</span>
             </div>
-            
-            <div class="text-truncate mb-1">{{ restaurant.categories.join(', ') }}</div>
-            
-            <div class="d-flex align-center text-body-2">
-              <v-icon size="small" color="grey">mdi-clock-outline</v-icon>
-              <span class="ml-1">{{ restaurant.deliveryTime }} min</span>
-              <span class="mx-2">•</span>
-              <span v-if="restaurant.deliveryFee === 0">Free delivery</span>
-              <span v-else>${{ typeof restaurant.deliveryFee === 'number' ? restaurant.deliveryFee.toFixed(2) : restaurant.deliveryFee }} delivery</span>
-            </div>
-          </v-card-subtitle>
+          </v-card-text>
         </v-card>
       </v-col>
     </v-row>
+
+    <div v-else class="text-center my-8">
+      <v-icon size="64" color="grey-lighten-1">mdi-store-off</v-icon>
+      <p class="text-h6 mt-4">Không tìm thấy nhà hàng</p>
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, defineComponent, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useToast } from 'vue-toastification'
+import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+import { useRestaurantStore } from '@/stores/restaurant';
+import { useNotification } from '@/composables/useNotification';
+import restaurantService from '@/services/restaurant.service';
 
-export default defineComponent({
+export default {
   name: 'FeaturedRestaurants',
-  
+
   props: {
-    title: {
-      type: String,
-      default: 'Featured Restaurants'
-    },
-    subtitle: {
-      type: String,
-      default: 'Our selection of the best restaurants'
-    },
-    viewAllText: {
-      type: String,
-      default: 'View All'
-    },
-    restaurants: {
-      type: Array,
-      default: () => []
-    },
     maxItems: {
       type: Number,
       default: 6
+    },
+    title: {
+      type: String,
+      default: ''
+    },
+    viewAllText: {
+      type: String,
+      default: ''
+    },
+    viewAllLink: {
+      type: String,
+      default: '/restaurants'
     }
   },
-  
+
   emits: ['favorite-toggled'],
-  
+
   setup(props, { emit }) {
-    const router = useRouter()
-    const toast = useToast()
-    const loading = ref(true)
-    const localRestaurants = ref([])
-    
+    const router = useRouter();
+    const authStore = useAuthStore();
+    const restaurantStore = useRestaurantStore();
+    const { notify } = useNotification();
+
+    const restaurants = ref([]);
+    const loading = ref(false);
+
     const fetchFeaturedRestaurants = async () => {
-      loading.value = true
-      
+      loading.value = true;
       try {
-        // Use provided restaurants or fetch from API
-        if (props.restaurants.length > 0) {
-          localRestaurants.value = [...props.restaurants].map(restaurant => ({
-            ...restaurant,
-            isFavorite: false
-          }))
-          loading.value = false
-          return
+        const params = {
+          featured: true,
+          limit: props.maxItems,
+          sort: 'rating'
+        };
+
+        const response = await restaurantService.getRestaurants(params);
+        restaurants.value = response.data.data || [];
+      } catch (error) {
+        console.error('Error fetching featured restaurants:', error);
+        notify('Không thể tải nhà hàng nổi bật. Vui lòng thử lại sau.', 'error');
+      } finally {
+        loading.value = false;
+      }
+    };
+
+    const viewRestaurantDetails = (restaurantId) => {
+      router.push(`/restaurant/${restaurantId}`);
+    };
+
+    const toggleFavorite = async (restaurant) => {
+      try {
+        const isLoggedIn = authStore.isLoggedIn;
+        
+        if (!isLoggedIn) {
+          router.push('/login?redirect=' + encodeURIComponent(router.currentRoute.value.fullPath));
+          return;
         }
         
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await restaurantStore.toggleFavorite(restaurant.id);
         
-        // Mock data
-        localRestaurants.value = [
-          {
-            id: 1,
-            name: 'Burger King',
-            image: '/images/restaurants/burger-king.jpg',
-            rating: 4.2,
-            reviewCount: 328,
-            categories: ['Burgers', 'Fast Food'],
-            deliveryTime: '15-25',
-            deliveryFee: 0,
-            isOpen: true,
-            isFavorite: false,
-            promotion: '20% OFF',
-            tags: ['Bestseller', 'Fast Delivery']
-          },
-          {
-            id: 2,
-            name: 'Pizza Hut',
-            image: '/images/restaurants/pizza-hut.jpg',
-            rating: 4.5,
-            reviewCount: 512,
-            categories: ['Pizza', 'Italian'],
-            deliveryTime: '20-30',
-            deliveryFee: 1.99,
-            isOpen: true,
-            isFavorite: false,
-            tags: ['Family Size', 'Deals']
-          },
-          {
-            id: 3,
-            name: 'Sushi Palace',
-            image: '/images/restaurants/sushi.jpg',
-            rating: 4.8,
-            reviewCount: 205,
-            categories: ['Sushi', 'Japanese'],
-            deliveryTime: '25-40',
-            deliveryFee: 2.99,
-            isOpen: true,
-            isFavorite: false,
-            promotion: 'Buy 1 Get 1 Free',
-            tags: ['Premium', 'Healthy']
-          }
-        ]
+        // Update local state
+        restaurant.isFavorite = !restaurant.isFavorite;
+        
+        notify(
+          restaurant.isFavorite 
+            ? `Đã thêm ${restaurant.name} vào danh sách yêu thích` 
+            : `Đã xóa ${restaurant.name} khỏi danh sách yêu thích`, 
+          'success'
+        );
+
+        emit('favorite-toggled', restaurant);
       } catch (error) {
-        toast.error('Failed to load featured restaurants')
-        console.error(error)
-      } finally {
-        loading.value = false
+        console.error('Error toggling favorite:', error);
+        notify('Không thể cập nhật trạng thái yêu thích. Vui lòng thử lại.', 'error');
       }
-    }
-    
-    const featuredRestaurants = computed(() => {
-      return localRestaurants.value.slice(0, props.maxItems)
-    })
-    
-    const goToRestaurant = (id) => {
-      router.push({
-        name: 'RestaurantDetail',
-        params: { id }
-      })
-    }
-    
-    const toggleFavorite = (restaurant) => {
-      restaurant.isFavorite = !restaurant.isFavorite
-      
-      // In a real app, this would call an API to toggle the favorite status
-      const message = restaurant.isFavorite 
-        ? `Added ${restaurant.name} to favorites` 
-        : `Removed ${restaurant.name} from favorites`
-      
-      toast.success(message)
-      emit('favorite-toggled', { id: restaurant.id, isFavorite: restaurant.isFavorite })
-    }
-    
+    };
+
+    const getPriceLevel = (level) => {
+      switch (level) {
+        case 1:
+          return '$';
+        case 2:
+          return '$$';
+        case 3:
+          return '$$$';
+        case 4:
+          return '$$$$';
+        default:
+          return '$';
+      }
+    };
+
     onMounted(() => {
-      fetchFeaturedRestaurants()
-    })
-    
+      fetchFeaturedRestaurants();
+    });
+
     return {
+      restaurants,
       loading,
-      featuredRestaurants,
-      goToRestaurant,
-      toggleFavorite
-    }
+      viewRestaurantDetails,
+      toggleFavorite,
+      getPriceLevel
+    };
   }
-})
+};
 </script>
 
 <style scoped>
 .restaurant-card {
-  transition: all 0.3s ease;
-  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+  will-change: transform;
   overflow: hidden;
+  animation: fadeIn 0.5s ease forwards;
+  opacity: 0;
 }
 
 .restaurant-card:hover {
   transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
 }
 
 .restaurant-card:hover .restaurant-image {
@@ -283,29 +238,42 @@ export default defineComponent({
 }
 
 .restaurant-image {
+  position: relative;
   transition: transform 0.5s ease;
+  overflow: hidden;
 }
 
-.loading-skeleton {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-}
-
-.promotion-chip {
-  background: rgba(63, 81, 181, 0.85) !important;
-  color: white !important;
-  font-weight: 500;
-}
-
-.image-overlay {
+.rating-badge {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  top: 10px;
+  left: 10px;
+  background-color: white;
+  color: black;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+}
+
+.favorite-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  transition: transform 0.2s ease;
+  z-index: 1;
+}
+
+.favorite-btn:hover {
+  transform: scale(1.1);
+}
+
+.favorite-btn.is-favorite {
+  color: #ff5252 !important;
 }
 
 .hover-scale {
@@ -313,11 +281,25 @@ export default defineComponent({
 }
 
 .hover-scale:hover {
-  transform: scale(1.05);
+  transform: scale(1.1);
 }
 
-@keyframes loading {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
+/* Stagger animation for cards */
+.featured-restaurants .v-col:nth-child(1) .restaurant-card { animation-delay: 0.1s; }
+.featured-restaurants .v-col:nth-child(2) .restaurant-card { animation-delay: 0.2s; }
+.featured-restaurants .v-col:nth-child(3) .restaurant-card { animation-delay: 0.3s; }
+.featured-restaurants .v-col:nth-child(4) .restaurant-card { animation-delay: 0.4s; }
+.featured-restaurants .v-col:nth-child(5) .restaurant-card { animation-delay: 0.5s; }
+.featured-restaurants .v-col:nth-child(6) .restaurant-card { animation-delay: 0.6s; }
 </style> 

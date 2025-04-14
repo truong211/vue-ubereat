@@ -64,9 +64,13 @@ module.exports = (sequelize, DataTypes) => {
 
   // Define associations
   DriverLocation.associate = function(models) {
-    DriverLocation.belongsTo(models.user, { foreignKey: 'driverId', as: 'driver' });
-    // This association is defined on User model to avoid circular references
-    // models.user.hasOne(DriverLocation, { foreignKey: 'driverId', as: 'location' });
+    if (models.User) {
+      DriverLocation.belongsTo(models.User, { foreignKey: 'driverId', as: 'driver' });
+      // This association is defined on User model to avoid circular references
+      // models.User.hasOne(DriverLocation, { foreignKey: 'driverId', as: 'location' });
+    } else {
+      console.warn('User model not found when associating DriverLocation model');
+    }
   };
 
   return DriverLocation;

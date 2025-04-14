@@ -18,28 +18,31 @@
       <router-view v-slot="{ Component }">
         <transition
           name="fade"
-          mode="out-in"
+          :duration="200"
         >
-          <component :is="Component" />
+          <component
+            :is="Component"
+            :key="$route.fullPath"
+          />
         </transition>
       </router-view>
     </v-layout>
 
     <!-- Global Snackbar -->
     <v-snackbar
-      v-model="snackbar.show"
-      :color="snackbar.color"
-      :timeout="snackbar.timeout"
-      :location="snackbar.location"
+      v-model="uiStore.snackbar.show"
+      :color="uiStore.snackbar.color"
+      :timeout="uiStore.snackbar.timeout"
+      :location="uiStore.snackbar.location"
     >
-      {{ snackbar.text }}
+      {{ uiStore.snackbar.text }}
       
-      <template v-slot:actions v-if="snackbar.action">
+      <template v-slot:actions v-if="uiStore.snackbar.action">
         <v-btn
           variant="text"
           @click="handleSnackbarAction"
         >
-          {{ snackbar.action.text }}
+          {{ uiStore.snackbar.action.text }}
         </v-btn>
       </template>
     </v-snackbar>
@@ -104,7 +107,8 @@
 
 <script>
 import { ref, onMounted, computed } from 'vue'
-import { useStore } from 'vuex'
+import { useAuthStore } from '@/stores/auth.js'
+import { useUiStore } from '@/stores/ui.js'
 import offlineService from '@/services/offline'
 import InstallPrompt from '@/components/common/InstallPrompt.vue'
 
@@ -116,25 +120,46 @@ export default {
   },
 
   setup() {
-    const store = useStore()
+    const authStore = useAuthStore()
+    const uiStore = useUiStore()
     const loading = ref(false)
     const updateAvailable = ref(false)
     const isOnline = computed(() => offlineService.isNetworkAvailable())
 
-    // Snackbar state
-    const snackbar = computed(() => store.state.ui.snackbar)
-    const dialog = computed(() => store.state.ui.dialog)
+    // State for dialog
+    const dialog = ref({
+      show: false,
+      title: '',
+      message: '',
+      maxWidth: 500,
+      persistent: false,
+      buttons: []
+    })
 
-    // Handle network status
+    // Initialize auth store
+    const initAuth = async () => {
+      try {
+        await authStore.initialize()
+      } catch (error) {
+        console.error('Failed to initialize auth:', error)
+        uiStore.showSnackbar({
+          text: 'Authentication initialization failed',
+          color: 'error',
+          timeout: 5000
+        })
+      }
+    }
+
+    // Methods
     const handleOnlineStatus = () => {
       if (navigator.onLine) {
-        store.dispatch('ui/showSnackbar', {
+        uiStore.showSnackbar({
           text: 'You are back online',
           color: 'success',
           timeout: 3000
         })
       } else {
-        store.dispatch('ui/showSnackbar', {
+        uiStore.showSnackbar({
           text: 'You are offline. Changes will be saved when connection is restored.',
           color: 'warning',
           timeout: -1
@@ -142,40 +167,34 @@ export default {
       }
     }
 
-    // Handle service worker updates
     const handleServiceWorkerUpdate = () => {
       updateAvailable.value = true
     }
 
-    // Refresh app
     const refreshApp = () => {
       updateAvailable.value = false
       window.location.reload()
     }
 
-    // Handle snackbar action
     const handleSnackbarAction = () => {
-      if (snackbar.value.action?.callback) {
-        snackbar.value.action.callback()
+      if (uiStore.snackbar.action?.callback) {
+        uiStore.snackbar.action.callback()
       }
-      store.dispatch('ui/hideSnackbar')
+      uiStore.hideSnackbar()
     }
 
-    // Handle dialog action
     const handleDialogAction = (button) => {
       if (button.action) {
         button.action()
       }
-      store.dispatch('ui/hideDialog')
+      dialog.value.show = false
     }
 
-    // Global error handler
     const handleError = (error) => {
       console.error('Global error:', error)
       
-      // Network errors
       if (error.name === 'NetworkError' || !navigator.onLine) {
-        store.dispatch('ui/showSnackbar', {
+        uiStore.showSnackbar({
           text: 'Network error. Please check your connection.',
           color: 'error',
           timeout: -1,
@@ -187,22 +206,23 @@ export default {
         return
       }
 
-      // Other errors
-      store.dispatch('ui/showSnackbar', {
+      uiStore.showSnackbar({
         text: error.message || 'An unexpected error occurred',
         color: 'error',
         timeout: 5000
       })
     }
 
-    // Route loading handler
     const handleRouteLoading = (isLoading) => {
       loading.value = isLoading
     }
 
-    onMounted(() => {
+    onMounted(async () => {
+      // Initialize auth first before other services
+      await initAuth()
+
       // Initialize offline service
-      offlineService.init(store)
+      offlineService.init({ commit: () => {} }) // Pass empty store since we're not using Vuex
 
       // Add event listeners
       window.addEventListener('online', handleOnlineStatus)
@@ -210,21 +230,14 @@ export default {
       window.addEventListener('sw-update-available', handleServiceWorkerUpdate)
       window.addEventListener('error', handleError)
       window.addEventListener('unhandledrejection', (event) => handleError(event.reason))
-
-      // Handle route loading
-      store.subscribe((mutation) => {
-        if (mutation.type === 'route/SET_LOADING') {
-          handleRouteLoading(mutation.payload)
-        }
-      })
     })
 
     return {
       loading,
-      snackbar,
       dialog,
       updateAvailable,
       isOnline,
+      uiStore,
       refreshApp,
       handleSnackbarAction,
       handleDialogAction

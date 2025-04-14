@@ -58,8 +58,136 @@
               ></v-select>
             </v-col>
           </v-row>
+          <v-row>
+            <v-col cols="12" sm="6">
+              <v-menu
+                ref="startDateMenu"
+                v-model="startDateMenu"
+                :close-on-content-click="false"
+                transition="scale-transition"
+                max-width="290px"
+                min-width="auto"
+              >
+                <template v-slot:activator="{ props }">
+                  <v-text-field
+                    v-model="filters.startDate"
+                    label="From Date"
+                    readonly
+                    v-bind="props"
+                    clearable
+                    @click:clear="filters.startDate = null"
+                    prepend-inner-icon="mdi-calendar"
+                  ></v-text-field>
+                </template>
+                <v-date-picker
+                  v-model="filters.startDate"
+                  @update:model-value="startDateMenu = false"
+                ></v-date-picker>
+              </v-menu>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-menu
+                ref="endDateMenu"
+                v-model="endDateMenu"
+                :close-on-content-click="false"
+                transition="scale-transition"
+                max-width="290px"
+                min-width="auto"
+              >
+                <template v-slot:activator="{ props }">
+                  <v-text-field
+                    v-model="filters.endDate"
+                    label="To Date"
+                    readonly
+                    v-bind="props"
+                    clearable
+                    @click:clear="filters.endDate = null"
+                    prepend-inner-icon="mdi-calendar"
+                  ></v-text-field>
+                </template>
+                <v-date-picker
+                  v-model="filters.endDate"
+                  @update:model-value="endDateMenu = false"
+                ></v-date-picker>
+              </v-menu>
+            </v-col>
+          </v-row>
+          <v-row class="mt-2">
+            <v-col cols="12" class="d-flex justify-end">
+              <v-btn variant="text" @click="resetFilters" class="mr-2">Reset</v-btn>
+              <v-btn color="primary" @click="applyFilters">Apply Filters</v-btn>
+            </v-col>
+          </v-row>
         </v-card-text>
       </v-card>
+
+      <!-- Order Stats -->
+      <v-row class="mb-4">
+        <v-col cols="12" sm="6" md="3">
+          <v-card color="info" variant="tonal">
+            <v-card-text>
+              <div class="text-overline mb-1">Total Orders</div>
+              <div class="text-h4 mb-2">{{ orderStats.total }}</div>
+              <div class="d-flex align-center">
+                <v-icon :color="orderStats.totalChange >= 0 ? 'success' : 'error'">
+                  {{ orderStats.totalChange >= 0 ? 'mdi-trending-up' : 'mdi-trending-down' }}
+                </v-icon>
+                <span class="ml-1" :class="orderStats.totalChange >= 0 ? 'text-success' : 'text-error'">
+                  {{ Math.abs(orderStats.totalChange) }}% from last period
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-card color="success" variant="tonal">
+            <v-card-text>
+              <div class="text-overline mb-1">Revenue</div>
+              <div class="text-h4 mb-2">${{ orderStats.revenue.toFixed(2) }}</div>
+              <div class="d-flex align-center">
+                <v-icon :color="orderStats.revenueChange >= 0 ? 'success' : 'error'">
+                  {{ orderStats.revenueChange >= 0 ? 'mdi-trending-up' : 'mdi-trending-down' }}
+                </v-icon>
+                <span class="ml-1" :class="orderStats.revenueChange >= 0 ? 'text-success' : 'text-error'">
+                  {{ Math.abs(orderStats.revenueChange) }}% from last period
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-card color="warning" variant="tonal">
+            <v-card-text>
+              <div class="text-overline mb-1">Average Order Value</div>
+              <div class="text-h4 mb-2">${{ orderStats.avgOrderValue.toFixed(2) }}</div>
+              <div class="d-flex align-center">
+                <v-icon :color="orderStats.avgOrderValueChange >= 0 ? 'success' : 'error'">
+                  {{ orderStats.avgOrderValueChange >= 0 ? 'mdi-trending-up' : 'mdi-trending-down' }}
+                </v-icon>
+                <span class="ml-1" :class="orderStats.avgOrderValueChange >= 0 ? 'text-success' : 'text-error'">
+                  {{ Math.abs(orderStats.avgOrderValueChange) }}% from last period
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col cols="12" sm="6" md="3">
+          <v-card color="error" variant="tonal">
+            <v-card-text>
+              <div class="text-overline mb-1">Cancellation Rate</div>
+              <div class="text-h4 mb-2">{{ orderStats.cancellationRate.toFixed(1) }}%</div>
+              <div class="d-flex align-center">
+                <v-icon :color="orderStats.cancellationRateChange <= 0 ? 'success' : 'error'">
+                  {{ orderStats.cancellationRateChange <= 0 ? 'mdi-trending-down' : 'mdi-trending-up' }}
+                </v-icon>
+                <span class="ml-1" :class="orderStats.cancellationRateChange <= 0 ? 'text-success' : 'text-error'">
+                  {{ Math.abs(orderStats.cancellationRateChange) }}% from last period
+                </span>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
 
       <!-- Orders Table -->
       <v-card>
@@ -444,7 +572,23 @@ const orders = ref([]);
 const filters = ref({
   search: '',
   status: null,
-  restaurant: null
+  restaurant: null,
+  startDate: null,
+  endDate: null
+});
+
+const startDateMenu = ref(false);
+const endDateMenu = ref(false);
+
+const orderStats = ref({
+  total: 0,
+  totalChange: 0,
+  revenue: 0,
+  revenueChange: 0,
+  avgOrderValue: 0,
+  avgOrderValueChange: 0,
+  cancellationRate: 0,
+  cancellationRateChange: 0
 });
 
 // Dialog state
@@ -545,6 +689,7 @@ const fetchOrders = async () => {
     });
     orders.value = response.orders;
     totalOrders.value = response.total;
+    orderStats.value = response.stats;
   } catch (error) {
     toast.error('Failed to load orders');
     console.error('Failed to fetch orders:', error);
@@ -555,6 +700,21 @@ const fetchOrders = async () => {
 
 const handlePageChange = (newPage) => {
   page.value = newPage;
+  fetchOrders();
+};
+
+const resetFilters = () => {
+  filters.value = {
+    search: '',
+    status: null,
+    restaurant: null,
+    startDate: null,
+    endDate: null
+  };
+  fetchOrders();
+};
+
+const applyFilters = () => {
   fetchOrders();
 };
 

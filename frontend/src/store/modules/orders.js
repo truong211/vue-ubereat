@@ -1,13 +1,12 @@
-import axios from 'axios';
-import { apiClient } from '../../services/api.service';
+import { orderAPI } from '../../services/api.service';
 
-const state = {
+const state = () => ({
   orders: [],
   currentOrder: null,
   total: 0,
   loading: false,
   error: null
-};
+});
 
 const mutations = {
   SET_ORDERS(state, { orders, total }) {
@@ -38,7 +37,7 @@ const actions = {
   async fetchOrders({ commit }, params) {
     commit('SET_LOADING', true);
     try {
-      const response = await apiClient.get('/api/orders', { params });
+      const response = await orderAPI.getUserOrders(params);
       commit('SET_ORDERS', {
         orders: response.data.orders,
         total: response.data.total
@@ -55,7 +54,7 @@ const actions = {
   async fetchOrderDetails({ commit }, orderId) {
     commit('SET_LOADING', true);
     try {
-      const response = await apiClient.get(`/api/orders/${orderId}`);
+      const response = await orderAPI.getOrderById(orderId);
       commit('SET_CURRENT_ORDER', response.data);
       return response.data;
     } catch (error) {
@@ -68,11 +67,7 @@ const actions = {
 
   async updateOrderStatus({ commit }, { orderId, status, reason, note }) {
     try {
-      const response = await apiClient.patch(`/api/orders/${orderId}/status`, {
-        status,
-        reason,
-        note
-      });
+      const response = await orderAPI.updateOrderStatus(orderId, status);
       commit('UPDATE_ORDER_STATUS', { orderId, status });
       return response.data;
     } catch (error) {
@@ -85,9 +80,7 @@ const actions = {
     try {
       commit('SET_LOADING', true);
       
-      const response = await apiClient.post(`/api/orders/${id}/cancel`, {
-        cancellationReason
-      });
+      const response = await orderAPI.cancelOrder(id, cancellationReason);
       
       // Update the order status locally
       commit('UPDATE_ORDER_STATUS', { orderId: id, status: 'cancelled' });
@@ -107,11 +100,7 @@ const actions = {
   async submitReview({ commit }, formData) {
     try {
       commit('SET_LOADING', true);
-      const response = await apiClient.post('/api/reviews', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const response = await orderAPI.addOrderReview(formData.orderId, formData);
       return response.data;
     } catch (error) {
       const errorMessage = error.response?.data?.message || 'Failed to submit review';

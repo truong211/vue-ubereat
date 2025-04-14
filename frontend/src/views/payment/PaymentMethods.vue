@@ -450,18 +450,26 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useAuthStore } from '@/stores/auth'; // Import Pinia auth store
+import { useUserStore } from '@/stores/user'; // Import Pinia user store
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'PaymentMethodsView',
   
+  setup() {
+    const authStore = useAuthStore();
+    const userStore = useUserStore();
+    return { authStore, userStore }; // Expose store instances
+  },
+
   data() {
     return {
       activeTab: 'cards',
       isLoading: false,
       isSaving: false,
       isDeleting: false,
-      
+
       // Card form
       showAddCardDialog: false,
       isCardFormValid: false,
@@ -476,7 +484,7 @@ export default {
         cardType: 'credit',
         setAsDefault: false
       },
-      
+
       // E-wallet form
       showLinkWalletDialog: false,
       isWalletFormValid: false,
@@ -487,30 +495,30 @@ export default {
         phone: '',
         setAsDefault: false
       },
-      
+
       // Delete dialog
       showDeleteDialog: false,
       itemToDelete: null,
-      
+
       // Wallet providers
       walletProviders: [
-        { 
-          name: 'MoMo', 
+        {
+          name: 'MoMo',
           value: 'momo',
           icon: '/img/payment/momo.png'
         },
-        { 
-          name: 'ZaloPay', 
+        {
+          name: 'ZaloPay',
           value: 'zalopay',
           icon: '/img/payment/zalopay.png'
         },
-        { 
-          name: 'VNPay', 
+        {
+          name: 'VNPay',
           value: 'vnpay',
           icon: '/img/payment/vnpay.png'
         },
-        { 
-          name: 'PayPal', 
+        {
+          name: 'PayPal',
           value: 'paypal',
           icon: '/img/payment/paypal.png'
         }
@@ -519,9 +527,10 @@ export default {
   },
   
   computed: {
-    ...mapState({
-      user: state => state.auth.user
-    }),
+    // Access user from Pinia auth store
+    user() {
+      return this.authStore.user;
+    },
     
     cards() {
       return this.user?.paymentMethods?.filter(
@@ -562,18 +571,12 @@ export default {
   },
   
   methods: {
-    ...mapActions({
-      fetchPaymentMethods: 'user/fetchPaymentMethods',
-      addPaymentMethod: 'user/addPaymentMethod',
-      updatePaymentMethod: 'user/updatePaymentMethod',
-      removePaymentMethod: 'user/removePaymentMethod',
-      setDefaultPaymentMethod: 'user/setDefaultPaymentMethod'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     async loadPaymentMethods() {
       try {
         this.isLoading = true;
-        await this.fetchPaymentMethods();
+        await this.userStore.fetchPaymentMethods(); // Call action on userStore
       } catch (error) {
         console.error('Failed to load payment methods:', error);
         this.$toast.error('Không thể tải phương thức thanh toán. Vui lòng thử lại.');
@@ -655,7 +658,7 @@ export default {
     },
     
     setAsDefault(id) {
-      this.setDefaultPaymentMethod(id)
+      this.userStore.setDefaultPaymentMethod(id) // Call action on userStore
         .then(() => {
           this.$toast.success('Đã cập nhật phương thức thanh toán mặc định');
         })
@@ -691,7 +694,7 @@ export default {
       
       try {
         this.isDeleting = true;
-        await this.removePaymentMethod(this.itemToDelete.id);
+        await this.userStore.removePaymentMethod(this.itemToDelete.id); // Call action on userStore
         this.$toast.success('Đã xóa phương thức thanh toán');
         this.showDeleteDialog = false;
         this.itemToDelete = null;
@@ -717,11 +720,11 @@ export default {
         
         if (this.cardForm.id) {
           // Update existing card
-          await this.updatePaymentMethod(cardData);
+          await this.userStore.updatePaymentMethod(cardData); // Call action on userStore
           this.$toast.success('Đã cập nhật thông tin thẻ');
         } else {
           // Add new card
-          await this.addPaymentMethod(cardData);
+          await this.userStore.addPaymentMethod(cardData); // Call action on userStore
           this.$toast.success('Đã thêm thẻ mới');
         }
         
@@ -751,7 +754,7 @@ export default {
           isDefault: this.walletForm.setAsDefault
         };
         
-        await this.addPaymentMethod(walletData);
+        await this.userStore.addPaymentMethod(walletData); // Call action on userStore
         this.$toast.success('Đã liên kết ví điện tử');
         
         this.showLinkWalletDialog = false;
@@ -788,7 +791,7 @@ export default {
       };
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

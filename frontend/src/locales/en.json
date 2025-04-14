@@ -1,0 +1,68 @@
+{
+  "home": {
+    "hero": {
+      "searchPlaceholder": "Enter your delivery address",
+      "title": "Food Delivery & More",
+      "subtitle": "Order from your favorite restaurants"
+    },
+    "featuredProducts": {
+      "title": "Featured Products",
+      "viewAll": "View All Products"
+    },
+    "featuredRestaurants": {
+      "title": "Featured Restaurants",
+      "viewAll": "View All Restaurants"
+    },
+    "nearbyRestaurants": {
+      "title": "Restaurants Near You",
+      "viewAll": "View All Nearby"
+    },
+    "personalizedRecommendations": {
+      "title": "Recommended for You",
+      "viewAll": "View All Recommendations"
+    }
+  },
+  "groceries": {
+    "title": "Groceries",
+    "browseText": "Browse our selection of groceries"
+  },
+  "restaurants": {
+    "featured": {
+      "title": "Featured Restaurants",
+      "viewAll": "View All Restaurants"
+    }
+  },
+  "restaurant": {
+    "promo": "Promotion",
+    "new": "New",
+    "minOrder": "Min. Order",
+    "deliveryTimeUnknown": "Delivery time unknown"
+  },
+  "common": {
+    "min": "min",
+    "km": "km"
+  },
+  "notifications": {
+    "push": {
+      "title": "Push Notifications",
+      "description": "Receive instant updates directly in your browser",
+      "notSupported": "Push notifications are not supported in your browser"
+    },
+    "email": {
+      "title": "Email Notifications",
+      "description": "Get important updates delivered to your inbox"
+    },
+    "sms": {
+      "title": "SMS Notifications",
+      "description": "Receive text message updates on your phone",
+      "verifyPhone": "Please verify your phone number to enable SMS notifications"
+    },
+    "types": {
+      "title": "Notification Types",
+      "orders": "Order Status Updates",
+      "promotions": "Promotions & Offers",
+      "account": "Account Updates",
+      "delivery": "Delivery Updates"
+    }
+  }
+} 

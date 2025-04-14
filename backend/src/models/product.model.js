@@ -1,319 +1,183 @@
-const db = require('../config/database');
+const { Model } = require('sequelize');
 
-/**
- * Product model with direct SQL implementation
- */
-const Product = {
-  tableName: 'products',
+module.exports = (sequelize, DataTypes) => {
+  class Product extends Model {
+    static associate(models) {
+      // Check if Restaurant model exists before setting up association
+      if (!models.Restaurant) {
+        console.error('Restaurant model not found when setting up Product associations');
+        console.log('Available models:', Object.keys(models));
+        return;
+      }
 
-  findByPk: async (id) => {
-    try {
-      const results = await db.query('SELECT * FROM products WHERE id = ?', [id]);
-      return results[0];
-    } catch (error) {
-      console.error('Error in Product.findByPk:', error);
-      throw error;
-    }
-  },
+      Product.belongsTo(models.Restaurant, {
+        foreignKey: 'restaurantId',
+        as: 'restaurant',
+        onDelete: 'CASCADE'
+      });
 
-  findOne: async (where) => {
-    try {
-      const whereClause = Object.entries(where)
-        .map(([key, value]) => `${key} = ?`)
-        .join(' AND ');
-      const values = Object.values(where);
-
-      const results = await db.query(`SELECT * FROM products WHERE ${whereClause} LIMIT 1`, values);
-      return results[0];
-    } catch (error) {
-      console.error('Error in Product.findOne:', error);
-      throw error;
-    }
-  },
-
-  findAll: async (options = {}) => {
-    try {
-      let sql = 'SELECT p.* FROM products p';
-      const values = [];
-      const joins = [];
-
-      // Handle includes for related models
-      if (options.include) {
-        options.include.forEach((include, index) => {
-          const alias = include.as || include.model.tableName;
-
-          if (include.model.tableName === 'categories') {
-            joins.push(`LEFT JOIN categories ${alias} ON p.categoryId = ${alias}.id`);
-            sql = sql.replace('p.*', `p.*, ${alias}.name as category_name`);
-          }
-
-          if (include.model.tableName === 'restaurants') {
-            joins.push(`LEFT JOIN restaurants ${alias} ON p.restaurantId = ${alias}.id`);
-            sql = sql.replace('p.*', `p.*, ${alias}.name as restaurant_name, ${alias}.logo as restaurant_logo`);
-          }
+      if (models.Category) {
+        Product.belongsTo(models.Category, {
+          foreignKey: 'categoryId',
+          as: 'category',
+          onDelete: 'SET NULL'
         });
       }
 
-      // Add joins to SQL
-      if (joins.length > 0) {
-        sql += ' ' + joins.join(' ');
-      }
-
-      // Handle where clause
-      if (options.where) {
-        const whereClauses = [];
-
-        Object.entries(options.where).forEach(([key, value]) => {
-          // Handle simple equality
-          if (typeof value !== 'object' || value === null) {
-            whereClauses.push(`p.${key} = ?`);
-            values.push(value);
-          }
-          // Handle operators like Op.like, Op.gte, etc.
-          else {
-            const fieldClauses = [];
-
-            Object.entries(value).forEach(([opKey, opValue]) => {
-              switch(opKey) {
-                case 'like':
-                  fieldClauses.push(`p.${key} LIKE ?`);
-                  values.push(opValue);
-                  break;
-                case 'gte':
-                  fieldClauses.push(`p.${key} >= ?`);
-                  values.push(opValue);
-                  break;
-                case 'lte':
-                  fieldClauses.push(`p.${key} <= ?`);
-                  values.push(opValue);
-                  break;
-                case 'ne':
-                  fieldClauses.push(`p.${key} IS NOT NULL`);
-                  break;
-                case 'gt':
-                  fieldClauses.push(`p.${key} > ?`);
-                  values.push(opValue);
-                  break;
-                default:
-                  fieldClauses.push(`p.${key} = ?`);
-                  values.push(opValue);
-              }
-            });
-
-            // Combine all operators for this field with AND
-            if (fieldClauses.length > 0) {
-              whereClauses.push(`(${fieldClauses.join(' AND ')})`);
-            }
-          }
+      if (models.OrderItem) {
+        Product.hasMany(models.OrderItem, {
+          foreignKey: 'productId',
+          as: 'orderItems',
+          onDelete: 'SET NULL'
         });
-
-        if (whereClauses.length > 0) {
-          sql += ' WHERE ' + whereClauses.join(' AND ');
-        }
       }
 
-      // Handle order
-      if (options.order) {
-        if (Array.isArray(options.order) && options.order.length > 0) {
-          const [field, direction] = options.order[0];
-          sql += ` ORDER BY p.${field} ${direction}`;
+      if (models.Review) {
+        Product.hasMany(models.Review, {
+          foreignKey: 'productId',
+          as: 'reviews'
+        });
+      }
+    }
+
+    // Hook for virtual fields
+    static afterFind(products) {
+      if (!products) return;
+      
+      const productsArray = Array.isArray(products) ? products : [products];
+      
+      productsArray.forEach(product => {
+        if (!product.dataValues) return;
+        
+        const totalSales = (product.orders && Array.isArray(product.orders)) ? product.orders.length : 0;
+        product.setDataValue('totalSales', totalSales);
+        
+        if (product.reviews && product.reviews.length > 0) {
+          const totalRating = product.reviews.reduce((sum, review) => sum + review.rating, 0);
+          const averageRating = totalRating / product.reviews.length;
+          product.setDataValue('averageRating', averageRating);
         } else {
-          sql += ` ORDER BY ${options.order}`;
-        }
-      }
-
-      // Handle limit and offset for pagination
-      if (options.limit) {
-        sql += ` LIMIT ${parseInt(options.limit)}`;
-      }
-
-      if (options.offset) {
-        sql += ` OFFSET ${parseInt(options.offset)}`;
-      }
-
-      // Execute query
-      const results = await db.query(sql, values);
-
-      // Process results to match Sequelize format
-      return results.map(row => {
-        const product = { ...row };
-
-        // Add related models if included
-        if (options.include) {
-          options.include.forEach(include => {
-            const alias = include.as || include.model.tableName;
-
-            if (include.model.tableName === 'categories' && row.category_name) {
-              product.category = {
-                id: row.categoryId,
-                name: row.category_name
-              };
-              delete product.category_name;
-            }
-
-            if (include.model.tableName === 'restaurants' && row.restaurant_name) {
-              product.restaurant = {
-                id: row.restaurantId,
-                name: row.restaurant_name,
-                logo: row.restaurant_logo
-              };
-              delete product.restaurant_name;
-              delete product.restaurant_logo;
-            }
-          });
-        }
-
-        return product;
-      });
-    } catch (error) {
-      console.error('Error in Product.findAll:', error);
-      throw error;
-    }
-  },
-
-  create: async (data) => {
-    try {
-      // Handle JSON fields
-      const processedData = { ...data };
-      ['nutritionalInfo', 'options'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
+          product.setDataValue('averageRating', 0);
         }
       });
-
-      const columns = Object.keys(processedData).join(', ');
-      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
-      const values = Object.values(processedData);
-
-      const result = await db.query(
-        `INSERT INTO products (${columns}) VALUES (${placeholders})`,
-        values
-      );
-
-      return { id: result.insertId, ...data };
-    } catch (error) {
-      console.error('Error in Product.create:', error);
-      throw error;
-    }
-  },
-
-  update: async (id, data) => {
-    try {
-      // Handle JSON fields
-      const processedData = { ...data };
-      ['nutritionalInfo', 'options'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
-        }
-      });
-
-      const setClauses = Object.keys(processedData)
-        .map(key => `${key} = ?`)
-        .join(', ');
-      const values = [...Object.values(processedData), id];
-
-      const result = await db.query(
-        `UPDATE products SET ${setClauses} WHERE id = ?`,
-        values
-      );
-
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in Product.update:', error);
-      throw error;
-    }
-  },
-
-  destroy: async (id) => {
-    try {
-      const result = await db.query('DELETE FROM products WHERE id = ?', [id]);
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in Product.destroy:', error);
-      throw error;
-    }
-  },
-
-  count: async (where = {}) => {
-    try {
-      let sql = 'SELECT COUNT(*) as count FROM products p';
-      const values = [];
-
-      // Handle where clause
-      if (Object.keys(where).length > 0) {
-        const whereClauses = [];
-
-        Object.entries(where).forEach(([key, value]) => {
-          // Handle simple equality
-          if (typeof value !== 'object' || value === null) {
-            whereClauses.push(`p.${key} = ?`);
-            values.push(value);
-          }
-          // Handle operators like Op.like, Op.gte, etc.
-          else {
-            const fieldClauses = [];
-
-            Object.entries(value).forEach(([opKey, opValue]) => {
-              switch(opKey) {
-                case 'like':
-                  fieldClauses.push(`p.${key} LIKE ?`);
-                  values.push(opValue);
-                  break;
-                case 'gte':
-                  fieldClauses.push(`p.${key} >= ?`);
-                  values.push(opValue);
-                  break;
-                case 'lte':
-                  fieldClauses.push(`p.${key} <= ?`);
-                  values.push(opValue);
-                  break;
-                case 'ne':
-                  fieldClauses.push(`p.${key} IS NOT NULL`);
-                  break;
-                case 'gt':
-                  fieldClauses.push(`p.${key} > ?`);
-                  values.push(opValue);
-                  break;
-                default:
-                  fieldClauses.push(`p.${key} = ?`);
-                  values.push(opValue);
-              }
-            });
-
-            // Combine all operators for this field with AND
-            if (fieldClauses.length > 0) {
-              whereClauses.push(`(${fieldClauses.join(' AND ')})`);
-            }
-          }
-        });
-
-        if (whereClauses.length > 0) {
-          sql += ' WHERE ' + whereClauses.join(' AND ');
-        }
-      }
-
-      const results = await db.query(sql, values);
-      return results[0].count;
-    } catch (error) {
-      console.error('Error in Product.count:', error);
-      throw error;
-    }
-  },
-
-  findAndCountAll: async (options = {}) => {
-    try {
-      // First, get the count
-      const count = await Product.count(options.where || {});
-
-      // Then, get the rows
-      const rows = await Product.findAll(options);
-
-      return { count, rows };
-    } catch (error) {
-      console.error('Error in Product.findAndCountAll:', error);
-      throw error;
     }
   }
-};
 
-module.exports = Product;
+  Product.init({
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    restaurantId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'restaurants',
+        key: 'id'
+      }
+    },
+    categoryId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'categories',
+        key: 'id'
+      }
+    },
+    name: {
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: {
+        notEmpty: true
+      }
+    },
+    description: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    price: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      validate: {
+        min: 0
+      }
+    },
+    discountPrice: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      validate: {
+        min: 0
+      }
+    },
+    image: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    isAvailable: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    isRecommended: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    ingredients: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    allergens: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    preparationTime: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      comment: 'Preparation time in minutes'
+    },
+    isSpicy: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    isVegetarian: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    isVegan: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    isGlutenFree: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    nutritionInfo: {
+      type: DataTypes.JSON,
+      allowNull: true
+    }
+  }, {
+    sequelize,
+    tableName: 'products',
+    modelName: 'Product',
+    timestamps: true,
+    indexes: [
+      {
+        name: 'idx_product_restaurant',
+        fields: ['restaurantId']
+      },
+      {
+        name: 'idx_product_category',
+        fields: ['categoryId']
+      }
+    ],
+    hooks: {
+      afterFind: Product.afterFind
+    }
+  });
+
+  return Product;
+};

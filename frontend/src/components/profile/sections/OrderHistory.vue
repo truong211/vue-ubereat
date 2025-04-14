@@ -57,171 +57,58 @@
       </v-card-title>
 
       <v-card-text>
-        <!-- Loading State -->
-        <div v-if="loading" class="d-flex justify-center my-8">
+        <div v-if="loading" class="text-center py-8">
           <v-progress-circular indeterminate color="primary"></v-progress-circular>
+          <p class="mt-4">Đang tải đơn hàng...</p>
         </div>
 
-        <!-- Error Alert -->
-        <v-alert
-          v-if="error"
-          type="error"
-          variant="tonal"
-          class="mb-4"
-          closable
-          @click:close="error = ''"
-        >
-          {{ error }}
-        </v-alert>
+        <div v-else-if="error" class="text-center py-8">
+          <v-icon size="48" color="error" class="mb-4">mdi-alert-circle</v-icon>
+          <p class="text-body-1">{{ error }}</p>
+          <v-btn color="primary" class="mt-4" @click="loadOrders">
+            Thử lại
+          </v-btn>
+        </div>
 
-        <!-- No Orders -->
-        <v-card
-          v-else-if="filteredOrders.length === 0"
-          variant="outlined"
-          class="text-center py-8 px-4"
-        >
-          <v-icon size="64" color="grey-lighten-1" icon="mdi-receipt-text-remove"></v-icon>
-          <h3 class="text-h6 mt-4 mb-2">
-            {{ orders.length === 0 ? 'Chưa có đơn hàng nào' : 'Không tìm thấy đơn hàng phù hợp' }}
-          </h3>
-          <p class="text-medium-emphasis">
-            {{ orders.length === 0 ? 'Hãy đặt món ngay để thưởng thức những món ăn ngon!' : 'Thử thay đổi bộ lọc để tìm đơn hàng khác' }}
-          </p>
-        </v-card>
+        <div v-else-if="!orders.length" class="text-center py-8">
+          <v-icon size="48" color="grey" class="mb-4">mdi-clipboard-text</v-icon>
+          <p class="text-body-1">Bạn chưa có đơn hàng nào</p>
+          <v-btn color="primary" class="mt-4" to="/restaurants">
+            Đặt món ngay
+          </v-btn>
+        </div>
 
-        <!-- Order List -->
-        <div v-else>
-          <v-card
-            v-for="order in filteredOrders"
-            :key="order.id"
-            variant="outlined"
-            class="mb-4"
-          >
-            <v-card-text>
-              <!-- Order Header -->
-              <div class="d-flex justify-space-between align-center mb-4">
-                <div class="d-flex align-center">
-                  <v-avatar size="40" class="mr-3">
-                    <v-img
-                      :src="order.restaurant.image || '/img/restaurant-placeholder.jpg'"
-                      alt="Restaurant"
-                    ></v-img>
-                  </v-avatar>
-                  <div>
-                    <h3 class="text-subtitle-1 font-weight-bold mb-1">{{ order.restaurant.name }}</h3>
-                    <p class="text-caption text-medium-emphasis mb-0">{{ order.restaurant.address }}</p>
-                  </div>
-                </div>
+        <v-list v-else>
+          <template v-for="(order, index) in orders" :key="order.id">
+            <v-list-item>
+              <template v-slot:prepend>
+                <v-avatar color="grey-lighten-3" size="48">
+                  <v-icon size="24">mdi-shopping</v-icon>
+                </v-avatar>
+              </template>
 
+              <v-list-item-title class="font-weight-bold mb-1">
+                Đơn hàng #{{ order.id }}
+              </v-list-item-title>
+
+              <v-list-item-subtitle>
+                {{ new Date(order.createdAt).toLocaleDateString('vi-VN') }} - 
+                {{ formatPrice(order.total) }}
+              </v-list-item-subtitle>
+
+              <template v-slot:append>
                 <v-chip
-                  :color="getOrderStatusColor(order.status)"
+                  :color="getStatusColor(order.status)"
                   size="small"
                 >
-                  {{ formatOrderStatus(order.status) }}
+                  {{ getStatusText(order.status) }}
                 </v-chip>
-              </div>
+              </template>
+            </v-list-item>
 
-              <!-- Order Items -->
-              <v-list density="compact" class="bg-transparent pa-0">
-                <v-list-item
-                  v-for="(item, index) in order.items"
-                  :key="index"
-                  class="px-0"
-                >
-                  <template v-slot:prepend>
-                    <span class="text-body-2 mr-2">{{ item.quantity }}×</span>
-                  </template>
-                  <v-list-item-title class="text-body-2">
-                    {{ item.name }}
-                  </v-list-item-title>
-                  <template v-slot:append>
-                    <span class="text-body-2">{{ formatPrice(item.price * item.quantity) }}</span>
-                  </template>
-                </v-list-item>
-              </v-list>
-
-              <!-- Order Summary -->
-              <v-divider class="my-3"></v-divider>
-              <div class="d-flex justify-space-between mb-2">
-                <span class="text-body-2">Tổng tiền món:</span>
-                <span class="text-body-2">{{ formatPrice(order.subtotal) }}</span>
-              </div>
-              <div class="d-flex justify-space-between mb-2">
-                <span class="text-body-2">Phí giao hàng:</span>
-                <span class="text-body-2">{{ formatPrice(order.deliveryFee) }}</span>
-              </div>
-              <div v-if="order.discount" class="d-flex justify-space-between mb-2">
-                <span class="text-body-2">Giảm giá:</span>
-                <span class="text-body-2 text-error">-{{ formatPrice(order.discount) }}</span>
-              </div>
-              <div class="d-flex justify-space-between font-weight-bold">
-                <span>Tổng cộng:</span>
-                <span>{{ formatPrice(order.total) }}</span>
-              </div>
-
-              <!-- Actions -->
-              <v-divider class="my-3"></v-divider>
-              <div class="d-flex justify-space-between align-center">
-                <div class="text-caption text-medium-emphasis">
-                  {{ formatDate(order.createdAt) }}
-                </div>
-                <div class="d-flex gap-2">
-                  <v-btn
-                    v-if="canTrackOrder(order.status)"
-                    variant="text"
-                    color="primary"
-                    size="small"
-                    prepend-icon="mdi-map-marker"
-                    :to="`/orders/${order.id}/track`"
-                  >
-                    Theo dõi
-                  </v-btn>
-                  <v-btn
-                    v-if="canReviewOrder(order.status) && !order.reviewed"
-                    variant="text"
-                    color="primary"
-                    size="small"
-                    prepend-icon="mdi-star-outline"
-                    @click="openReviewDialog(order)"
-                  >
-                    Đánh giá
-                  </v-btn>
-                  <v-btn
-                    v-if="canReorderItems(order.status)"
-                    variant="text"
-                    color="primary"
-                    size="small"
-                    prepend-icon="mdi-repeat"
-                    @click="reorderItems(order)"
-                  >
-                    Đặt lại
-                  </v-btn>
-                  <v-btn
-                    v-if="canCancelOrder(order.status)"
-                    variant="text"
-                    color="error"
-                    size="small"
-                    prepend-icon="mdi-close"
-                    @click="openCancelDialog(order)"
-                  >
-                    Hủy đơn
-                  </v-btn>
-                </div>
-              </div>
-            </v-card-text>
-          </v-card>
-
-          <!-- Load More -->
-          <div v-if="hasMoreOrders" class="text-center mt-4">
-            <v-btn
-              variant="outlined"
-              :loading="loadingMore"
-              @click="loadMoreOrders"
-            >
-              Xem thêm
-            </v-btn>
-          </div>
-        </div>
+            <v-divider v-if="index < orders.length - 1"></v-divider>
+          </template>
+        </v-list>
       </v-card-text>
     </v-card>
 
@@ -327,6 +214,7 @@ import { useStore } from 'vuex';
 import { useToast } from 'vue-toastification';
 import { format, formatDistanceToNow } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import axios from 'axios';
 
 export default {
   name: 'OrderHistory',
@@ -429,47 +317,18 @@ export default {
     });
     
     // Methods
-    const fetchOrders = async () => {
+    const loadOrders = async () => {
       loading.value = true;
       error.value = null;
       
       try {
-        const response = await store.dispatch('user/fetchOrders', {
-          page: page.value,
-          limit: perPage.value
-        });
-        
-        orders.value = response?.data || [];
-        hasMoreOrders.value = response?.meta?.hasNextPage || false;
+        const response = await axios.get('/api/orders');
+        orders.value = response.data;
       } catch (err) {
-        console.error('Error fetching orders:', err);
-        error.value = 'Không thể tải lịch sử đơn hàng';
+        console.error('Error loading orders:', err);
+        error.value = 'Không thể tải danh sách đơn hàng';
       } finally {
         loading.value = false;
-      }
-    };
-    
-    const loadMoreOrders = async () => {
-      if (loadingMore.value) return;
-      
-      loadingMore.value = true;
-      
-      try {
-        page.value++;
-        
-        const response = await store.dispatch('user/fetchOrders', {
-          page: page.value,
-          limit: perPage.value
-        });
-        
-        const newOrders = response?.data || [];
-        orders.value = [...orders.value, ...newOrders];
-        hasMoreOrders.value = response?.meta?.hasNextPage || false;
-      } catch (err) {
-        console.error('Error loading more orders:', err);
-        toast.error('Không thể tải thêm đơn hàng');
-      } finally {
-        loadingMore.value = false;
       }
     };
     
@@ -594,29 +453,31 @@ export default {
       }).format(price);
     };
     
-    const getOrderStatusColor = (status) => {
+    const getStatusColor = (status) => {
       const colors = {
         pending: 'warning',
+        confirmed: 'info',
         preparing: 'info',
         delivering: 'primary',
-        delivered: 'success',
+        completed: 'success',
         cancelled: 'error'
       };
       return colors[status] || 'grey';
     };
     
-    const formatOrderStatus = (status) => {
-      const statuses = {
-        pending: 'Đang xử lý',
+    const getStatusText = (status) => {
+      const texts = {
+        pending: 'Chờ xác nhận',
+        confirmed: 'Đã xác nhận',
         preparing: 'Đang chuẩn bị',
         delivering: 'Đang giao',
-        delivered: 'Đã giao',
+        completed: 'Đã hoàn thành',
         cancelled: 'Đã hủy'
       };
-      return statuses[status] || status;
+      return texts[status] || status;
     };
     
-    onMounted(fetchOrders);
+    onMounted(loadOrders);
     
     return {
       loading,
@@ -634,7 +495,7 @@ export default {
       isReviewValid,
       filterOrders,
       resetFilters,
-      loadMoreOrders,
+      loadOrders,
       canTrackOrder,
       canReviewOrder,
       canReorderItems,
@@ -646,8 +507,8 @@ export default {
       reorderItems,
       formatDate,
       formatPrice,
-      getOrderStatusColor,
-      formatOrderStatus
+      getStatusColor,
+      getStatusText
     };
   }
 };

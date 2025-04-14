@@ -7,7 +7,7 @@ class PromotionNotifications {
 
   // Monitor promotion usage and send notifications
   async monitorPromotionUsage(promotionId) {
-    const [promotion] = await db.query('SELECT * FROM promotions WHERE id = ?', [promotionId]);
+    const promotion = await db.Promotion.findByPk(promotionId);
     if (!promotion) return;
 
     // Check usage limits
@@ -26,7 +26,7 @@ class PromotionNotifications {
 
     // If part of a campaign, check campaign budget
     if (promotion.campaign_id) {
-      const [campaign] = await db.query('SELECT * FROM promotion_campaigns WHERE id = ?', [promotion.campaign_id]);
+      const campaign = await db.PromotionCampaign.findByPk(promotion.campaign_id);
       if (campaign && campaign.budget) {
         const budgetUsage = (campaign.spentAmount / campaign.budget) * 100;
         
@@ -49,13 +49,13 @@ class PromotionNotifications {
 
   // Auto-pause campaign and its promotions
   async pauseCampaign(campaignId) {
-    const [campaign] = await db.query('SELECT * FROM promotion_campaigns WHERE id = ?', [campaignId]);
+    const campaign = await db.PromotionCampaign.findByPk(campaignId);
     if (!campaign) return;
 
-    await db.query('UPDATE promotion_campaigns SET status = ? WHERE id = ?', ['paused', campaignId]);
+    await db.PromotionCampaign.update({ status: 'paused' }, { where: { id: campaignId } });
     
     // Pause all promotions in the campaign
-    await db.query('UPDATE promotions SET status = ? WHERE campaign_id = ?', ['paused', campaignId]);
+    await db.Promotion.update({ status: 'paused' }, { where: { campaign_id: campaignId } });
 
     this.notifyAdmin('campaign_alert', {
       type: 'auto_paused',

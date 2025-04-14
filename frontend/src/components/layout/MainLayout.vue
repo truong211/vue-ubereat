@@ -1,93 +1,11 @@
 <template>
   <v-app>
-    <!-- App Bar -->
-    <v-app-bar
-      color="white"
-      elevation="1"
-      class="px-1"
-    >
-      <v-container class="d-flex align-center py-0 px-1 px-sm-2" fluid>
-        <!-- Logo -->
-        <router-link to="/" class="text-decoration-none d-flex align-center">
-          <v-img
-            src="/images/logo.png"
-            alt="UberEat Logo"
-            width="36"
-            height="36"
-            class="mr-1 mr-sm-2"
-          ></v-img>
-          <span class="text-h6 font-weight-bold primary--text d-none d-sm-inline">UberEat</span>
-        </router-link>
-
-        <!-- Quick Search Button -->
-        <v-btn
-          to="/search"
-          icon
-          variant="text"
-          class="ml-1 ml-sm-2"
-          density="comfortable"
-          title="Search"
-        >
-          <v-icon>mdi-magnify</v-icon>
-        </v-btn>
-
-        <v-spacer></v-spacer>
-
-        <!-- Desktop Navigation -->
-        <div class="d-none d-md-flex align-center">
-          <v-btn
-            v-for="item in navigationItems"
-            :key="item.title"
-            :to="item.to"
-            variant="text"
-            class="mx-1"
-          >
-            {{ item.title }}
-          </v-btn>
-
-          <!-- Admin Button (only shown for admin users) -->
-          <v-btn
-            v-if="isAdmin"
-            to="/admin"
-            variant="text"
-            color="primary"
-            class="mx-1"
-            prepend-icon="mdi-shield-account"
-          >
-            Admin Panel
-          </v-btn>
-
-          <v-divider vertical class="mx-4"></v-divider>
-
-          <!-- Notifications Center (Desktop) -->
-          <notification-center v-if="isLoggedIn" class="mr-2"></notification-center>
-
-          <!-- Profile Button - Moved before cart button -->
-          <v-btn
-            v-if="isLoggedIn"
-            to="/profile"
-            color="primary"
-            variant="tonal"
-            class="mr-2"
-            prepend-icon="mdi-account"
-            density="comfortable"
-          >
-            <span class="d-none d-md-inline d-lg-none">Me</span>
-            <span class="d-none d-lg-inline">Profile</span>
-          </v-btn>
-
-          <!-- Cart Button -->
-          <v-btn
-            to="/cart"
-            icon
-            variant="text"
-            class="mr-2"
-          >
-            <v-badge
-              :content="cartItemCount"
-              :model-value="cartItemCount > 0"
-              color="primary"
-            >
+    <!-- Content only - No header -->
+    <v-main>
+      <!-- Slot for page content -->
+      <slot></slot>
+    </v-main>
+  </v-app>
               <v-icon>mdi-cart</v-icon>
             </v-badge>
           </v-btn>
@@ -119,18 +37,12 @@
 
               <v-card>
                 <v-list>
-                  <v-list-item>
-                    <template v-slot:prepend>
-                      <v-avatar size="40">
-                        <v-img
-                          :src="userAvatar || '/images/default-avatar.png'"
-                          alt="User Avatar"
-                        ></v-img>
-                      </v-avatar>
-                    </template>
-                    <v-list-item-title>{{ userName }}</v-list-item-title>
-                    <v-list-item-subtitle>{{ userEmail }}</v-list-item-subtitle>
-                  </v-list-item>
+                  <v-list-item
+                    v-if="isLoggedIn"
+                    :prepend-avatar="userAvatar || '/images/default-avatar.png'"
+                    :title="userName"
+                    :subtitle="userName !== userEmail ? userEmail : undefined"
+                  ></v-list-item>
 
                   <v-divider></v-divider>
 
@@ -153,6 +65,12 @@
                   ></v-list-item>
 
                   <v-divider></v-divider>
+
+                  <v-list-item
+                    prepend-icon="mdi-account-edit"
+                    title="Update Profile Info"
+                    @click="updateUserProfile"
+                  ></v-list-item>
 
                   <v-list-item
                     prepend-icon="mdi-logout"
@@ -197,7 +115,7 @@
             density="comfortable"
             prepend-icon="mdi-account"
           >
-            <span class="d-none d-sm-inline">Profile</span>
+            <span class="d-inline">{{ userName }}</span>
           </v-btn>
 
           <!-- Mobile Cart Button -->
@@ -239,7 +157,7 @@
           v-if="isLoggedIn"
           :prepend-avatar="userAvatar || '/images/default-avatar.png'"
           :title="userName"
-          :subtitle="userEmail"
+          :subtitle="userName !== userEmail ? userEmail : undefined"
         ></v-list-item>
 
         <v-divider v-if="isLoggedIn" class="mb-2"></v-divider>
@@ -275,6 +193,11 @@
 
         <template v-if="isLoggedIn">
           <v-divider class="my-2"></v-divider>
+          <v-list-item
+            prepend-icon="mdi-account-edit"
+            title="Update Profile Info"
+            @click="updateUserProfile"
+          ></v-list-item>
           <v-list-item
             prepend-icon="mdi-logout"
             title="Logout"
@@ -477,8 +400,11 @@
 </template>
 
 <script>
-import { mapState, mapGetters, mapActions } from 'vuex';
-import axios from 'axios';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+import { useCartStore } from '@/stores/cart';
+import { useNotificationStore } from '@/stores/notifications.js';
 import NotificationCenter from '@/components/notifications/NotificationCenter.vue';
 
 export default {
@@ -488,182 +414,135 @@ export default {
     NotificationCenter
   },
 
-  data() {
-    return {
-      drawer: false,
-      userMenu: false,
+  setup() {
+    const router = useRouter();
+    const authStore = useAuthStore();
+    const cartStore = useCartStore();
+    const notificationStore = useNotificationStore();
 
-      navigationItems: [
-        { title: 'Home', to: '/' },
-        { title: 'Food', to: '/foods' },
-        { title: 'Restaurants', to: '/restaurants' },
-        { title: 'Search', to: '/search' },
-        { title: 'Promotions', to: '/promotions' },
-        { title: 'About Us', to: '/about' },
-        { title: 'Contact', to: '/contact' }
-      ],
+    const userMenu = ref(false);
+    const drawer = ref(false);
+    const staticPages = ref([]);
 
-      userMenuItems: [
-        { title: 'My Profile', to: '/profile', icon: 'mdi-account' },
-        { title: 'My Orders', to: '/orders', icon: 'mdi-receipt' },
-        { title: 'Favorites', to: '/profile/favorites', icon: 'mdi-heart' },
-        { title: 'Notifications', to: '/profile/notifications', icon: 'mdi-bell-outline' },
-        { title: 'Addresses', to: '/profile/addresses', icon: 'mdi-map-marker' },
-        { title: 'Payment Methods', to: '/profile/payment-methods', icon: 'mdi-credit-card' }
-      ],
+    // Social links
+    const socialLinks = [
+      { icon: 'mdi-facebook', url: '#' },
+      { icon: 'mdi-twitter', url: '#' },
+      { icon: 'mdi-instagram', url: '#' },
+      { icon: 'mdi-youtube', url: '#' }
+    ];
 
-      socialLinks: [
-        { icon: 'mdi-facebook', url: '#' },
-        { icon: 'mdi-twitter', url: '#' },
-        { icon: 'mdi-instagram', url: '#' },
-        { icon: 'mdi-youtube', url: '#' }
-      ],
+    // Quick links
+    const quickLinks = [
+      { title: 'Home', to: '/' },
+      { title: 'Restaurants', to: '/restaurants' },
+      { title: 'Search', to: '/search' },
+      { title: 'About Us', to: '/about' },
+      { title: 'Contact', to: '/contact' },
+      { title: 'Become a Partner', to: '/partner' }
+    ];
 
-      quickLinks: [
-        { title: 'Home', to: '/' },
-        { title: 'Food', to: '/foods' },
-        { title: 'Restaurants', to: '/restaurants' },
-        { title: 'Search', to: '/search' },
-        { title: 'Promotions', to: '/promotions' },
-        { title: 'About Us', to: '/about' },
-        { title: 'Contact', to: '/contact' },
-        { title: 'Become a Partner', to: '/partner' }
-      ],
+    // Footer categories
+    const footerCategories = [
+      { title: 'Vietnamese', to: '/restaurants?category=vietnamese' },
+      { title: 'Japanese', to: '/restaurants?category=japanese' },
+      { title: 'Italian', to: '/restaurants?category=italian' },
+      { title: 'American', to: '/restaurants?category=american' },
+      { title: 'Thai', to: '/restaurants?category=thai' },
+      { title: 'Indian', to: '/restaurants?category=indian' }
+    ];
 
-      footerCategories: [
-        { title: 'Vietnamese', to: '/restaurants?category=vietnamese' },
-        { title: 'Japanese', to: '/restaurants?category=japanese' },
-        { title: 'Italian', to: '/restaurants?category=italian' },
-        { title: 'American', to: '/restaurants?category=american' },
-        { title: 'Thai', to: '/restaurants?category=thai' },
-        { title: 'Indian', to: '/restaurants?category=indian' }
-      ],
+    // Legal links
+    const legalLinks = [
+      { title: 'Terms of Service', to: '/terms' },
+      { title: 'Privacy Policy', to: '/privacy' },
+      { title: 'Cookie Policy', to: '/cookies' }
+    ];
 
-      legalLinks: [
-        { title: 'Terms of Service', to: '/terms' },
-        { title: 'Privacy Policy', to: '/privacy' },
-        { title: 'Cookie Policy', to: '/cookies' }
-      ],
+    // Auth computed properties
+    const isLoggedIn = computed(() => authStore.isLoggedIn);
+    const isAdmin = computed(() => authStore.userRole === 'admin');
+    const userName = computed(() => authStore.currentUser?.fullName || 'User');
+    const userEmail = computed(() => authStore.currentUser?.email || '');
+    const userAvatar = computed(() => authStore.currentUser?.avatar || null);
 
-      staticPages: [],
-    };
-  },
+    // Cart computed property
+    const cartItemCount = computed(() => cartStore.itemCount);
 
-  async created() {
-    // Fetch static pages for footer
-    try {
-      const response = await axios.get('/api/pages');
+    // Navigation items
+    const navigationItems = [
+      { title: 'Home', to: '/' },
+      { title: 'Restaurants', to: '/restaurants' },
+      { title: 'About', to: '/about' }
+    ];
 
-      // Check if response data is in expected format
-      if (response?.data?.data?.pages) {
-        this.staticPages = response.data.data.pages.filter(page => page.published);
-      } else if (response?.data?.pages) {
-        // Alternative format sometimes used
-        this.staticPages = response.data.pages.filter(page => page.published);
-      } else if (Array.isArray(response?.data)) {
-        // Direct array in response
-        this.staticPages = response.data.filter(page => page.published);
-      } else {
-        // Use fallback data if response format is unexpected
-        this.useStaticPagesFallback();
-      }
-    } catch (error) {
-      console.error('Error fetching static pages:', error);
-      // Fallback for static pages if API is unavailable
-      this.useStaticPagesFallback();
-    }
+    // User menu items
+    const userMenuItems = [
+      { title: 'My Profile', to: '/profile', icon: 'mdi-account' },
+      { title: 'My Orders', to: '/orders', icon: 'mdi-package' },
+      { title: 'Favorites', to: '/favorites', icon: 'mdi-heart' },
+      { title: 'Settings', to: '/settings', icon: 'mdi-cog' }
+    ];
 
-    // Initialize push notifications if user is logged in
-    if (this.isLoggedIn) {
-      this.initPushNotifications();
-    }
-  },
-
-  computed: {
-    ...mapState({
-      user: state => state.auth.user,
-      cart: state => state.cart.items
-    }),
-
-    ...mapGetters('notifications', [
-      'unreadCount'
-    ]),
-
-    isLoggedIn() {
-      return !!this.user;
-    },
-
-    userName() {
-      if (!this.user) return '';
-      const firstName = this.user.firstName || '';
-      const lastName = this.user.lastName || '';
-      if (!firstName && !lastName) {
-        return this.user.username || this.user.email || 'User';
-      }
-      return `${firstName} ${lastName}`.trim();
-    },
-
-    userEmail() {
-      return this.user?.email || '';
-    },
-
-    userAvatar() {
-      return this.user?.photo || null;
-    },
-
-    cartItemCount() {
-      if (!this.cart) return 0;
-      return this.cart.reduce((total, item) => total + item.quantity, 0);
-    },
-
-    unreadNotificationCount() {
-      return this.unreadCount;
-    },
-
-    isAdmin() {
-      return this.user?.role === 'admin';
-    }
-  },
-
-  methods: {
-    ...mapActions({
-      logoutAction: 'auth/logout'
-    }),
-
-    ...mapActions('notifications', [
-      'initPushNotifications'
-    ]),
-
-    async logout() {
+    // Methods
+    const logout = async () => {
       try {
-        await this.logoutAction();
-        this.userMenu = false;
-        this.drawer = false;
-        this.$router.push('/login');
-        this.$toast.success('Logged out successfully');
+        await authStore.logout();
+        userMenu.value = false;
+        drawer.value = false;
+        router.push('/login');
       } catch (error) {
-        this.$toast.error('Failed to logout');
         console.error('Logout error:', error);
       }
-    },
+    };
 
-    useStaticPagesFallback() {
-      this.staticPages = [
-        { title: 'About Us', slug: 'about', published: true },
-        { title: 'Terms of Service', slug: 'terms', published: true },
-        { title: 'Privacy Policy', slug: 'privacy', published: true },
-        { title: 'Contact', slug: 'contact', published: true }
-      ];
-    }
-  },
+    const updateUserProfile = () => {
+      userMenu.value = false;
+      drawer.value = false;
+      router.push('/profile/edit');
+    };
 
-  watch: {
-    // Initialize push notifications when user logs in
-    user(newUser) {
-      if (newUser) {
-        this.initPushNotifications();
+    // Initialize
+    onMounted(async () => {
+      if (isLoggedIn.value) {
+        await notificationStore.initPushNotifications();
       }
-    }
+    });
+
+    // Watch for auth state changes
+    watch(isLoggedIn, (newValue) => {
+      if (!newValue) {
+        userMenu.value = false;
+        drawer.value = false;
+      }
+    });
+
+    watch(authStore.currentUser, (newUser) => {
+      if (newUser) {
+        notificationStore.initPushNotifications();
+      }
+    });
+
+    return {
+      userMenu,
+      drawer,
+      staticPages,
+      isLoggedIn,
+      isAdmin,
+      userName,
+      userEmail,
+      userAvatar,
+      cartItemCount,
+      navigationItems,
+      userMenuItems,
+      logout,
+      updateUserProfile,
+      socialLinks,
+      quickLinks,
+      footerCategories,
+      legalLinks,
+      unreadNotificationCount: notificationStore.unreadCount
+    };
   }
 };
 </script>

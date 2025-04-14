@@ -1,8 +1,157 @@
 const { validationResult } = require('express-validator');
-const Restaurant = require('../models/restaurant.model');
+const { getDb } = require('../models');
+let db = null;
+
+const initDb = async () => {
+  if (!db) {
+    db = await getDb();
+  }
+  return db;
+};
 const { AppError } = require('../middleware/error.middleware');
-const db = require('../config/database');
+const dbConnection = require('../config/database');
 const { format } = require('date-fns');
+const { Op, literal } = require('sequelize');
+const Category = require('../models/category.model');
+const Product = require('../models/product.model');
+const User = require('../models/user.model');
+const logger = require('../utils/logger');
+
+/**
+ * Get featured restaurants
+ * @route GET /api/restaurants/featured
+ * @access Public
+ */
+exports.getFeaturedRestaurants = async (req, res, next) => {
+  try {
+    // Validate and parse query parameters
+    const limit = Math.min(parseInt(req.query.limit) || 6, 50); // Cap at 50
+    const page = Math.max(parseInt(req.query.page) || 1, 1); // Minimum page 1
+    const sort = ['rating', 'name'].includes(req.query.sort) ? req.query.sort : 'rating';
+
+    const where = {
+      isActive: true,
+      isVerified: true,
+      rating: { [Op.gte]: 4.0 }
+    };
+
+    const { Restaurant } = await initDb();
+    const { rows: restaurants, count } = await Restaurant.findAndCountAll({
+      where,
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit),
+      order: [[sort === 'rating' ? 'rating' : 'name', 'DESC']],
+      attributes: [
+        'id', 'name', 'description', 'logo', 'coverImage',
+        'address', 'rating', 'totalRatings', 'priceRange',
+        'deliveryFee', 'minimumOrderAmount', 'estimatedDeliveryTime',
+        'cuisine'
+      ]
+    });
+
+    res.json({
+      items: restaurants,
+      total: count,
+      page: parseInt(page),
+      pages: Math.ceil(count / parseInt(limit))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get nearby restaurants
+ * @route GET /api/restaurants/nearby
+ * @access Public
+ */
+exports.getNearbyRestaurants = async (req, res, next) => {
+  try {
+    const {
+      latitude,
+      longitude,
+      radius = 10,
+      limit = 4,
+      page = 1
+    } = req.query;
+
+    if (!latitude || !longitude) {
+      return next(new AppError('Latitude and longitude are required', 400));
+    }
+
+    const distanceCalculation = `
+      (6371 * acos(
+        cos(radians(${parseFloat(latitude)})) *
+        cos(radians(latitude)) *
+        cos(radians(longitude) - radians(${parseFloat(longitude)})) +
+        sin(radians(${parseFloat(latitude)})) *
+        sin(radians(latitude))
+      ))`;
+
+    const { Restaurant } = await initDb();
+    const { rows: restaurants, count } = await Restaurant.findAndCountAll({
+      attributes: {
+        include: [
+          [literal(distanceCalculation), 'distance']
+        ]
+      },
+      where: {
+        isActive: true,
+        isVerified: true
+      },
+      having: literal(`distance <= ${parseFloat(radius)}`),
+      order: [[literal('distance'), 'ASC']],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit)
+    });
+
+    res.json({
+      items: restaurants,
+      total: count,
+      page: parseInt(page),
+      pages: Math.ceil(count / parseInt(limit))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get popular restaurants
+ * @route GET /api/restaurants/popular
+ * @access Public
+ */
+exports.getPopularRestaurants = async (req, res, next) => {
+  try {
+    const {
+      limit = 6,
+      page = 1
+    } = req.query;
+
+    const { Restaurant } = await initDb();
+    const { rows: restaurants, count } = await Restaurant.findAndCountAll({
+      where: {
+        isActive: true,
+        isVerified: true
+      },
+      order: [
+        ['totalRatings', 'DESC'],
+        ['rating', 'DESC']
+      ],
+      limit: parseInt(limit),
+      offset: (parseInt(page) - 1) * parseInt(limit)
+    });
+
+    res.json({
+      items: restaurants,
+      total: count,
+      page: parseInt(page),
+      pages: Math.ceil(count / parseInt(limit))
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Calculate distance between two coordinates using Haversine formula
@@ -16,9 +165,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; // Radius of the earth in km
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
+  const a =
     Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon/2) * Math.sin(dLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
@@ -31,10 +180,10 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
  */
 exports.getAllRestaurants = async (req, res, next) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      sort = 'rating', 
+    const {
+      page = 1,
+      limit = 10,
+      sort = 'name', // Changed default sort from 'rating' to 'name'
       order = 'desc',
       search = '',
       cuisine = '',
@@ -50,138 +199,100 @@ exports.getAllRestaurants = async (req, res, next) => {
     } = req.query;
 
     // Build basic filter object
-    const filter = { isActive: true };
+    const filter = { isActive: isActive === 'true' };
 
-    // Due to the simplification of our model, advanced filtering needs to be handled manually
-    // These filters will be applied after we get results from the database
-
-    // Get restaurants with basic filtering and pagination
-    try {
-      // Get all restaurants - we'll filter manually since our model doesn't have the same
-      // advanced filtering capabilities as Sequelize
-      const allRestaurants = await Restaurant.findAll({ 
-        where: filter, 
-        order: `${sort} ${order}` 
-      });
-
-      // Apply filters manually
-      let filteredRestaurants = allRestaurants;
-      
-      // Apply search filter if provided
-      if (search) {
-        const searchLower = search.toLowerCase();
-        filteredRestaurants = filteredRestaurants.filter(r => 
-          (r.name && r.name.toLowerCase().includes(searchLower)) ||
-          (r.description && r.description.toLowerCase().includes(searchLower)) ||
-          (r.cuisineType && r.cuisineType.toLowerCase().includes(searchLower)) ||
-          (r.address && r.address.toLowerCase().includes(searchLower))
-        );
-      }
-
-      // Apply cuisine filter if provided
-      if (cuisine && cuisine !== 'null' && cuisine !== 'all') {
-        filteredRestaurants = filteredRestaurants.filter(r => 
-          r.cuisineType && r.cuisineType.toLowerCase() === cuisine.toLowerCase()
-        );
-      }
-
-      // Apply rating filter
-      if (minRating && minRating !== 'null') {
-        const minRatingValue = parseFloat(minRating);
-        filteredRestaurants = filteredRestaurants.filter(r => 
-          r.rating && r.rating >= minRatingValue
-        );
-      }
-
-      // Apply delivery fee filter
-      if (maxDeliveryFee && maxDeliveryFee !== 'null') {
-        const maxFeeValue = parseFloat(maxDeliveryFee);
-        filteredRestaurants = filteredRestaurants.filter(r => 
-          r.deliveryFee && r.deliveryFee <= maxFeeValue
-        );
-      }
-
-      // Apply delivery time filter
-      if (maxDeliveryTime && maxDeliveryTime !== 'null') {
-        const maxTimeValue = parseInt(maxDeliveryTime);
-        filteredRestaurants = filteredRestaurants.filter(r => 
-          r.estimatedDeliveryTime && r.estimatedDeliveryTime <= maxTimeValue
-        );
-      }
-
-      // Apply price range filter
-      if (priceRange && priceRange !== 'null') {
-        // If priceRange is a comma-separated range like "10000,50000"
-        if (priceRange.includes(',')) {
-          const [min, max] = priceRange.split(',').map(Number);
-          filteredRestaurants = filteredRestaurants.filter(r => 
-            r.priceRange && r.priceRange >= min && r.priceRange <= max
-          );
-        } else {
-          filteredRestaurants = filteredRestaurants.filter(r => 
-            r.priceRange && r.priceRange === parseInt(priceRange)
-          );
-        }
-      }
-
-      // Calculate distance if coordinates are provided
-      if (latitude && longitude) {
-        filteredRestaurants = filteredRestaurants.map(restaurant => {
-          const rest = { ...restaurant };
-          if (restaurant.latitude && restaurant.longitude) {
-            rest.distance = calculateDistance(
-              parseFloat(latitude),
-              parseFloat(longitude),
-              parseFloat(restaurant.latitude),
-              parseFloat(restaurant.longitude)
-            );
-          } else {
-            rest.distance = null;
-          }
-          return rest;
-        });
-
-        // Filter by max distance if provided
-        if (maxDistance && maxDistance !== 'null') {
-          const maxDistValue = parseFloat(maxDistance);
-          filteredRestaurants = filteredRestaurants.filter(r => 
-            r.distance !== null && r.distance <= maxDistValue
-          );
-        }
-
-        // Sort by distance if requested
-        if (sort === 'distance') {
-          filteredRestaurants.sort((a, b) => {
-            // Handle null distances (put them at the end)
-            if (a.distance === null) return 1;
-            if (b.distance === null) return -1;
-            
-            // Sort by distance
-            return order === 'asc' ? a.distance - b.distance : b.distance - a.distance;
-          });
-        }
-      }
-
-      // Get total count of filtered restaurants before pagination
-      const totalCount = filteredRestaurants.length;
-
-      // Apply pagination manually
-      const offset = (parseInt(page) - 1) * parseInt(limit);
-      filteredRestaurants = filteredRestaurants.slice(offset, offset + parseInt(limit));
-
-      res.status(200).json({
-        status: 'success',
-        results: totalCount,
-        totalPages: Math.ceil(totalCount / parseInt(limit)),
-        currentPage: parseInt(page),
-        data: {
-          restaurants: filteredRestaurants
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching restaurants:', error);
-      throw new AppError('Error fetching restaurants', 500);
+    // Add search filter
+    if (search) {
+      filter[Op.or] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { description: { [Op.like]: `%${search}%` } },
+        { cuisine: { [Op.like]: `%${cuisine}%` } },
+        { address: { [Op.like]: `%${search}%` } }
+      ];
     }
+
+    // Add cuisine filter
+    if (cuisine && cuisine !== 'null' && cuisine !== 'all') {
+      filter.cuisine = { [Op.like]: `%${cuisine}%` };
+    }
+
+    // Add rating filter - temporarily use 'rating' instead of 'averageRating'
+    if (minRating && minRating !== 'null' && parseFloat(minRating) > 0) {
+      filter.rating = { [Op.gte]: parseFloat(minRating) };
+    }
+
+    // Add delivery fee filter
+    if (maxDeliveryFee && maxDeliveryFee !== 'null') {
+      filter.deliveryFee = { [Op.lte]: parseFloat(maxDeliveryFee) };
+    }
+
+    // Add delivery time filter
+    if (maxDeliveryTime && maxDeliveryTime !== 'null') {
+      filter.estimatedDeliveryTime = { [Op.lte]: parseInt(maxDeliveryTime) };
+    }
+
+    // Add price range filter
+    if (priceRange && priceRange !== 'null') {
+      filter.priceRange = parseInt(priceRange);
+    }
+
+    // Distance calculation & filtering
+    let distanceAttributes = [];
+    let havingClause = null;
+    if (latitude && longitude) {
+      const lat = parseFloat(latitude);
+      const lon = parseFloat(longitude);
+      const distanceCalculation = `
+        (6371 * acos(
+          cos(radians(${lat})) * cos(radians(latitude)) *
+          cos(radians(longitude) - radians(${lon})) +
+          sin(radians(${lat})) * sin(radians(latitude))
+        ))`;
+      distanceAttributes.push([literal(distanceCalculation), 'distance']);
+
+      if (maxDistance && maxDistance !== 'null') {
+        havingClause = literal(`distance <= ${parseFloat(maxDistance)}`);
+      }
+    }
+
+    // Sorting - use basic fields instead of averageRating
+    let orderOption;
+    if (sort === 'distance' && latitude && longitude) {
+      orderOption = [[literal('distance'), order === 'desc' ? 'DESC' : 'ASC']];
+    } else if (sort === 'rating') {
+      orderOption = [['rating', order === 'desc' ? 'DESC' : 'ASC']]; // Using 'rating' field instead of 'averageRating'
+    } else {
+      const validSortColumns = ['name', 'deliveryFee', 'estimatedDeliveryTime', 'createdAt'];
+      const sortColumn = validSortColumns.includes(sort) ? sort : 'name';
+      orderOption = [[sortColumn, order === 'desc' ? 'DESC' : 'ASC']];
+    }
+
+    // Pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Execute Query
+    const { Restaurant } = await initDb();
+    const { rows: restaurants, count: totalCount } = await Restaurant.findAndCountAll({
+      where: filter,
+      attributes: {
+        include: distanceAttributes
+      },
+      having: havingClause,
+      order: orderOption,
+      limit: parseInt(limit),
+      offset,
+      distinct: true
+    });
+
+    res.status(200).json({
+      status: 'success',
+      results: totalCount,
+      totalPages: Math.ceil(totalCount / parseInt(limit)),
+      currentPage: parseInt(page),
+      data: {
+        restaurants: restaurants
+      }
+    });
   } catch (error) {
     next(error);
   }
@@ -194,9 +305,9 @@ exports.getAllRestaurants = async (req, res, next) => {
  */
 exports.searchRestaurantsByLocation = async (req, res, next) => {
   try {
-    const { 
-      latitude, 
-      longitude, 
+    const {
+      latitude,
+      longitude,
       radius = 10, // Default 10km radius
       page = 1,
       limit = 10
@@ -283,30 +394,33 @@ exports.getRestaurantById = async (req, res, next) => {
 
     // Get restaurant categories
     try {
-      const categories = await db.query(`
-        SELECT c.id, c.name, c.description, c.displayOrder 
+      const categories = await dbConnection.query(`
+        SELECT c.id, c.name, c.description, c.displayOrder
         FROM categories c
         JOIN restaurant_categories rc ON c.id = rc.category_id
         WHERE rc.restaurant_id = ?
         ORDER BY c.displayOrder
       `, [id]);
-      
+
       // Get products for each category
       for (const category of categories) {
-        const products = await db.query(`
-          SELECT id, name, description, price, image, preparationTime, 
-            isSpicy, isVegetarian, isVegan, isGlutenFree, spicyLevel,
-            isPopular, isRecommended, allergens, ingredients, nutritionalInfo
-          FROM products
+        const products = await dbConnection.query(`
+          SELECT p.id, p.name, p.description, p.price, p.image,
+            rs.estimatedPrepTime as preparationTimeMinutes,
+            p.isSpicy, p.isVegetarian, p.isVegan, p.isGlutenFree, p.spicyLevel,
+            p.isPopular, p.isRecommended, p.allergens, p.ingredients, p.nutritionalInfo
+          FROM products p
+          JOIN restaurants r ON p.restaurant_id = r.id
+          LEFT JOIN restaurant_settings rs ON r.id = rs.restaurant_id
           WHERE category_id = ? AND status = 'available'
           ORDER BY displayOrder
         `, [category.id]);
-        
+
         category.products = products;
       }
-      
+
       // Get reviews
-      const reviews = await db.query(`
+      const reviews = await dbConnection.query(`
         SELECT r.id, r.rating, r.comment, r.createdAt, r.images,
           u.id as userId, u.fullName, u.profileImage
         FROM reviews r
@@ -315,7 +429,7 @@ exports.getRestaurantById = async (req, res, next) => {
         ORDER BY r.createdAt DESC
         LIMIT 5
       `, [id]);
-      
+
       // Structure reviews with user info
       const formattedReviews = reviews.map(review => ({
         id: review.id,
@@ -329,7 +443,7 @@ exports.getRestaurantById = async (req, res, next) => {
           profileImage: review.profileImage
         }
       }));
-      
+
       // Return complete restaurant data
     res.status(200).json({
       status: 'success',
@@ -363,56 +477,131 @@ exports.createRestaurant = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'You must be logged in to create a restaurant'
+      });
+    }
+
+    console.log('Create restaurant request details:');
+    console.log('- User:', req.user ? { id: req.user.id, role: req.user.role } : 'No user');
+    console.log('- Request body:', JSON.stringify(req.body, null, 2));
+    console.log('- Files:', req.files ? Object.keys(req.files) : 'No files');
+
+    // Extract fields from request body with default values
     const {
-      name,
-      description,
-      address,
-      phone,
-      email,
-      cuisineType,
-      priceRange,
-      openingHours,
-      deliveryFee,
-      minOrderAmount,
-      estimatedDeliveryTime,
-      latitude,
-      longitude
-    } = req.body;
+      name = '',
+      description = '',
+      address = '',
+      phone = '',
+      email = '',
+      cuisine = '',
+      priceRange = '$$',
+      deliveryFee = 0,
+      minOrderAmount = 0,
+      estimatedDeliveryTime = 30,
+      latitude = null,
+      longitude = null
+    } = req.body || {};
 
-    // Create restaurant
-    const restaurant = await Restaurant.create({
-      userId: req.user.id,
-      name,
-      description,
-      address,
-      phone,
-      email,
-      cuisineType,
-      priceRange,
-      openingHours: openingHours ? JSON.parse(openingHours) : null,
-      deliveryFee,
-      minOrderAmount,
-      estimatedDeliveryTime,
-      latitude,
-      longitude,
-      logo: req.files?.logo?.[0]?.filename,
-      coverImage: req.files?.coverImage?.[0]?.filename
-    });
+    // Validate required fields
+    if (!name || !cuisine || !address) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Name, cuisine, and address are required'
+      });
+    }
 
-    // Update user role to restaurant
-    await User.update(
-      { role: 'restaurant' },
-      { where: { id: req.user.id } }
-    );
+    // Check if req.files is defined before accessing it
+    let logoFilename = null;
+    let coverImageFilename = null;
 
-    res.status(201).json({
-      status: 'success',
-      data: {
-        restaurant
+    if (req.files) {
+      console.log('Files provided:', Object.keys(req.files));
+      if (req.files.logo && req.files.logo[0]) {
+        logoFilename = req.files.logo[0].filename;
+        console.log('Logo found:', logoFilename);
       }
-    });
+
+      if (req.files.coverImage && req.files.coverImage[0]) {
+        coverImageFilename = req.files.coverImage[0].filename;
+        console.log('Cover image found:', coverImageFilename);
+      }
+    }
+
+    // Start transaction
+    console.log('Starting database transaction');
+    await db.query('START TRANSACTION');
+
+    try {
+      // Insert restaurant using direct SQL
+      console.log('Inserting new restaurant record');
+      const result = await db.query(`
+        INSERT INTO restaurants (
+          ownerId, name, description, address, phone, email,
+          cuisineType, priceRange, deliveryFee, minimumOrderAmount,
+          estimatedDeliveryTime, latitude, longitude,
+          logo, coverImage, createdAt, updatedAt
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
+        )
+      `, [
+        req.user.id,
+        name,
+        description,
+        address,
+        phone,
+        email,
+        cuisine,
+        priceRange,
+        deliveryFee,
+        minOrderAmount,
+        estimatedDeliveryTime,
+        latitude,
+        longitude,
+        logoFilename,
+        coverImageFilename
+      ]);
+
+      const restaurantId = result.insertId;
+      console.log('Restaurant created with ID:', restaurantId);
+
+      // Update user role to restaurant
+      console.log('Updating user role to restaurant');
+      await db.query(`
+        UPDATE users SET role = 'restaurant' WHERE id = ?
+      `, [req.user.id]);
+
+      // Commit transaction
+      console.log('Committing transaction');
+      await db.query('COMMIT');
+
+      // Get the created restaurant
+      console.log('Fetching created restaurant details');
+      const [restaurants] = await db.query('SELECT * FROM restaurants WHERE id = ?', [restaurantId]);
+
+      console.log('Restaurant creation successful');
+      res.status(201).json({
+        status: 'success',
+        message: 'Restaurant created successfully',
+        data: restaurants[0]
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      console.error('Error during restaurant creation, rolling back:', error);
+      await db.query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
-    next(error);
+    console.error('Error creating restaurant:', error);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to create restaurant',
+      error: error.message
+    });
   }
 };
 
@@ -429,6 +618,14 @@ exports.updateRestaurant = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'You must be logged in to update a restaurant'
+      });
+    }
+
     const { id } = req.params;
     const {
       name,
@@ -436,7 +633,7 @@ exports.updateRestaurant = async (req, res, next) => {
       address,
       phone,
       email,
-      cuisineType,
+      cuisine,
       priceRange,
       openingHours,
       deliveryFee,
@@ -447,49 +644,164 @@ exports.updateRestaurant = async (req, res, next) => {
       longitude
     } = req.body;
 
-    // Find restaurant
-    const restaurant = await Restaurant.findOne({
-      where: { id, userId: req.user.id }
-    });
+    // Start transaction
+    await db.query('START TRANSACTION');
 
-    if (!restaurant) {
-      return next(new AppError('Restaurant not found or you are not authorized', 404));
-    }
+    try {
+      // Find restaurant to verify ownership
+      const [restaurants] = await db.query(
+        'SELECT * FROM restaurants WHERE id = ? AND ownerId = ?',
+        [id, req.user.id]
+      );
 
-    // Update restaurant
-    restaurant.name = name || restaurant.name;
-    restaurant.description = description || restaurant.description;
-    restaurant.address = address || restaurant.address;
-    restaurant.phone = phone || restaurant.phone;
-    restaurant.email = email || restaurant.email;
-    restaurant.cuisineType = cuisineType || restaurant.cuisineType;
-    restaurant.priceRange = priceRange || restaurant.priceRange;
-    restaurant.openingHours = openingHours ? JSON.parse(openingHours) : restaurant.openingHours;
-    restaurant.deliveryFee = deliveryFee !== undefined ? deliveryFee : restaurant.deliveryFee;
-    restaurant.minOrderAmount = minOrderAmount !== undefined ? minOrderAmount : restaurant.minOrderAmount;
-    restaurant.estimatedDeliveryTime = estimatedDeliveryTime || restaurant.estimatedDeliveryTime;
-    restaurant.isActive = isActive !== undefined ? isActive : restaurant.isActive;
-    restaurant.latitude = latitude || restaurant.latitude;
-    restaurant.longitude = longitude || restaurant.longitude;
-
-    // Update images if provided
-    if (req.files?.logo?.[0]) {
-      restaurant.logo = req.files.logo[0].filename;
-    }
-    if (req.files?.coverImage?.[0]) {
-      restaurant.coverImage = req.files.coverImage[0].filename;
-    }
-
-    await restaurant.save();
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        restaurant
+      if (!restaurants || restaurants.length === 0) {
+        await db.query('ROLLBACK');
+        return res.status(404).json({
+          status: 'error',
+          message: 'Restaurant not found or you are not authorized'
+        });
       }
-    });
+
+      const restaurant = restaurants[0];
+
+      // Build update fields
+      const updates = [];
+      const values = [];
+
+      if (name) {
+        updates.push('name = ?');
+        values.push(name);
+      }
+
+      if (description !== undefined) {
+        updates.push('description = ?');
+        values.push(description);
+      }
+
+      if (address) {
+        updates.push('address = ?');
+        values.push(address);
+      }
+
+      if (phone) {
+        updates.push('phone = ?');
+        values.push(phone);
+      }
+
+      if (email) {
+        updates.push('email = ?');
+        values.push(email);
+      }
+
+      if (cuisine) {
+        updates.push('cuisineType = ?');
+        values.push(cuisine);
+      }
+
+      if (priceRange) {
+        updates.push('priceRange = ?');
+        values.push(priceRange);
+      }
+
+      if (openingHours !== undefined) {
+        // Skip openingHours as it doesn't exist in the database
+        console.log('Skipping openingHours update as the column does not exist in the database');
+        // updates.push('openingHours = ?');
+        // values.push(typeof openingHours === 'string' ? openingHours : JSON.stringify(openingHours));
+      }
+
+      if (deliveryFee !== undefined) {
+        updates.push('deliveryFee = ?');
+        values.push(deliveryFee);
+      }
+
+      if (minOrderAmount !== undefined) {
+        updates.push('minimumOrderAmount = ?');
+        values.push(minOrderAmount);
+      }
+
+      if (estimatedDeliveryTime !== undefined) {
+        updates.push('estimatedDeliveryTime = ?');
+        values.push(estimatedDeliveryTime);
+      }
+
+      if (isActive !== undefined) {
+        updates.push('isActive = ?');
+        values.push(isActive);
+      }
+
+      if (latitude) {
+        updates.push('latitude = ?');
+        values.push(latitude);
+      }
+
+      if (longitude) {
+        updates.push('longitude = ?');
+        values.push(longitude);
+      }
+
+      // Handle logo upload if provided
+      if (req.files?.logo?.[0]) {
+        updates.push('logo = ?');
+        values.push(req.files.logo[0].filename);
+      }
+
+      // Handle coverImage upload if provided
+      if (req.files?.coverImage?.[0]) {
+        updates.push('coverImage = ?');
+        values.push(req.files.coverImage[0].filename);
+      }
+
+      updates.push('updatedAt = NOW()');
+
+      // If no updates, return the current restaurant
+      if (updates.length === 0) {
+        await db.query('ROLLBACK');
+        return res.status(200).json({
+          status: 'success',
+          data: {
+            restaurant
+          }
+        });
+      }
+
+      // Update the restaurant
+      values.push(id);
+      values.push(req.user.id);
+
+      await db.query(
+        `UPDATE restaurants SET ${updates.join(', ')} WHERE id = ? AND ownerId = ?`,
+        values
+      );
+
+      // Commit transaction
+      await db.query('COMMIT');
+
+      // Get updated restaurant
+      const [updatedRestaurants] = await db.query(
+        'SELECT * FROM restaurants WHERE id = ?',
+        [id]
+      );
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          restaurant: updatedRestaurants[0]
+        }
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
-    next(error);
+    console.error('Error updating restaurant:', error);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to update restaurant',
+      error: error.message
+    });
   }
 };
 
@@ -500,39 +812,66 @@ exports.updateRestaurant = async (req, res, next) => {
  */
 exports.deleteRestaurant = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    // Find restaurant
-    const restaurant = await Restaurant.findOne({
-      where: { 
-        id,
-        [Op.or]: [
-          { userId: req.user.id },
-          { '$user.role$': 'admin' }
-        ]
-      },
-      include: [
-        {
-          model: User,
-          as: 'owner',
-          attributes: ['id', 'role']
-        }
-      ]
-    });
-
-    if (!restaurant) {
-      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    // Check if user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'You must be logged in to delete a restaurant'
+      });
     }
 
-    // Delete restaurant
-    await restaurant.destroy();
+    const { id } = req.params;
 
-    res.status(204).json({
-      status: 'success',
-      data: null
-    });
+    // Start transaction
+    await db.query('START TRANSACTION');
+
+    try {
+      // Check if restaurant exists and if the user is the owner or an admin
+      let authorized = false;
+
+      if (req.user.role === 'admin') {
+        // Admins can delete any restaurant
+        authorized = true;
+      } else {
+        // Check if the user is the owner
+        const [restaurant] = await db.query(
+          'SELECT * FROM restaurants WHERE id = ? AND ownerId = ?',
+          [id, req.user.id]
+        );
+
+        if (restaurant && restaurant.length > 0) {
+          authorized = true;
+        }
+      }
+
+      if (!authorized) {
+        await db.query('ROLLBACK');
+        return res.status(404).json({
+          status: 'error',
+          message: 'Restaurant not found or you are not authorized'
+        });
+      }
+
+      // Delete restaurant
+      await db.query('DELETE FROM restaurants WHERE id = ?', [id]);
+
+      // Commit transaction
+      await db.query('COMMIT');
+
+      res.status(204).send();
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
-    next(error);
+    console.error('Error deleting restaurant:', error);
+
+    return res.status(500).json({
+      status: 'error',
+      message: 'Failed to delete restaurant',
+      error: error.message
+    });
   }
 };
 
@@ -581,9 +920,9 @@ console.log('updateRestaurantSettings method exists in exports:', exports.update
 exports.updateRestaurantSettings = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { 
-      openingHours, 
-      deliverySettings, 
+    const {
+      openingHours,
+      deliverySettings,
       notificationPreferences,
       specialHolidays,
       tempClosureSettings,
@@ -594,7 +933,7 @@ exports.updateRestaurantSettings = async (req, res, next) => {
     const restaurant = await Restaurant.findOne({
       where: {
         id,
-        userId: req.user.id
+        ownerId: req.user.id
       }
     });
 
@@ -688,10 +1027,10 @@ exports.getRestaurantReviews = async (req, res, next) => {
 exports.getFeaturedRestaurants = async (req, res, next) => {
   try {
     const { latitude, longitude, limit = 6 } = req.query;
-    
+
     // Get restaurants with highest ratings
     const restaurants = await db.query(`
-      SELECT * FROM restaurants 
+      SELECT * FROM restaurants
       WHERE isActive = 1 AND rating >= 4.0
       ORDER BY rating DESC
       LIMIT ?
@@ -735,12 +1074,12 @@ exports.getFeaturedRestaurants = async (req, res, next) => {
 exports.getPopularRestaurants = async (req, res, next) => {
   try {
     const { limit = 8 } = req.query;
-    
+
     // Get restaurants with highest rating using direct SQL
     // In a real app, we would consider order count
     const restaurants = await db.query(`
-      SELECT * FROM restaurants 
-      WHERE isActive = 1 
+      SELECT * FROM restaurants
+      WHERE isActive = 1
       ORDER BY rating DESC, RAND()
       LIMIT ?
     `, [parseInt(limit)]);
@@ -883,12 +1222,12 @@ exports.searchRestaurants = async (req, res, next) => {
     }[sort] || 'rating';
 
     const sortOrder = ['price_desc', 'rating'].includes(sort) ? 'DESC' : 'ASC';
-    
+
     results.sort((a, b) => {
       if (sort === 'distance') {
         return (a.distance || 999) - (b.distance || 999);
       }
-      
+
       if (sortOrder === 'DESC') {
         return b[sortField] - a[sortField];
       }
@@ -1018,8 +1357,8 @@ exports.getCuisineTypes = async (req, res, next) => {
   try {
     // Get distinct cuisine types from restaurants table using direct SQL
     const cuisines = await db.query(`
-      SELECT DISTINCT cuisineType as cuisine 
-      FROM restaurants 
+      SELECT DISTINCT cuisineType as cuisine
+      FROM restaurants
       WHERE isActive = 1 AND cuisineType IS NOT NULL
     `);
 
@@ -1054,7 +1393,7 @@ exports.getRestaurantAvailability = async (req, res, next) => {
 
     // Check if it's a special holiday
     const specialHolidays = restaurant.specialHolidays || [];
-    const holiday = specialHolidays.find(h => 
+    const holiday = specialHolidays.find(h =>
       format(new Date(h.date), 'yyyy-MM-dd') === format(requestedDate, 'yyyy-MM-dd')
     );
 
@@ -1101,7 +1440,7 @@ exports.updateSpecialHolidays = async (req, res, next) => {
     const restaurant = await Restaurant.findOne({
       where: {
         id,
-        userId: req.user.id
+        ownerId: req.user.id
       }
     });
 
@@ -1130,18 +1469,18 @@ exports.updateSpecialHolidays = async (req, res, next) => {
 exports.updateRestaurantAvailability = async (req, res, next) => {
   try {
     const { restaurantId } = req.params;
-    const { 
-      isOpen, 
-      availabilityStatus, 
-      busyLevel, 
+    const {
+      isOpen,
+      availabilityStatus,
+      busyLevel,
       estimatedPrepTime,
       statusMessage,
-      acceptingOrders 
+      acceptingOrders
     } = req.body;
 
     // Find restaurant first to validate it exists
     const restaurant = await db.Restaurant.findByPk(restaurantId);
-    
+
     if (!restaurant) {
       return res.status(404).json({
         success: false,
@@ -1236,7 +1575,7 @@ exports.updateMenuAvailability = async (req, res, next) => {
     const { menuAvailability } = req.body;
 
     const restaurant = await Restaurant.findOne({
-      where: { id, userId: req.user.id }
+      where: { id, ownerId: req.user.id }
     });
 
     if (!restaurant) {
@@ -1272,7 +1611,7 @@ exports.updateTempClosure = async (req, res, next) => {
     const { tempClosureSettings } = req.body;
 
     const restaurant = await Restaurant.findOne({
-      where: { id, userId: req.user.id }
+      where: { id, ownerId: req.user.id }
     });
 
     if (!restaurant) {
@@ -1355,6 +1694,16 @@ exports.getProductDetails = async (req, res, next) => {
           attributes: ['id', 'name']
         },
         {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: [],
+          include: [{
+            model: db.RestaurantSettings,
+            as: 'settings',
+            attributes: ['estimatedPrepTime']
+          }]
+        },
+        {
           model: ProductOption,
           as: 'options',
           attributes: ['id', 'name', 'type'],
@@ -1369,8 +1718,8 @@ exports.getProductDetails = async (req, res, next) => {
       ],
       attributes: [
         'id', 'name', 'description', 'price', 'image',
-        'preparationTime', 'isSpicy', 'isVegetarian',
-        'allergens', 'nutritionInfo', 'status'
+        'isSpicy', 'isVegetarian', 'allergens', 'nutritionInfo', 'status',
+        [sequelize.literal('restaurant.settings.estimatedPrepTime'), 'preparationTimeMinutes']
       ]
     });
 
@@ -1397,14 +1746,14 @@ exports.getProductDetails = async (req, res, next) => {
 exports.getRestaurantReviews = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 10,
       rating = null,
       sort = 'recent' // recent, rating-high, rating-low
     } = req.query;
 
-    const where = { 
+    const where = {
       restaurantId: id,
       isVisible: true
     };
@@ -1443,7 +1792,7 @@ exports.getRestaurantReviews = async (req, res, next) => {
       limit: parseInt(limit),
       offset,
       attributes: [
-        'id', 'rating', 'comment', 'createdAt', 
+        'id', 'rating', 'comment', 'createdAt',
         'images', 'likes', 'response'
       ]
     });
@@ -1490,7 +1839,7 @@ exports.updatePassword = async (req, res, next) => {
     const restaurant = await Restaurant.findOne({
       where: {
         id,
-        userId: req.user.id
+        ownerId: req.user.id
       },
       include: [{
         model: User,
@@ -1515,7 +1864,7 @@ exports.updatePassword = async (req, res, next) => {
     // Update password
     await User.update(
       { password: hashedPassword },
-      { where: { id: restaurant.userId } }
+      { where: { id: restaurant.ownerId } }
     );
 
     // Log password change
@@ -1542,11 +1891,11 @@ exports.updatePassword = async (req, res, next) => {
  */
 exports.getNearbyRestaurants = async (req, res, next) => {
   try {
-    const { 
-      lat, 
-      lng, 
-      radius = 5, 
-      limit = 4 
+    const {
+      lat,
+      lng,
+      radius = 5,
+      limit = 4
     } = req.query;
 
     // Validate coordinates - return empty array instead of error if coordinates are missing
@@ -1582,7 +1931,7 @@ exports.getNearbyRestaurants = async (req, res, next) => {
         }
         return rest;
       })
-      .filter(restaurant => 
+      .filter(restaurant =>
         restaurant.distance !== null && restaurant.distance <= parseFloat(radius)
       )
       // Sort by distance (closest first)

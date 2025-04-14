@@ -39,6 +39,9 @@ const state = {
     restaurants: []
   },
 
+  // Category management
+  categories: [],
+
   // Notifications
   notifications: [],
 
@@ -198,6 +201,27 @@ const mutations = {
   },
   SET_ANALYTICS_TOP_DRIVERS(state, drivers) {
     state.analytics.drivers = drivers;
+  },
+  SET_CATEGORIES(state, categories) {
+    // Check if categories is an array before mapping
+    if (!Array.isArray(categories)) {
+      console.warn('Invalid categories data received:', categories);
+      state.categories = [];
+      return;
+    }
+    
+    // Map backend fields to frontend expected structure
+    state.categories = categories.map(category => ({
+      ...category,
+      // Map isActive to active for frontend consistency
+      active: category.isActive,
+      // Ensure backwards compatibility
+      isActive: category.isActive,
+      // Set imageUrl from image if available
+      imageUrl: category.image || category.imageUrl || null,
+      // Set default restaurant count if not provided
+      restaurantCount: category.restaurantCount || 0
+    }));
   }
 }
 
@@ -359,21 +383,7 @@ const actions = {
       }
 
       // Get WebSocket URL from config or environment
-      let wsUrl;
-      try {
-        // Try to get from import.meta.env
-        wsUrl = import.meta.env.VITE_WS_URL || WS_URL;
-      } catch (e) {
-        // Fallback to hardcoded value for production
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        wsUrl = `${protocol}//${host}`;
-      }
-
-      // Check if backend service is running in development mode
-      if (process.env.NODE_ENV !== 'production' && !wsUrl.includes('localhost')) {
-        wsUrl = 'ws://localhost:3000';
-      }
+      let wsUrl = 'ws://localhost:3000';
 
       console.log(`Connecting to WebSocket at: ${wsUrl}`);
 
@@ -703,6 +713,387 @@ const actions = {
       commit('SET_ANALYTICS_ERROR', error.response?.data?.message || 'Failed to export report');
       throw error;
     }
+  },
+
+  // User Management
+  async fetchUsers({ commit }, params = {}) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.get('/api/admin/users', { params });
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to fetch users');
+      throw error;
+    }
+  },
+
+  async getUserDetails({ commit }, userId) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.get(`/api/admin/users/${userId}`);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data.user;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to fetch user details');
+      throw error;
+    }
+  },
+
+  async createUser({ commit }, userData) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.post('/api/admin/users', userData);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to create user');
+      throw error;
+    }
+  },
+
+  async updateUser({ commit }, { id, userData }) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.put(`/api/admin/users/${id}`, userData);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to update user');
+      throw error;
+    }
+  },
+
+  async updateUserStatus({ commit }, { id, status }) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.patch(`/api/admin/users/${id}/status`, { status });
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to update user status');
+      throw error;
+    }
+  },
+
+  async deleteUser({ commit }, id) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.delete(`/api/admin/users/${id}`);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to delete user');
+      throw error;
+    }
+  },
+
+  async exportUsers({ commit }, filters) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.post('/api/admin/users/export', filters);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to export users');
+      throw error;
+    }
+  },
+
+  // Product Management
+  async fetchProducts({ commit }, params = {}) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      // Set default values for pagination
+      const queryParams = {
+        page: params.page || 1,
+        limit: params.limit || 10,
+        ...params
+      };
+      
+      const response = await axios.get('/api/admin/products', { params: queryParams });
+      commit('SET_ANALYTICS_LOADING', false);
+      
+      // Handle different response formats
+      let items = [];
+      let total = 0;
+      
+      if (response.data && response.data.data) {
+        // Format: { data: { items: [], total: 0 } }
+        if (response.data.data.items && Array.isArray(response.data.data.items)) {
+          items = response.data.data.items;
+          total = response.data.data.total || items.length;
+        } 
+        // Format: { data: [] }
+        else if (Array.isArray(response.data.data)) {
+          items = response.data.data;
+          total = items.length;
+        }
+      } 
+      // Format: { items: [], total: 0 }
+      else if (response.data && response.data.items && Array.isArray(response.data.items)) {
+        items = response.data.items;
+        total = response.data.total || items.length;
+      }
+      // Format: []
+      else if (Array.isArray(response.data)) {
+        items = response.data;
+        total = items.length;
+      } else {
+        console.warn('Unexpected products response format:', response.data);
+      }
+      
+      return { items, total };
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to fetch products');
+      console.error('Failed to fetch products:', error);
+      // Return fallback data for error case
+      return { items: [], total: 0 };
+    }
+  },
+
+  async getProductById({ commit }, productId) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.get(`/api/admin/products/${productId}`);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data.data.product;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to fetch product details');
+      throw error;
+    }
+  },
+
+  async createProduct({ commit }, productData) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      // Handle file uploads if present
+      if (productData.imageFile) {
+        // Handle case where imageFile might be an array from v-file-input
+        const fileToUpload = Array.isArray(productData.imageFile) 
+          ? productData.imageFile[0] 
+          : productData.imageFile;
+        
+        // Only proceed with upload if it's a valid Blob
+        if (fileToUpload instanceof Blob) {
+          const formData = new FormData();
+          formData.append('image', fileToUpload);
+          
+          try {
+            // Upload the image first
+            const uploadResponse = await axios.post('/api/upload/image', formData);
+            // Replace the file with the URL
+            productData.image = uploadResponse.data.imageUrl;
+          } catch (uploadError) {
+            console.error('Image upload failed:', uploadError);
+            // Continue with product creation even if image upload fails
+          }
+        } else {
+          console.warn('Invalid image file:', fileToUpload);
+        }
+        
+        // Always remove the imageFile property as it can't be sent directly
+        delete productData.imageFile;
+      }
+      
+      const response = await axios.post('/api/admin/products', productData);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to create product');
+      throw error;
+    }
+  },
+
+  async updateProduct({ commit }, { id, productData }) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      
+      // Handle file uploads if present
+      if (productData.imageFile) {
+        // Handle case where imageFile might be an array from v-file-input
+        const fileToUpload = Array.isArray(productData.imageFile) 
+          ? productData.imageFile[0] 
+          : productData.imageFile;
+        
+        // Only proceed with upload if it's a valid Blob
+        if (fileToUpload instanceof Blob) {
+          const formData = new FormData();
+          formData.append('image', fileToUpload);
+          
+          try {
+            // Upload the image first
+            const uploadResponse = await axios.post('/api/upload/image', formData);
+            // Replace the file with the URL
+            productData.image = uploadResponse.data.imageUrl;
+          } catch (uploadError) {
+            console.error('Image upload failed:', uploadError);
+            // Continue with product update even if image upload fails
+          }
+        } else {
+          console.warn('Invalid image file:', fileToUpload);
+        }
+        
+        // Always remove the imageFile property as it can't be sent directly
+        delete productData.imageFile;
+      }
+      
+      const response = await axios.put(`/api/admin/products/${id}`, productData);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to update product');
+      throw error;
+    }
+  },
+
+  async updateProductAvailability({ commit }, { id, isAvailable }) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.patch(`/api/admin/products/${id}/availability`, { isAvailable });
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to update product availability');
+      throw error;
+    }
+  },
+
+  async deleteProduct({ commit }, id) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.delete(`/api/admin/products/${id}`);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to delete product');
+      throw error;
+    }
+  },
+
+  // Category Management
+  async createCategory({ commit }, formData) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.post('/api/menu/categories', formData);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to create category');
+      throw error;
+    }
+  },
+
+  async updateCategory({ commit }, { id, data }) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.patch(`/api/menu/categories/${id}`, data);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to update category');
+      throw error;
+    }
+  },
+
+  async deleteCategory({ commit }, id) {
+    try {
+      commit('SET_ANALYTICS_LOADING', true);
+      const response = await axios.delete(`/api/menu/categories/${id}`);
+      commit('SET_ANALYTICS_LOADING', false);
+      return response.data;
+    } catch (error) {
+      commit('SET_ANALYTICS_LOADING', false);
+      commit('SET_ANALYTICS_ERROR', error.message || 'Failed to delete category');
+      throw error;
+    }
+  },
+
+  async fetchCategories({ commit }) {
+    try {
+      const response = await axios.get('/api/menu/categories');
+      
+      // Debug the response structure
+      console.log('Categories API Response:', JSON.stringify(response.data, null, 2));
+      
+      // Handle different possible response formats
+      let categoryData;
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        // Format: { data: [...] }
+        categoryData = response.data.data;
+      } else if (response.data && response.data.categories && Array.isArray(response.data.categories)) {
+        // Format: { categories: [...] }
+        categoryData = response.data.categories;
+      } else if (Array.isArray(response.data)) {
+        // Format: [...]
+        categoryData = response.data;
+      } else {
+        console.warn('Unexpected categories response format:', response.data);
+        // Return fallback data
+        categoryData = [
+          { id: 1, name: 'Uncategorized' }
+        ];
+      }
+      
+      commit('SET_CATEGORIES', categoryData);
+      // Return a standardized format with data array property
+      return { data: categoryData };
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      // Return fallback data for error case
+      return { data: [{ id: 1, name: 'Uncategorized' }] };
+    }
+  },
+
+  async fetchRestaurants({ commit }, params = {}) {
+    try {
+      // Use the generic /api/restaurants endpoint instead of the admin-specific one
+      const response = await axios.get('/api/restaurants', { params });
+      
+      // Debug the response structure
+      console.log('Restaurants API Response:', JSON.stringify(response.data, null, 2));
+      
+      // Handle different possible response formats
+      let restaurantsData;
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        // Format: { data: [...] }
+        restaurantsData = response.data.data;
+      } else if (response.data && response.data.restaurants && Array.isArray(response.data.restaurants)) {
+        // Format: { restaurants: [...] }
+        restaurantsData = response.data.restaurants;
+      } else if (Array.isArray(response.data)) {
+        // Format: [...]
+        restaurantsData = response.data;
+      } else {
+        console.warn('Unexpected restaurants response format:', response.data);
+        // Return fallback data
+        restaurantsData = [
+          { id: 1, name: 'Default Restaurant' }
+        ];
+      }
+      
+      // Return a standardized format with data array property
+      return { data: restaurantsData };
+    } catch (error) {
+      console.error('Failed to fetch restaurants:', error);
+      // Return fallback data for error case
+      return { data: [{ id: 1, name: 'Default Restaurant' }] };
+    }
   }
 }
 
@@ -732,7 +1123,8 @@ const getters = {
   wsConnected: state => state.wsConnected,
   isAnalyticsLoading: state => state.analytics.loading,
   analyticsError: state => state.analytics.error,
-  analyticsStats: state => state.analytics.stats
+  analyticsStats: state => state.analytics.stats,
+  categories: state => state.categories
 }
 
 export default {

@@ -1,99 +1,59 @@
 import axios from 'axios';
 
-const TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
+// Convert to class for proper instantiation
+class JwtAuth {
+  constructor() {
+    // Constants for token storage keys
+    this.TOKEN_KEY = 'token';
+    this.REFRESH_TOKEN_KEY = 'refresh_token';
+    this.init();
+  }
 
-export default {
   // Initialize axios interceptors for JWT
   init() {
+    // Configure axios defaults
+    axios.defaults.withCredentials = true;
+    axios.defaults.headers.common['Accept'] = 'application/json';
+    axios.defaults.headers.post['Content-Type'] = 'application/json';
+    
+    // Add request interceptor for auth header
     axios.interceptors.request.use(
       (config) => {
+        // Add Authorization header if token exists
         const token = this.getToken();
         if (token) {
           config.headers['Authorization'] = `Bearer ${token}`;
         }
+
+        // Add logging for debugging
+        console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
+        console.log('Request headers:', config.headers);
+        console.log('Request data:', config.data);
+
         return config;
       },
       (error) => {
+        console.error('Request interceptor error:', error);
         return Promise.reject(error);
       }
     );
 
+    // Response interceptor for handling errors
     axios.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        console.log('Response received:', response.status, response.data);
+        return response;
+      },
       async (error) => {
-        const originalRequest = error.config;
-
-        if (error.response?.status === 401 && !originalRequest._retry) {
-          originalRequest._retry = true;
-
-          try {
-            const refreshToken = this.getRefreshToken();
-            if (!refreshToken) {
-              throw new Error('No refresh token available');
-            }
-
-            const response = await axios.post('/api/auth/refresh-token', { refreshToken });
-            const { token: newToken, refreshToken: newRefreshToken } = response.data;
-
-            this.setTokens(newToken, newRefreshToken);
-            axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-
-            return axios(originalRequest);
-          } catch (refreshError) {
-            this.clearTokens();
-            window.location.href = '/login';
-            return Promise.reject(refreshError);
-          }
-        }
-
+        console.error('Response error:', {
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
         return Promise.reject(error);
       }
     );
-  },
-
-  // Setup axios interceptor for automatic token refresh
-  setupInterceptors(
-    getRefreshToken,
-    onRefreshSuccess,
-    onRefreshError
-  ) {
-    axios.interceptors.response.use(
-      response => response,
-      async error => {
-        const originalRequest = error.config;
-
-        // If the error is not 401 or the request was for refresh, reject
-        if (
-          error.response?.status !== 401 ||
-          originalRequest.url?.includes('/auth/refresh') ||
-          originalRequest._retry
-        ) {
-          return Promise.reject(error);
-        }
-
-        originalRequest._retry = true;
-
-        try {
-          const refreshToken = getRefreshToken();
-          if (!refreshToken) {
-            throw new Error('No refresh token available');
-          }
-
-          const newAccessToken = await this.refreshToken();
-          onRefreshSuccess(newAccessToken);
-          this.setAuthHeader(newAccessToken);
-          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-          
-          return axios(originalRequest);
-        } catch (refreshError) {
-          onRefreshError();
-          return Promise.reject(refreshError);
-        }
-      }
-    );
-  },
+  }
 
   // Set auth header
   setAuthHeader(token) {
@@ -102,113 +62,111 @@ export default {
     } else {
       delete axios.defaults.headers.common['Authorization'];
     }
-  },
+  }
 
   // Set tokens in localStorage
-  setTokens(token, refreshToken) {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-  },
+  setTokens(accessToken, refreshToken) {
+    if (accessToken) {
+      localStorage.setItem(this.TOKEN_KEY, accessToken);
+      this.setAuthHeader(accessToken);
+    }
+
+    if (refreshToken) {
+      localStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken);
+    }
+  }
 
   // Get access token
   getToken() {
-    return localStorage.getItem(TOKEN_KEY);
-  },
+    return localStorage.getItem(this.TOKEN_KEY);
+  }
 
   // Get refresh token
   getRefreshToken() {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
+    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+  }
 
   // Clear tokens from localStorage
   clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-  },
-
-  // Refresh access token
-  async refreshToken() {
-    try {
-      const refreshToken = this.getRefreshToken();
-      if (!refreshToken) {
-        console.warn('No refresh token available - redirecting to login');
-        this.clearTokens();
-        
-        // Check if we're already on the login page to avoid redirect loops
-        const isLoginPage = 
-          window.location.pathname === '/login' || 
-          window.location.pathname === '/auth/login';
-        
-        if (!isLoginPage) {
-          window.location.href = '/login';
-        }
-        return null;
-      }
-
-      const response = await axios.post('/api/auth/refresh-token', {
-        refreshToken
-      });
-
-      if (response?.data) {
-        const { token, refreshToken: newRefreshToken } = response.data;
-        
-        if (token) {
-          // Store both tokens, using the new refresh token if provided or keeping the existing one
-          this.setTokens(token, newRefreshToken || refreshToken);
-          return token;
-        }
-      }
-      
-      throw new Error('Invalid response from refresh token endpoint');
-    } catch (error) {
-      console.error('Error refreshing token:', error);
-      this.clearTokens();
-      
-      // Only redirect if not already on login page
-      const isLoginPage = 
-        window.location.pathname === '/login' || 
-        window.location.pathname === '/auth/login';
-      
-      if (!isLoginPage) {
-        window.location.href = '/login';
-      }
-      throw error;
-    }
-  },
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+    localStorage.removeItem('user');
+    this.setAuthHeader(null);
+  }
 
   // Login user
   async login(email, password) {
     try {
-      const response = await axios.post('/api/auth/login', {
-        email,
-        password
-      });
+      console.log('Attempting login with:', { email });
 
-      const { token, refreshToken, user } = response.data;
-      
-      // Ensure both tokens are saved
-      if (token) {
-        // Double-check that refreshToken exists
-        if (!refreshToken) {
-          console.warn('No refresh token received during login');
+      const response = await axios.post('/api/auth/login',
+        { email, password },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          withCredentials: true,
+          validateStatus: function (status) {
+            return status >= 200 && status < 500;
+          },
+          timeout: 5000 // 5 second timeout
         }
-        
-        // Save both tokens even if the refresh token is empty (will be handled later)
-        this.setTokens(token, refreshToken || '');
-        
-        // Set axios default header
-        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      } else {
-        console.error('No access token received during login');
+      );
+
+      console.log('Login response:', response.data);
+
+      if (response.status === 401) {
+        throw new Error('Invalid credentials. Please check your email and password.');
+      }
+
+      if (response.status === 500) {
+        const errorMessage = response.data?.message || 'Internal server error';
+        if (response.data?.code === 'ECONNREFUSED') {
+          throw new Error('Unable to connect to the backend server. Please ensure it is running on port 3000.');
+        }
+        throw new Error(errorMessage);
+      }
+
+      if (response.status !== 200) {
+        throw new Error(response.data?.message || 'Login failed');
+      }
+
+      const { token: accessToken, refreshToken, user } = response.data;
+
+      if (!accessToken) {
         throw new Error('Authentication failed: No access token received');
       }
+
+      // Store tokens
+      this.setTokens(accessToken, refreshToken);
       
-      return user;
+      // Store user data
+      if (user) {
+        localStorage.setItem('user', JSON.stringify(user));
+      }
+
+      return response.data;
+
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login error details:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+        code: error.code
+      });
+
+      // Handle specific error cases
+      if (error.code === 'ECONNABORTED') {
+        throw new Error('Connection timeout. Please try again.');
+      }
+      if (error.code === 'ERR_NETWORK') {
+        throw new Error('Network error. Please check your connection and ensure the backend server is running.');
+      }
+      
       throw error;
     }
-  },
+  }
 
   // Register user
   async register(userData) {
@@ -218,18 +176,21 @@ export default {
     } catch (error) {
       throw error;
     }
-  },
+  }
 
   // Logout user
   async logout() {
     try {
-      await axios.post('/api/auth/logout', {
-        refreshToken: this.getRefreshToken()
-      });
-      this.clearTokens();
+      const refreshToken = this.getRefreshToken();
+      if (refreshToken) {
+        await axios.post('/api/auth/logout', { refreshToken });
+      }
     } catch (error) {
+      console.warn('Error during logout:', error);
+    } finally {
       this.clearTokens();
-      throw error;
     }
   }
-};
+}
+
+export default JwtAuth;

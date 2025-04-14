@@ -230,7 +230,7 @@
 
 <script>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { useStore } from 'vuex';
+import { useUiStore } from '@/stores/ui';
 
 export default {
   name: 'SupportChat',
@@ -266,7 +266,7 @@ export default {
   },
   
   setup(props) {
-    const store = useStore();
+    const uiStore = useUiStore();
     
     // State
     const isOpen = ref(props.initiallyOpen);
@@ -372,7 +372,7 @@ export default {
         });
       } catch (error) {
         console.error('Failed to connect to support:', error);
-        store.dispatch('ui/showSnackbar', {
+        uiStore.showSnackbar({
           text: 'Failed to connect to support. Please try again.',
           color: 'error'
         });
@@ -508,7 +508,7 @@ export default {
         reader.readAsDataURL(file);
       } catch (error) {
         console.error('Failed to upload image:', error);
-        store.dispatch('ui/showSnackbar', {
+        uiStore.showSnackbar({
           text: 'Failed to upload image. Please try again.',
           color: 'error'
         });

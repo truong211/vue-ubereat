@@ -116,6 +116,7 @@
 
 <script>
 import { ref, reactive, onMounted } from 'vue';
+import { useStore } from 'vuex';
 
 export default {
   name: 'ProfileSettings',
@@ -169,17 +170,45 @@ export default {
     
     // Update profile
     const updateProfile = async () => {
-      if (!profileForm.value.validate()) return;
+      if (!profileForm.value?.validate()) return;
       
       loading.value = true;
       error.value = '';
       
       try {
-        // Call your API here to update profile
-        // Example: await axios.put('/api/user/profile', profileData);
+        const authStore = useStore();
         
-        // Show success message
-        // ...
+        // Call API to update profile
+        const response = await fetch('/api/user/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authStore.state.auth?.accessToken || localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            name: profileData.name,
+            phone: profileData.phone,
+            dateOfBirth: profileData.dateOfBirth,
+            gender: profileData.gender
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update profile');
+        }
+        
+        const updatedUser = await response.json();
+        
+        // Update user in auth store
+        authStore.commit('auth/setUser', {
+          ...authStore.state.auth.user,
+          name: profileData.name,
+          phone: profileData.phone,
+          dateOfBirth: profileData.dateOfBirth,
+          gender: profileData.gender
+        });
+        
+        // Show success message or notification here
       } catch (err) {
         error.value = err.message || 'Failed to update profile';
       } finally {
@@ -189,18 +218,19 @@ export default {
     
     // Load profile data
     const loadProfileData = () => {
-      // Replace with your actual data loading
-      const user = {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+1234567890',
-        dateOfBirth: '1990-01-01',
-        gender: 'male',
-        avatar: ''
-      };
+      // Get the actual user data from the auth store
+      const authStore = useStore();
+      const user = authStore.state.auth?.user;
       
-      // Update profile data
-      Object.assign(profileData, user);
+      if (user) {
+        // Populate with actual user data
+        profileData.name = user.name || user.fullName || '';
+        profileData.email = user.email || '';
+        profileData.phone = user.phone || '';
+        profileData.dateOfBirth = user.dateOfBirth || '';
+        profileData.gender = user.gender || 'prefer_not_to_say';
+        profileData.avatar = user.avatar || '';
+      }
     };
     
     // Load profile data on mount

@@ -50,7 +50,7 @@
     <v-card>
       <v-data-table
         :headers="headers"
-        :items="users"
+        :items="ensureUsersArray"
         :loading="loading"
         :items-per-page="itemsPerPage"
         :page="page"
@@ -89,6 +89,14 @@
 
         <template v-slot:item.createdAt="{ item }">
           {{ formatDate(item.createdAt) }}
+        </template>
+        
+        <!-- Error state -->
+        <template v-slot:bottom v-if="error">
+          <div class="d-flex align-center justify-center pa-4">
+            <v-alert type="error" class="mb-0 mr-4">{{ error }}</v-alert>
+            <v-btn color="primary" @click="fetchUsers">Thử lại</v-btn>
+          </div>
         </template>
       </v-data-table>
     </v-card>
@@ -217,8 +225,10 @@ const headers = [
 
 // State
 const loading = ref(false)
+const error = ref(null)
 const users = ref([])
 const totalUsers = ref(0)
+const totalPages = ref(1)
 const page = ref(1)
 const itemsPerPage = ref(10)
 const searchQuery = ref('')
@@ -261,17 +271,53 @@ const getActionTitle = computed(() => {
   return 'Mở khóa tài khoản'
 })
 
+// Make sure users is always an array before rendering
+const ensureUsersArray = computed(() => {
+  return Array.isArray(users.value) ? users.value : [];
+})
+
 // Methods
 const fetchUsers = async () => {
   try {
     loading.value = true;
-    await store.dispatch('users/fetchUsers', {
+    error.value = null;
+    const response = await store.dispatch('admin/fetchUsers', {
       page: page.value,
-      limit: itemsPerPage.value
+      limit: itemsPerPage.value,
+      search: searchQuery.value || undefined,
+      role: roleFilter.value || undefined,
+      status: statusFilter.value || undefined
     });
-  } catch (error) {
+    
+    // Ensure data is always an array
+    if (response && response.status === 'success') {
+      // The users array is inside response.data.users
+      if (response.data && Array.isArray(response.data.users)) {
+        users.value = response.data.users;
+      } 
+      // Handle case where response.data might directly be the users array
+      else if (response.data && Array.isArray(response.data)) {
+        users.value = response.data;
+      }
+      // Fallback to empty array if structure is unexpected
+      else {
+        console.warn('Expected users array in response.data.users but got:', response);
+        users.value = [];
+      }
+      
+      // Set pagination values
+      totalUsers.value = response.data?.totalResults || response.data?.pagination?.total || 0;
+      totalPages.value = response.data?.totalPages || Math.ceil(totalUsers.value / itemsPerPage.value);
+    } else {
+      console.warn('Unexpected response structure:', response);
+      users.value = [];
+      totalUsers.value = 0;
+    }
+  } catch (err) {
     toast.error('Không thể tải danh sách người dùng');
-    console.error('Failed to fetch users:', error);
+    console.error('Failed to fetch users:', err);
+    error.value = 'Không thể tải danh sách người dùng. Vui lòng thử lại.';
+    users.value = [];
   } finally {
     loading.value = false;
   }
@@ -279,18 +325,13 @@ const fetchUsers = async () => {
 
 const handlePageChange = (newPage) => {
   page.value = newPage;
-  store.dispatch('users/fetchUsers', {
-    page: newPage,
-    limit: itemsPerPage.value
-  });
+  fetchUsers();
 };
 
 const handleSearch = () => {
-  store.dispatch('users/setFilters', {
-    search: searchQuery.value,
-    role: roleFilter.value,
-    status: statusFilter.value
-  });
+  // Reset to first page when searching
+  page.value = 1;
+  fetchUsers();
 };
 
 const openUserDialog = (user = null) => {
@@ -304,7 +345,8 @@ const openUserDialog = (user = null) => {
       username: '',
       password: '',
       phone: '',
-      role: 'customer'
+      role: 'customer',
+      status: 'active'
     }
   }
 }
@@ -315,13 +357,13 @@ const saveUser = async () => {
     const userData = userDialog.value.user;
     
     if (userDialog.value.isEdit) {
-      await store.dispatch('users/updateUser', {
+      await store.dispatch('admin/updateUser', {
         id: userData.id,
         userData
       });
       toast.success('Cập nhật thành công');
     } else {
-      await store.dispatch('users/createUser', userData);
+      await store.dispatch('admin/createUser', userData);
       toast.success('Thêm mới thành công');
     }
     
@@ -348,7 +390,7 @@ const openActionDialog = (user, action) => {
 const confirmAction = async () => {
   try {
     actionDialog.value.loading = true;
-    await store.dispatch('users/updateUserStatus', {
+    await store.dispatch('admin/updateUserStatus', {
       id: actionDialog.value.user.id,
       status: actionDialog.value.action === 'suspend' ? 'suspended' : 'active',
       reason: actionDialog.value.reason
@@ -382,7 +424,13 @@ const formatStatus = (status) => {
 }
 
 const formatDate = (date) => {
-  return format(new Date(date), 'HH:mm - dd/MM/yyyy', { locale: vi })
+  if (!date) return '--';
+  try {
+    return format(new Date(date), 'HH:mm - dd/MM/yyyy', { locale: vi });
+  } catch (error) {
+    console.error('Invalid date format:', error);
+    return '--';
+  }
 }
 
 // Lifecycle

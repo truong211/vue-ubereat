@@ -1025,7 +1025,7 @@ export default {
       
       try {
         // Initialize socket connection
-        socket.value = io(process.env.VUE_APP_SOCKET_URL || 'http://localhost:3000', {
+        socket.value = io(import.meta.env.VITE_API_URL || 'http://localhost:3000', { // Use Vite env var
           path: '/socket.io',
           transports: ['websocket', 'polling']
         });

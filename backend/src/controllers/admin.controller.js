@@ -4,6 +4,8 @@ const { AppError } = require('../middleware/error.middleware');
 const multer = require('multer');
 const path = require('path');
 const os = require('os');
+const { Product, Category, Restaurant, ProductOption, ProductOptionChoice, User, Order, sequelize, Sequelize } = require('../models');
+const { Op } = Sequelize;
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -52,7 +54,7 @@ exports.getDashboardStats = async (req, res, next) => {
         growth: 0
       }
     };
-    
+
     // Default restaurant stats - no need to query since status column doesn't exist
     const restaurantStats = {
       pending: 0,
@@ -95,7 +97,7 @@ exports.getDashboardStats = async (req, res, next) => {
       const [restaurantResult] = await db.query('SELECT COUNT(*) as count FROM restaurants');
       if (restaurantResult && restaurantResult.count) {
         stats.restaurants.total = restaurantResult.count;
-        
+
         // For now, set all restaurants as active since we don't have a status column
         restaurantStats.active = restaurantResult.count;
       }
@@ -146,9 +148,9 @@ exports.getAnalytics = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting analytics:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get analytics', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get analytics',
+      error: error.message
     });
   }
 };
@@ -160,25 +162,25 @@ exports.getAllTables = async (req, res) => {
   try {
     // Use column aliases with backticks to avoid reserved keyword issues
     const result = await db.query(`
-      SELECT 
+      SELECT
         TABLE_NAME AS \`name\`,
         TABLE_ROWS AS \`row_count\`,
         CREATE_TIME AS \`created\`,
         UPDATE_TIME AS \`updated\`
-      FROM 
-        INFORMATION_SCHEMA.TABLES 
-      WHERE 
+      FROM
+        INFORMATION_SCHEMA.TABLES
+      WHERE
         TABLE_SCHEMA = DATABASE()
-      ORDER BY 
+      ORDER BY
         TABLE_NAME
     `);
-    
+
     return res.json({ tables: result });
   } catch (error) {
     console.error('Error getting tables:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get tables', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get tables',
+      error: error.message
     });
   }
 };
@@ -189,28 +191,28 @@ exports.getAllTables = async (req, res) => {
 exports.getTableStructure = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     const structure = await getTableStructureHelper(tableName);
     return res.json(structure);
   } catch (error) {
     console.error(`Error getting table structure for ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to get table structure for ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to get table structure for ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -221,31 +223,31 @@ exports.getTableStructure = async (req, res) => {
 exports.getTableRecords = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     const limit = req.query.limit ? parseInt(req.query.limit) : 100;
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
-    
+
     // Get records from the table
     const records = await db.query(`SELECT * FROM \`${tableName}\` LIMIT ? OFFSET ?`, [limit, offset]);
-    
+
     // Get total count for pagination
     const countResult = await db.query(`SELECT COUNT(*) as total FROM \`${tableName}\``);
     const total = countResult[0].total;
-    
+
     return res.json({
       records,
       pagination: {
@@ -257,9 +259,9 @@ exports.getTableRecords = async (req, res) => {
     });
   } catch (error) {
     console.error(`Error getting records from ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to get records from ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to get records from ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -271,34 +273,34 @@ exports.getTableRecord = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
   const id = req.params.id;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     // Get record from the table
     const record = await db.query(`SELECT * FROM \`${tableName}\` WHERE id = ?`, [id]);
-    
+
     if (!record || record.length === 0) {
       return res.status(404).json({ message: 'Record not found' });
     }
-    
+
     return res.json(record[0]);
   } catch (error) {
     console.error(`Error getting record from ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to get record from ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to get record from ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -314,62 +316,62 @@ exports.getRecordById = exports.getTableRecord;
 exports.createTableRecord = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     // Get the table structure to validate fields
     const { fields } = await getTableStructureHelper(tableName);
-    
+
     // Filter out any fields that don't exist in the table or are auto-increment
     const validFieldNames = fields.filter(f => !f.isAutoIncrement).map(f => f.name);
     const filteredData = {};
-    
+
     Object.keys(req.body).forEach(key => {
       if (validFieldNames.includes(key)) {
         filteredData[key] = req.body[key];
       }
     });
-    
+
     // Check if we have any data left after filtering
     if (Object.keys(filteredData).length === 0) {
       return res.status(400).json({ message: 'No valid fields provided' });
     }
-    
+
     // Create columns and values for the SQL query
     const columns = Object.keys(filteredData).map(key => `\`${key}\``).join(', ');
     const placeholders = Object.keys(filteredData).map(() => '?').join(', ');
     const values = Object.values(filteredData);
-    
+
     // Insert into the table
     const result = await db.query(
-      `INSERT INTO \`${tableName}\` (${columns}) VALUES (${placeholders})`, 
+      `INSERT INTO \`${tableName}\` (${columns}) VALUES (${placeholders})`,
       values
     );
-    
+
     // Return the newly created record
     const newRecord = await db.query(
-      `SELECT * FROM \`${tableName}\` WHERE id = ?`, 
+      `SELECT * FROM \`${tableName}\` WHERE id = ?`,
       [result.insertId]
     );
-    
+
     return res.status(201).json(newRecord[0]);
   } catch (error) {
     console.error(`Error creating record in ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to create record in ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to create record in ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -386,67 +388,67 @@ exports.updateTableRecord = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
   const id = req.params.id;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     // Get the table structure to validate fields
     const { fields } = await getTableStructureHelper(tableName);
-    
+
     // Filter out any fields that don't exist in the table or are primary keys
     const validFieldNames = fields.filter(f => !f.isPrimaryKey).map(f => f.name);
     const filteredData = {};
-    
+
     Object.keys(req.body).forEach(key => {
       if (validFieldNames.includes(key)) {
         filteredData[key] = req.body[key];
       }
     });
-    
+
     // Check if we have any data left after filtering
     if (Object.keys(filteredData).length === 0) {
       return res.status(400).json({ message: 'No valid fields provided for update' });
     }
-    
+
     // Create SET clause for the SQL query
     const setClause = Object.keys(filteredData)
       .map(key => `\`${key}\` = ?`)
       .join(', ');
     const values = [...Object.values(filteredData), id];
-    
+
     // Update the record
     const result = await db.query(
-      `UPDATE \`${tableName}\` SET ${setClause} WHERE id = ?`, 
+      `UPDATE \`${tableName}\` SET ${setClause} WHERE id = ?`,
       values
     );
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Record not found' });
     }
-    
+
     // Return the updated record
     const updatedRecord = await db.query(
-      `SELECT * FROM \`${tableName}\` WHERE id = ?`, 
+      `SELECT * FROM \`${tableName}\` WHERE id = ?`,
       [id]
     );
-    
+
     return res.json(updatedRecord[0]);
   } catch (error) {
     console.error(`Error updating record in ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to update record in ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to update record in ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -463,37 +465,37 @@ exports.deleteTableRecord = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
   const id = req.params.id;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     // Delete the record
     const result = await db.query(
-      `DELETE FROM \`${tableName}\` WHERE id = ?`, 
+      `DELETE FROM \`${tableName}\` WHERE id = ?`,
       [id]
     );
-    
+
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Record not found' });
     }
-    
+
     return res.json({ message: 'Record deleted successfully' });
   } catch (error) {
     console.error(`Error deleting record from ${tableName}:`, error);
-    return res.status(500).json({ 
-      message: `Failed to delete record from ${tableName}`, 
-      error: error.message 
+    return res.status(500).json({
+      message: `Failed to delete record from ${tableName}`,
+      error: error.message
     });
   }
 };
@@ -507,12 +509,12 @@ async function getTableStructureHelper(table) {
   if (!table || table === 'undefined') {
     throw new Error('Invalid or missing table name');
   }
-  
+
   console.log(`Getting structure for table: ${table}`);
-  
+
   // Query to get column information for the table
   const query = `
-    SELECT 
+    SELECT
       COLUMN_NAME as column_name,
       DATA_TYPE as data_type,
       COLUMN_TYPE as column_type,
@@ -522,29 +524,29 @@ async function getTableStructureHelper(table) {
       CHARACTER_MAXIMUM_LENGTH as character_maximum_length,
       EXTRA as extra,
       COLUMN_COMMENT as column_comment
-    FROM 
-      INFORMATION_SCHEMA.COLUMNS 
-    WHERE 
+    FROM
+      INFORMATION_SCHEMA.COLUMNS
+    WHERE
       TABLE_NAME = ?
       AND TABLE_SCHEMA = DATABASE()
-    ORDER BY 
+    ORDER BY
       ORDINAL_POSITION;
   `;
-  
+
   const columns = await db.query(query, [table]);
-  
+
   if (!columns || columns.length === 0) {
     console.error(`No columns found for table: ${table}`);
     throw new Error('Table not found');
   }
-  
+
   console.log(`Found ${columns.length} columns for table ${table}`);
-  
+
   // Log first column as sample
   if (columns.length > 0) {
     console.log('Sample column data:', JSON.stringify(columns[0], null, 2));
   }
-  
+
   // Transform column data into a more useful format
   const fields = columns.map((column, index) => {
     // Handle potential null values
@@ -556,13 +558,13 @@ async function getTableStructureHelper(table) {
     const columnDefault = column.column_default;
     const columnComment = column.column_comment || '';
     const extra = column.extra || '';
-    
+
     // Debug logging to track column data
     console.log(`Field ${index+1}: ${columnName} (${dataType})`);
-    
+
     // Determine field type
     let fieldType = 'string';
-    
+
     if (['int', 'integer', 'bigint', 'smallint', 'decimal', 'numeric', 'real', 'double precision', 'float', 'mediumint', 'tinyint'].includes(dataType.toLowerCase())) {
       // Handle tinyint(1) as boolean
       if (dataType.toLowerCase() === 'tinyint' && columnType.includes('(1)')) {
@@ -583,7 +585,7 @@ async function getTableStructureHelper(table) {
     } else {
       fieldType = 'text';
     }
-    
+
     // Generate a description for the field if none exists
     let description = columnComment;
     if (!description) {
@@ -612,7 +614,7 @@ async function getTableStructureHelper(table) {
         description = 'Name identifier';
       }
     }
-    
+
     // Get enum values if applicable
     let enumValues = [];
     if (columnType && columnType.toLowerCase().includes('enum(')) {
@@ -621,7 +623,7 @@ async function getTableStructureHelper(table) {
         enumValues = enumMatch[1].split(',').map(val => val.replace(/'/g, '').trim());
       }
     }
-    
+
     const field = {
       name: columnName,
       type: fieldType,
@@ -635,17 +637,17 @@ async function getTableStructureHelper(table) {
       description: description,
       enumValues: enumValues.length > 0 ? enumValues : undefined
     };
-    
+
     // Log every 5th field or if it's the first or last
     if (index === 0 || index === columns.length - 1 || index % 5 === 0) {
       console.log(`Field ${index+1}/${columns.length}:`, field.name, field.type);
     }
-    
+
     return field;
   });
-  
+
   console.log(`Processed ${fields.length} fields for table ${table}`);
-  
+
   return { fields };
 }
 
@@ -654,44 +656,44 @@ exports.getRelatedTables = async (req, res) => {
   // Accept either table or tableName parameter
   const tableName = req.params.table || req.params.tableName;
   const id = req.params.id;
-  
+
   // Check if tableName is undefined or invalid
   if (!tableName || tableName === 'undefined') {
-    return res.status(400).json({ 
+    return res.status(400).json({
       message: 'Invalid table name. Please provide a valid table name.',
       error: 'Table name is undefined or missing'
     });
   }
-  
+
   try {
     // Validate the table name to prevent SQL injection
     if (!isValidTableName(tableName)) {
       return res.status(400).json({ message: 'Invalid table name' });
     }
-    
+
     // Get all tables in the database
     const tables = await db.query(`
       SELECT TABLE_NAME as name
       FROM INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = DATABASE()
     `);
-    
+
     // For each table, check if it has a foreign key to our table
     const relatedTables = [];
-    
+
     for (const table of tables) {
       if (table.name === tableName) continue;
-      
+
       // Check for common foreign key pattern: tableName + 'Id'
       const foreignKey = `${getSingular(tableName)}Id`;
-      
+
       // Check if this foreign key exists in the table
       const columns = await db.query(`
         SELECT COLUMN_NAME as name
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?
       `, [table.name, foreignKey]);
-      
+
       if (columns.length > 0) {
         // This table has a foreign key to our table, count related records
         const count = await db.query(`
@@ -699,7 +701,7 @@ exports.getRelatedTables = async (req, res) => {
           FROM ${table.name}
           WHERE ${foreignKey} = ?
         `, [id]);
-        
+
         relatedTables.push({
           table: table.name,
           foreignKey,
@@ -707,7 +709,7 @@ exports.getRelatedTables = async (req, res) => {
         });
       }
     }
-    
+
     res.json(relatedTables);
   } catch (error) {
     console.error('Error getting related tables:', error);
@@ -744,10 +746,10 @@ function getStartDate(timeframe) {
 
 async function getOrderTrend(startDate) {
   const startDateStr = startDate.toISOString().slice(0, 19).replace('T', ' ');
-  
+
   return await db.query(`
-    SELECT 
-      DATE(createdAt) as date, 
+    SELECT
+      DATE(createdAt) as date,
       COUNT(*) as count
     FROM orders
     WHERE createdAt >= ?
@@ -758,10 +760,10 @@ async function getOrderTrend(startDate) {
 
 async function getRevenueTrend(startDate) {
   const startDateStr = startDate.toISOString().slice(0, 19).replace('T', ' ');
-  
+
   return await db.query(`
-    SELECT 
-      DATE(createdAt) as date, 
+    SELECT
+      DATE(createdAt) as date,
       SUM(totalAmount) as total
     FROM orders
     WHERE createdAt >= ?
@@ -772,10 +774,10 @@ async function getRevenueTrend(startDate) {
 
 async function getUserGrowth(startDate) {
   const startDateStr = startDate.toISOString().slice(0, 19).replace('T', ' ');
-  
+
   return await db.query(`
-    SELECT 
-      DATE(createdAt) as date, 
+    SELECT
+      DATE(createdAt) as date,
       COUNT(*) as count
     FROM users
     WHERE createdAt >= ?
@@ -786,7 +788,7 @@ async function getUserGrowth(startDate) {
 
 async function getPopularCategories() {
   return await db.query(`
-    SELECT 
+    SELECT
       c.name,
       COUNT(p.id) as productCount,
       SUM(COALESCE(p.orderCount, 0)) as orderCount
@@ -800,7 +802,7 @@ async function getPopularCategories() {
 
 async function getTopCities() {
   return await db.query(`
-    SELECT 
+    SELECT
       city,
       COUNT(*) as restaurantCount,
       SUM(COALESCE(orderCount, 0)) as orderCount
@@ -816,7 +818,7 @@ function isValidTableName(tableName) {
   if (!tableName || tableName === 'undefined') {
     return false;
   }
-  
+
   // Only allow alphanumeric and underscore characters
   return /^[a-zA-Z0-9_]+$/.test(tableName);
 }
@@ -829,13 +831,13 @@ function isValidFieldName(fieldName) {
 function isSearchableType(fieldName) {
   // Exclude common non-searchable fields and JSON fields
   const nonSearchableFields = ['id', 'password', 'createdAt', 'updatedAt'];
-  
-  if (nonSearchableFields.includes(fieldName) || 
+
+  if (nonSearchableFields.includes(fieldName) ||
       fieldName.includes('JSON') ||
       fieldName.endsWith('Id')) {
     return false;
   }
-  
+
   return true;
 }
 
@@ -864,9 +866,9 @@ exports.getSystemAlerts = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting system alerts:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get system alerts', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get system alerts',
+      error: error.message
     });
   }
 };
@@ -885,9 +887,9 @@ exports.getRecentActivities = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting recent activities:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get recent activities', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get recent activities',
+      error: error.message
     });
   }
 };
@@ -902,9 +904,9 @@ exports.getPendingRestaurants = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting pending restaurants:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get pending restaurants', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get pending restaurants',
+      error: error.message
     });
   }
 };
@@ -914,7 +916,7 @@ exports.updateRestaurantStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;
-    
+
     // Simplified response
     return res.json({
       status: 'success',
@@ -922,9 +924,9 @@ exports.updateRestaurantStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating restaurant status:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update restaurant status', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to update restaurant status',
+      error: error.message
     });
   }
 };
@@ -939,9 +941,9 @@ exports.getBanners = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting banners:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get banners', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get banners',
+      error: error.message
     });
   }
 };
@@ -956,9 +958,9 @@ exports.createBanner = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating banner:', error);
-    return res.status(500).json({ 
-      message: 'Failed to create banner', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to create banner',
+      error: error.message
     });
   }
 };
@@ -967,7 +969,7 @@ exports.createBanner = async (req, res) => {
 exports.updateBanner = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Simplified response
     return res.json({
       status: 'success',
@@ -975,9 +977,9 @@ exports.updateBanner = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating banner:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update banner', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to update banner',
+      error: error.message
     });
   }
 };
@@ -986,7 +988,7 @@ exports.updateBanner = async (req, res) => {
 exports.deleteBanner = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Simplified response
     return res.json({
       status: 'success',
@@ -994,9 +996,9 @@ exports.deleteBanner = async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting banner:', error);
-    return res.status(500).json({ 
-      message: 'Failed to delete banner', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to delete banner',
+      error: error.message
     });
   }
 };
@@ -1011,9 +1013,9 @@ exports.getPages = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting pages:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get pages', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get pages',
+      error: error.message
     });
   }
 };
@@ -1028,9 +1030,9 @@ exports.createPage = async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating page:', error);
-    return res.status(500).json({ 
-      message: 'Failed to create page', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to create page',
+      error: error.message
     });
   }
 };
@@ -1039,7 +1041,7 @@ exports.createPage = async (req, res) => {
 exports.updatePage = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Simplified response
     return res.json({
       status: 'success',
@@ -1047,9 +1049,9 @@ exports.updatePage = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating page:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update page', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to update page',
+      error: error.message
     });
   }
 };
@@ -1058,7 +1060,7 @@ exports.updatePage = async (req, res) => {
 exports.deletePage = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Simplified response
     return res.json({
       status: 'success',
@@ -1066,9 +1068,9 @@ exports.deletePage = async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting page:', error);
-    return res.status(500).json({ 
-      message: 'Failed to delete page', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to delete page',
+      error: error.message
     });
   }
 };
@@ -1094,9 +1096,9 @@ exports.getConfig = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting config:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get config', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get config',
+      error: error.message
     });
   }
 };
@@ -1111,9 +1113,9 @@ exports.updateConfig = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating config:', error);
-    return res.status(500).json({ 
-      message: 'Failed to update config', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to update config',
+      error: error.message
     });
   }
 };
@@ -1128,9 +1130,9 @@ exports.getReportedUsers = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting reported users:', error);
-    return res.status(500).json({ 
-      message: 'Failed to get reported users', 
-      error: error.message 
+    return res.status(500).json({
+      message: 'Failed to get reported users',
+      error: error.message
     });
   }
 };
@@ -1144,24 +1146,24 @@ exports.getUsers = async (req, res) => {
     const search = req.query.search || '';
     const role = req.query.role;
     const status = req.query.status;
-    
+
     let query = 'SELECT id, username, email, fullName, phone, role, isActive, createdAt, updatedAt FROM users';
     let countQuery = 'SELECT COUNT(*) as total FROM users';
-    
+
     const conditions = [];
     const params = [];
-    
+
     if (search) {
       conditions.push('(username LIKE ? OR email LIKE ? OR fullName LIKE ? OR phone LIKE ?)');
       const searchPattern = `%${search}%`;
       params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
-    
+
     if (role) {
       conditions.push('role = ?');
       params.push(role);
     }
-    
+
     if (status) {
       if (status === 'active') {
         conditions.push('isActive = ?');
@@ -1171,25 +1173,25 @@ exports.getUsers = async (req, res) => {
         params.push(false);
       }
     }
-    
+
     if (conditions.length > 0) {
       const whereClause = 'WHERE ' + conditions.join(' AND ');
       query += ' ' + whereClause;
       countQuery += ' ' + whereClause;
     }
-    
+
     query += ' ORDER BY createdAt DESC LIMIT ? OFFSET ?';
-    
+
     // Clone params for count query before adding limit and offset
     const countParams = [...params];
-    
+
     // Add limit and offset for the main query
     params.push(limit, offset);
-    
+
     // Database queries with proper error handling
     let users = [];
     let countResult = { total: 0 };
-    
+
     try {
       users = await db.query(query, params);
       console.log('Users query result:', users ? `Found ${users.length} users` : 'No users found');
@@ -1197,7 +1199,7 @@ exports.getUsers = async (req, res) => {
       console.error('Error in users query:', err.message);
       users = [];
     }
-    
+
     try {
       const countResults = await db.query(countQuery, countParams);
       if (Array.isArray(countResults) && countResults.length > 0) {
@@ -1209,16 +1211,16 @@ exports.getUsers = async (req, res) => {
     } catch (err) {
       console.error('Error in count query:', err.message);
     }
-    
+
     const total = countResult.total || 0;
     const totalPages = Math.ceil(total / limit);
-    
+
     // Map isActive to status for consistency with frontend
     const formattedUsers = users.map(user => ({
       ...user,
       status: user.isActive ? 'active' : 'suspended'
     }));
-    
+
     return res.json({
       status: 'success',
       data: {
@@ -1248,7 +1250,7 @@ exports.getUsers = async (req, res) => {
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Validate ID is a number
     if (isNaN(parseInt(id))) {
       return res.status(400).json({
@@ -1256,23 +1258,23 @@ exports.getUserById = async (req, res) => {
         message: 'Invalid user ID'
       });
     }
-    
+
     // Query for the user
     const user = await db.query('SELECT id, username, email, fullName, phone, role, isActive, address, profileImage, createdAt, updatedAt FROM users WHERE id = ?', [id]);
-    
+
     if (!user || !user.length) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found'
       });
     }
-    
+
     // Format user data
     const userData = {
       ...user[0],
       status: user[0].isActive ? 'active' : 'suspended'
     };
-    
+
     return res.json({
       status: 'success',
       data: {
@@ -1293,7 +1295,7 @@ exports.getUserById = async (req, res) => {
 exports.createUser = async (req, res) => {
   try {
     const { fullName, email, username, phone, role, password } = req.body;
-    
+
     // Basic validation
     if (!fullName || !email || !role) {
       return res.status(400).json({
@@ -1301,38 +1303,38 @@ exports.createUser = async (req, res) => {
         message: 'Missing required fields: fullName, email, and role are required'
       });
     }
-    
+
     // Check if email already exists
     const existingUser = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-    
+
     if (existingUser && existingUser.length > 0) {
       return res.status(400).json({
         status: 'error',
         message: 'Email is already in use'
       });
     }
-    
+
     // Generate a username if not provided
     const finalUsername = username || email.split('@')[0] + Math.floor(Math.random() * 1000);
-    
+
     // Generate a default password if not provided
     const bcrypt = require('bcryptjs');
     const defaultPassword = password || 'changeme123';
     const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-    
+
     // Insert the new user
     const result = await db.query(
       'INSERT INTO users (fullName, email, username, password, phone, role, isActive, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, true, NOW(), NOW())',
       [fullName, email, finalUsername, hashedPassword, phone || null, role]
     );
-    
+
     if (!result || !result.insertId) {
       throw new Error('Failed to create user record');
     }
-    
+
     // Fetch the newly created user
     const newUser = await db.query('SELECT id, username, email, fullName, phone, role, isActive, createdAt, updatedAt FROM users WHERE id = ?', [result.insertId]);
-    
+
     return res.status(201).json({
       status: 'success',
       message: 'User created successfully',
@@ -1358,7 +1360,7 @@ exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const { fullName, email, phone, role } = req.body;
-    
+
     // Validate ID is a number
     if (isNaN(parseInt(id))) {
       return res.status(400).json({
@@ -1366,26 +1368,26 @@ exports.updateUser = async (req, res) => {
         message: 'Invalid user ID'
       });
     }
-    
+
     // Check if user exists
     const existingUser = await db.query('SELECT id FROM users WHERE id = ?', [id]);
-    
+
     if (!existingUser || !existingUser.length) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found'
       });
     }
-    
+
     // Update the user record
     const updates = [];
     const values = [];
-    
+
     if (fullName) {
       updates.push('fullName = ?');
       values.push(fullName);
     }
-    
+
     if (email) {
       // Check if email is unique
       const emailCheck = await db.query('SELECT id FROM users WHERE email = ? AND id != ?', [email, id]);
@@ -1395,43 +1397,43 @@ exports.updateUser = async (req, res) => {
           message: 'Email is already in use by another user'
         });
       }
-      
+
       updates.push('email = ?');
       values.push(email);
     }
-    
+
     if (phone !== undefined) {
       updates.push('phone = ?');
       values.push(phone);
     }
-    
+
     if (role) {
       updates.push('role = ?');
       values.push(role);
     }
-    
+
     // Add timestamp for the update
     updates.push('updatedAt = NOW()');
-    
+
     if (updates.length === 0) {
       return res.status(400).json({
         status: 'error',
         message: 'No fields to update'
       });
     }
-    
+
     // Execute the update query
     values.push(id); // Add ID for WHERE clause
     const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
     const result = await db.query(updateQuery, values);
-    
+
     if (!result || result.affectedRows === 0) {
       throw new Error('Failed to update user');
     }
-    
+
     // Fetch the updated user
     const updatedUser = await db.query('SELECT id, username, email, fullName, phone, role, isActive, createdAt, updatedAt FROM users WHERE id = ?', [id]);
-    
+
     return res.json({
       status: 'success',
       message: 'User updated successfully',
@@ -1457,7 +1459,7 @@ exports.updateUserStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, reason } = req.body;
-    
+
     // Validate parameters
     if (!id || !status) {
       return res.status(400).json({
@@ -1465,7 +1467,7 @@ exports.updateUserStatus = async (req, res) => {
         message: 'User ID and status are required'
       });
     }
-    
+
     // Verify status is valid
     if (status !== 'active' && status !== 'suspended') {
       return res.status(400).json({
@@ -1473,7 +1475,7 @@ exports.updateUserStatus = async (req, res) => {
         message: 'Status must be either "active" or "suspended"'
       });
     }
-    
+
     // If suspending, reason is required
     if (status === 'suspended' && !reason) {
       return res.status(400).json({
@@ -1481,21 +1483,21 @@ exports.updateUserStatus = async (req, res) => {
         message: 'Reason is required when suspending a user'
       });
     }
-    
+
     // Check if user exists
     const existingUser = await db.query('SELECT id, role FROM users WHERE id = ?', [id]);
-    
+
     if (!existingUser || !existingUser.length) {
       return res.status(404).json({
         status: 'error',
         message: 'User not found'
       });
     }
-    
+
     // Prevent suspending the only admin user
     if (existingUser[0].role === 'admin' && status === 'suspended') {
       const adminCount = await db.query('SELECT COUNT(*) as count FROM users WHERE role = "admin" AND isActive = true', []);
-      
+
       if (adminCount[0].count <= 1) {
         return res.status(400).json({
           status: 'error',
@@ -1503,18 +1505,18 @@ exports.updateUserStatus = async (req, res) => {
         });
       }
     }
-    
+
     // Update user status
     const isActive = status === 'active';
     const result = await db.query(
       'UPDATE users SET isActive = ?, updatedAt = NOW() WHERE id = ?',
       [isActive, id]
     );
-    
+
     if (!result || result.affectedRows === 0) {
       throw new Error('Failed to update user status');
     }
-    
+
     // Save suspension reason to activity log if provided
     if (reason) {
       try {
@@ -1527,10 +1529,10 @@ exports.updateUserStatus = async (req, res) => {
         // Continue even if logging fails
       }
     }
-    
+
     // Fetch the updated user
     const updatedUser = await db.query('SELECT id, username, email, fullName, phone, role, isActive, createdAt, updatedAt FROM users WHERE id = ?', [id]);
-    
+
     return res.json({
       status: 'success',
       message: `User ${status === 'active' ? 'activated' : 'suspended'} successfully`,
@@ -1640,17 +1642,17 @@ exports.renderLoginPage = (req, res) => {
           <button type="submit">Login</button>
         </form>
       </div>
-      
+
       <script>
         document.getElementById('login-form').addEventListener('submit', async (e) => {
           e.preventDefault();
-          
+
           const email = document.getElementById('email').value;
           const password = document.getElementById('password').value;
-          
+
           try {
             document.getElementById('error-message').textContent = 'Logging in...';
-            
+
             const response = await fetch('/api/auth/login', {
               method: 'POST',
               headers: {
@@ -1659,23 +1661,23 @@ exports.renderLoginPage = (req, res) => {
               body: JSON.stringify({ email, password }),
               credentials: 'include' // Include cookies in the request
             });
-            
+
             const data = await response.json();
-            
+
             if (response.ok) {
               document.getElementById('error-message').textContent = 'Login successful, redirecting...';
-              
+
               // The server should set the cookie automatically
               // Still store tokens in multiple storage mechanisms for resilience
-              
+
               // 1. localStorage (accessible by JavaScript, persistent across sessions)
               localStorage.setItem('adminToken', data.token);
               localStorage.setItem('refreshToken', data.refreshToken);
-              
+
               // 2. sessionStorage (cleared when tab is closed)
               sessionStorage.setItem('adminToken', data.token);
               sessionStorage.setItem('refreshToken', data.refreshToken);
-              
+
               // 3. Manual document.cookie as backup
               if (data.token) {
                 const secureFlag = window.location.protocol === 'https:' ? '; secure' : '';
@@ -1684,12 +1686,12 @@ exports.renderLoginPage = (req, res) => {
                   document.cookie = 'refresh_token=' + data.refreshToken + '; path=/; max-age=2592000; samesite=lax' + secureFlag;
                 }
               }
-              
+
               // Do a check to make sure the user is an admin
               if (data.user && data.user.role === 'admin') {
                 // Store user data
                 localStorage.setItem('adminUser', JSON.stringify(data.user));
-                
+
                 // Redirect to admin dashboard
                 setTimeout(() => {
                   window.location.href = '/admin/dashboard';
@@ -1846,9 +1848,9 @@ exports.renderDashboard = (req, res) => {
             <button id="logout-btn" class="logout-btn">Logout</button>
             </div>
           </div>
-          
+
           <div id="auth-status"></div>
-          
+
           <div class="stats-container">
             <div class="stat-card">
               <h3>Total Users</h3>
@@ -1869,7 +1871,7 @@ exports.renderDashboard = (req, res) => {
           </div>
         </div>
       </div>
-      
+
       <script>
         // Get token from various sources
         function getToken() {
@@ -1878,16 +1880,16 @@ exports.renderDashboard = (req, res) => {
             .split('; ')
             .find(row => row.startsWith('jwt='))
             ?.split('=')[1];
-            
+
           // If not found in cookies, try sessionStorage
           const sessionToken = sessionStorage.getItem('adminToken');
-          
+
           // If not found in sessionStorage, try localStorage
           const localToken = localStorage.getItem('adminToken');
-          
+
           // Return the first token found, prioritizing cookies
           const token = cookieToken || sessionToken || localToken;
-          
+
           // If token found but not in cookie, update cookie
           if (token && !cookieToken) {
             console.log('Restoring token to cookie');
@@ -1896,10 +1898,10 @@ exports.renderDashboard = (req, res) => {
             document.getElementById('auth-status').style.display = 'block';
             document.getElementById('auth-status').textContent = 'Session restored from backup. If you experience issues, please login again.';
           }
-          
+
           return token;
         }
-        
+
         // Get refresh token from various sources
         function getRefreshToken() {
           // First try to get from cookies
@@ -1907,17 +1909,17 @@ exports.renderDashboard = (req, res) => {
             .split('; ')
             .find(row => row.startsWith('refresh_token='))
             ?.split('=')[1];
-            
+
           // If not found in cookies, try sessionStorage
           const sessionToken = sessionStorage.getItem('refreshToken');
-          
+
           // If not found in sessionStorage, try localStorage
           const localToken = localStorage.getItem('refreshToken');
-          
+
           // Return the first token found, prioritizing cookies
           return cookieToken || sessionToken || localToken;
         }
-        
+
         // Get user data
         function getUserData() {
           // Try localStorage first
@@ -1931,7 +1933,7 @@ exports.renderDashboard = (req, res) => {
           }
           return null;
         }
-        
+
         // Update user info in UI
         function updateUserInfo() {
           const user = getUserData();
@@ -1939,7 +1941,7 @@ exports.renderDashboard = (req, res) => {
             document.getElementById('user-name').textContent = user.name || user.email;
           }
         }
-        
+
         // Try to refresh the token
         async function refreshToken() {
           try {
@@ -1947,7 +1949,7 @@ exports.renderDashboard = (req, res) => {
             if (!refreshToken) {
               throw new Error('No refresh token available');
             }
-            
+
             const response = await fetch('/api/auth/refresh', {
               method: 'POST',
               headers: {
@@ -1956,33 +1958,33 @@ exports.renderDashboard = (req, res) => {
               body: JSON.stringify({ refreshToken }),
               credentials: 'include'
             });
-            
+
             if (!response.ok) {
               throw new Error('Token refresh failed');
             }
-            
+
             const data = await response.json();
-            
+
             // Update stored tokens
             localStorage.setItem('adminToken', data.token);
             localStorage.setItem('refreshToken', data.refreshToken);
             sessionStorage.setItem('adminToken', data.token);
             sessionStorage.setItem('refreshToken', data.refreshToken);
-            
+
             document.getElementById('auth-status').style.display = 'block';
             document.getElementById('auth-status').textContent = 'Session refreshed successfully.';
-            
+
             // Hide the message after 3 seconds
             setTimeout(() => {
               document.getElementById('auth-status').style.display = 'none';
             }, 3000);
-            
+
             return data.token;
           } catch (error) {
             console.error('Token refresh failed:', error);
             document.getElementById('auth-status').style.display = 'block';
             document.getElementById('auth-status').textContent = 'Session expired. Redirecting to login...';
-            
+
             // Clear tokens
             localStorage.removeItem('adminToken');
             localStorage.removeItem('refreshToken');
@@ -1991,16 +1993,16 @@ exports.renderDashboard = (req, res) => {
             sessionStorage.removeItem('refreshToken');
             document.cookie = 'jwt=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
             document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-            
+
             // Redirect to login after a short delay
             setTimeout(() => {
               window.location.href = '/admin/login';
             }, 2000);
-            
+
             return null;
           }
         }
-        
+
         // Check if user is logged in
         const token = getToken();
         if (!token) {
@@ -2010,13 +2012,13 @@ exports.renderDashboard = (req, res) => {
           // Update user info in UI
           updateUserInfo();
         }
-        
+
         // Fetch dashboard stats
         async function fetchStats() {
           try {
             // Always get a fresh token in case it was updated
             const currentToken = getToken();
-            
+
             const response = await fetch('/api/admin/dashboard/stats', {
               headers: {
                 'Authorization': currentToken ? 'Bearer ' + currentToken : '',
@@ -2024,13 +2026,13 @@ exports.renderDashboard = (req, res) => {
               },
               credentials: 'include' // Include cookies in the request
             });
-            
+
             if (response.status === 401 || response.status === 403) {
               console.log('Authentication failed, trying to refresh token...');
-              
+
               // Try to refresh the token
               const newToken = await refreshToken();
-              
+
               if (newToken) {
                 // Retry the request with the new token
                 const retryResponse = await fetch('/api/admin/dashboard/stats', {
@@ -2040,20 +2042,20 @@ exports.renderDashboard = (req, res) => {
                   },
                   credentials: 'include'
                 });
-                
+
                 if (retryResponse.ok) {
                   const data = await retryResponse.json();
                   updateDashboardStats(data);
                   return;
                 }
               }
-              
+
               // If we get here, the refresh failed or the retry failed
               console.error('Authentication failed after token refresh, redirecting to login');
               window.location.href = '/admin/login';
               return;
             }
-            
+
             if (response.ok) {
             const data = await response.json();
               updateDashboardStats(data);
@@ -2067,7 +2069,7 @@ exports.renderDashboard = (req, res) => {
             document.getElementById('auth-status').textContent = 'Error loading dashboard data. Please refresh the page or login again.';
           }
         }
-        
+
         // Update dashboard stats with fetched data
         function updateDashboardStats(data) {
             if (data.status === 'success') {
@@ -2079,7 +2081,7 @@ exports.renderDashboard = (req, res) => {
               document.getElementById('total-revenue').textContent = '$' + (stats.revenue?.total || '0');
           }
         }
-        
+
         // Periodically check authentication
         function checkAuth() {
           const token = getToken();
@@ -2088,7 +2090,7 @@ exports.renderDashboard = (req, res) => {
             refreshToken();
           }
         }
-        
+
         // Refresh token periodically to prevent expiration
         async function scheduleTokenRefresh() {
           try {
@@ -2098,13 +2100,13 @@ exports.renderDashboard = (req, res) => {
             console.error('Scheduled token refresh failed:', error);
           }
         }
-        
+
         // Set interval to check auth every 30 seconds
         setInterval(checkAuth, 30000);
-        
+
         // Set interval to refresh token every 6 hours (to prevent expiration)
         setInterval(scheduleTokenRefresh, 6 * 60 * 60 * 1000);
-        
+
         // Handle logout
         document.getElementById('logout-btn').addEventListener('click', async () => {
           try {
@@ -2129,15 +2131,1216 @@ exports.renderDashboard = (req, res) => {
           sessionStorage.removeItem('refreshToken');
           document.cookie = 'jwt=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
           document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-          
+
           // Redirect to login page
           window.location.href = '/admin/login';
         });
-        
+
         // Fetch stats on page load
         fetchStats();
       </script>
     </body>
     </html>
   `);
+};
+
+/**
+ * Get products with pagination, sorting, and filtering
+ * @route GET /api/admin/products
+ * @access Admin
+ */
+exports.getProducts = async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      categoryId,
+      restaurantId,
+      status
+    } = req.query;
+
+    // Build filter object
+    const filter = {};
+
+    // Add search filter if provided
+    if (search) {
+      filter.name = { [Op.like]: `%${search}%` };
+    }
+
+    // Add category filter if provided
+    if (categoryId) {
+      filter.categoryId = categoryId;
+    }
+
+    // Add restaurant filter if provided
+    if (restaurantId) {
+      filter.restaurantId = restaurantId;
+    }
+
+    // Add status filter if provided
+    if (status === 'active') {
+      filter.isAvailable = true;
+    } else if (status === 'inactive') {
+      filter.isAvailable = false;
+    }
+
+    // Calculate pagination
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get products with count
+    try {
+      const { rows: products, count: total } = await Product.findAndCountAll({
+        where: filter,
+        include: [
+          {
+            model: Category,
+            as: 'category',
+            attributes: ['id', 'name']
+          },
+          {
+            model: Restaurant,
+            as: 'restaurant',
+            attributes: ['id', 'name']
+          }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset,
+        distinct: true
+      });
+
+      // Transform data for frontend
+      const transformedProducts = products.map(product => {
+        const p = product.toJSON();
+        return {
+          ...p,
+          categoryName: p.category ? p.category.name : null,
+          restaurantName: p.restaurant ? p.restaurant.name : null,
+          status: p.isAvailable ? 'active' : 'inactive'
+        };
+      });
+
+      res.status(200).json({
+        items: transformedProducts,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit))
+      });
+    } catch (dbError) {
+      console.error('Database error:', dbError);
+
+      // Return an empty result set rather than an error
+      // This is more user-friendly for the admin UI
+      res.status(200).json({
+        items: [],
+        total: 0,
+        page: parseInt(page),
+        pages: 0,
+        message: 'Failed to retrieve products. Database error.'
+      });
+    }
+  } catch (error) {
+    console.error('Product search error:', error);
+    next(error);
+  }
+};
+
+/**
+ * Get a product by ID
+ * @route GET /api/admin/products/:id
+ * @access Admin
+ */
+exports.getProductById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const product = await Product.findByPk(id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        },
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name', 'address']
+        },
+        {
+          model: ProductOption,
+          as: 'options',
+          include: [
+            {
+              model: ProductOptionChoice,
+              as: 'choices'
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        product
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create a new product
+ * @route POST /api/admin/products
+ * @access Admin
+ */
+exports.createProduct = async (req, res, next) => {
+  try {
+    const {
+      name,
+      description,
+      price,
+      image,
+      categoryId,
+      restaurantId,
+      isAvailable,
+      calories,
+      tags
+    } = req.body;
+
+    // Create new product
+    const product = await Product.create({
+      name,
+      description,
+      price,
+      image,
+      categoryId,
+      restaurantId,
+      isAvailable: isAvailable !== undefined ? isAvailable : true,
+      calories,
+      tags: Array.isArray(tags) ? tags : []
+    });
+
+    // If product options are provided, add them
+    if (req.body.options && Array.isArray(req.body.options)) {
+      for (const option of req.body.options) {
+        const newOption = await ProductOption.create({
+          productId: product.id,
+          name: option.name,
+          required: option.required || false,
+          multiple: option.multiple || false,
+          min: option.min || 0,
+          max: option.max || null
+        });
+
+        if (option.choices && Array.isArray(option.choices)) {
+          for (const choice of option.choices) {
+            await ProductOptionChoice.create({
+              optionId: newOption.id,
+              name: choice.name,
+              price: choice.price || 0,
+              isDefault: choice.isDefault || false
+            });
+          }
+        }
+      }
+    }
+
+    res.status(201).json({
+      status: 'success',
+      data: {
+        product
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update a product
+ * @route PUT /api/admin/products/:id
+ * @access Admin
+ */
+exports.updateProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      description,
+      price,
+      image,
+      categoryId,
+      restaurantId,
+      isAvailable,
+      calories,
+      tags
+    } = req.body;
+
+    // Find the product
+    const product = await Product.findByPk(id);
+
+    if (!product) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    // Update product
+    await product.update({
+      name: name !== undefined ? name : product.name,
+      description: description !== undefined ? description : product.description,
+      price: price !== undefined ? price : product.price,
+      image: image !== undefined ? image : product.image,
+      categoryId: categoryId !== undefined ? categoryId : product.categoryId,
+      restaurantId: restaurantId !== undefined ? restaurantId : product.restaurantId,
+      isAvailable: isAvailable !== undefined ? isAvailable : product.isAvailable,
+      calories: calories !== undefined ? calories : product.calories,
+      tags: tags !== undefined ? tags : product.tags
+    });
+
+    // If product options are provided, update them
+    if (req.body.options && Array.isArray(req.body.options)) {
+      // Delete existing options and recreate
+      await ProductOption.destroy({
+        where: { productId: product.id }
+      });
+
+      for (const option of req.body.options) {
+        const newOption = await ProductOption.create({
+          productId: product.id,
+          name: option.name,
+          required: option.required || false,
+          multiple: option.multiple || false,
+          min: option.min || 0,
+          max: option.max || null
+        });
+
+        if (option.choices && Array.isArray(option.choices)) {
+          for (const choice of option.choices) {
+            await ProductOptionChoice.create({
+              optionId: newOption.id,
+              name: choice.name,
+              price: choice.price || 0,
+              isDefault: choice.isDefault || false
+            });
+          }
+        }
+      }
+    }
+
+    // Get updated product with associations
+    const updatedProduct = await Product.findByPk(id, {
+      include: [
+        {
+          model: Category,
+          as: 'category',
+          attributes: ['id', 'name']
+        },
+        {
+          model: Restaurant,
+          as: 'restaurant',
+          attributes: ['id', 'name']
+        },
+        {
+          model: ProductOption,
+          as: 'options',
+          include: [
+            {
+              model: ProductOptionChoice,
+              as: 'choices'
+            }
+          ]
+        }
+      ]
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        product: updatedProduct
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Update product availability
+ * @route PATCH /api/admin/products/:id/availability
+ * @access Admin
+ */
+exports.updateProductAvailability = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isAvailable } = req.body;
+
+    // Find the product
+    const product = await Product.findByPk(id);
+
+    if (!product) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    // Update product availability
+    await product.update({
+      isAvailable: isAvailable
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        product
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Delete a product
+ * @route DELETE /api/admin/products/:id
+ * @access Admin
+ */
+exports.deleteProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Find the product
+    const product = await Product.findByPk(id);
+
+    if (!product) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    // Delete product options and choices
+    await ProductOption.destroy({
+      where: { productId: product.id }
+    });
+
+    // Delete product
+    await product.destroy();
+
+    res.status(200).json({
+      status: 'success',
+      data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get all restaurants for admin with pagination and filtering
+ * @route GET /api/admin/restaurants
+ * @access Admin
+ */
+exports.getAdminRestaurants = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      search = '',
+      status,
+      cuisine,
+      sort
+    } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build where clauses
+    const whereClause = [];
+    const params = [];
+
+    if (search) {
+      whereClause.push('(name LIKE ? OR address LIKE ? OR email LIKE ? OR phone LIKE ?)');
+      const searchPattern = `%${search}%`;
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+    }
+
+    if (status && status !== 'all') {
+      whereClause.push('status = ?');
+      params.push(status);
+    }
+
+    if (cuisine && cuisine !== 'all') {
+      whereClause.push('cuisine = ?');
+      params.push(cuisine);
+    }
+
+    // Build query
+    let query = 'SELECT * FROM restaurants';
+    let countQuery = 'SELECT COUNT(*) as total FROM restaurants';
+
+    if (whereClause.length > 0) {
+      const whereString = ' WHERE ' + whereClause.join(' AND ');
+      query += whereString;
+      countQuery += whereString;
+    }
+
+    // Add sorting
+    if (sort) {
+      const [field, order] = sort.split('_');
+      const validFields = ['name', 'createdAt', 'averageRating', 'cuisine'];
+      const validOrder = ['asc', 'desc'];
+
+      if (validFields.includes(field) && validOrder.includes(order.toLowerCase())) {
+        query += ` ORDER BY ${field} ${order}`;
+      } else {
+        query += ' ORDER BY createdAt DESC';
+      }
+    } else {
+      query += ' ORDER BY createdAt DESC';
+    }
+
+    // Add pagination
+    query += ' LIMIT ? OFFSET ?';
+    params.push(parseInt(limit), offset);
+
+    // Execute queries
+    const [restaurants] = await db.query(query, params);
+    const [countResult] = await db.query(countQuery, params.slice(0, params.length - 2));
+
+    return res.json({
+      status: 'success',
+      restaurants,
+      total: countResult.total || 0,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      pages: Math.ceil((countResult.total || 0) / parseInt(limit))
+    });
+  } catch (error) {
+    console.error('Error getting restaurants:', error);
+    return res.status(500).json({
+      message: 'Failed to get restaurants',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get a restaurant by ID for admin
+ * @route GET /api/admin/restaurants/:id
+ * @access Admin
+ */
+exports.getAdminRestaurantById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Get restaurant details
+    const [restaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!restaurant || restaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Get restaurant operating hours
+    let operatingHours = [];
+    try {
+      [operatingHours] = await db.query('SELECT * FROM operating_hours WHERE restaurantId = ?', [id]);
+    } catch (error) {
+      console.error('Error getting operating hours:', error);
+      // Continue even if this fails
+    }
+
+    // Get restaurant delivery zones
+    let deliveryZones = [];
+    try {
+      [deliveryZones] = await db.query('SELECT * FROM delivery_zones WHERE restaurantId = ?', [id]);
+    } catch (error) {
+      console.error('Error getting delivery zones:', error);
+      // Continue even if this fails
+    }
+
+    // Return data
+    return res.json({
+      status: 'success',
+      data: {
+        ...restaurant[0],
+        operatingHours,
+        deliveryZones
+      }
+    });
+  } catch (error) {
+    console.error('Error getting restaurant by ID:', error);
+    return res.status(500).json({
+      message: 'Failed to get restaurant details',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Create a new restaurant
+ * @route POST /api/admin/restaurants
+ * @access Admin
+ */
+exports.createAdminRestaurant = async (req, res) => {
+  try {
+    console.log("Creating restaurant with data:", JSON.stringify(req.body, null, 2));
+    console.log("Files:", req.files ? Object.keys(req.files) : "No files");
+
+    // Extract fields with default values to prevent undefined errors
+    const {
+      name = '',
+      cuisine = '',
+      email = '',
+      phone = '',
+      address = '',
+      city = null,
+      state = null,
+      zipCode = null,
+      latitude = null,
+      longitude = null,
+      deliveryFee = 0,
+      minimumOrderAmount = 0,
+      status = 'active',
+      description = '',
+      hasSpecificZones = false,
+      deliveryRadius = 5,
+      priceRange = '$$'
+    } = req.body || {};
+
+    // Basic validation
+    if (!name || !cuisine || !address) {
+      console.error("Validation failed - missing required fields:", { name, cuisine, address });
+      return res.status(400).json({
+        status: 'error',
+        message: 'Name, cuisine, and address are required'
+      });
+    }
+
+    // Get logo from file upload if available - safely handle it
+    let logo = null;
+    if (req.files && req.files.logo && req.files.logo[0]) {
+      logo = req.files.logo[0].filename;
+      console.log("Logo file found:", logo);
+    }
+
+    let transactionStarted = false;
+    try {
+      // Start transaction
+      console.log("Starting transaction");
+      await db.query('START TRANSACTION');
+      transactionStarted = true;
+
+      // Insert restaurant
+      console.log("Inserting restaurant record");
+      const result = await db.query(`
+        INSERT INTO restaurants (
+          name, cuisineType, email, phone, address, city, state, zipCode,
+          latitude, longitude, logo, deliveryFee, minimumOrderAmount,
+          status, description, hasSpecificZones, deliveryRadius,
+          priceRange, ownerId, createdAt, updatedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+      `, [
+        name, cuisine, email, phone, address, city, state, zipCode,
+        latitude, longitude, logo, deliveryFee, minimumOrderAmount,
+        status, description, hasSpecificZones === 'true' ? true : false, deliveryRadius,
+        priceRange, req.user?.id || null // Added owner ID from request user
+      ]);
+
+      const restaurantId = result.insertId;
+      console.log("Restaurant created with ID:", restaurantId);
+
+      // Handle operating hours if provided
+      try {
+        if (req.body.openingHours) {
+          console.log("Processing operating hours");
+          const operatingHours = typeof req.body.openingHours === 'string'
+            ? JSON.parse(req.body.openingHours)
+            : req.body.openingHours;
+
+          if (Array.isArray(operatingHours)) {
+            for (let i = 0; i < operatingHours.length; i++) {
+              const day = i;
+              const { isOpen = false, openTime = null, closeTime = null } = operatingHours[i] || {};
+
+              await db.query(`
+                INSERT INTO operating_hours (
+                  restaurantId, dayOfWeek, isOpen, openTime, closeTime,
+                  createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+              `, [
+                restaurantId, day, isOpen === true || isOpen === 'true', openTime, closeTime
+              ]);
+            }
+            console.log("Successfully added operating hours");
+          } else {
+            console.log("Operating hours not in expected array format");
+          }
+        }
+      } catch (opHoursError) {
+        console.error("Error handling operating hours:", opHoursError);
+        // Continue execution, don't throw
+      }
+
+      // Handle delivery zones if provided
+      try {
+        if (req.body.deliveryZones) {
+          console.log("Processing delivery zones");
+          const deliveryZones = typeof req.body.deliveryZones === 'string'
+            ? JSON.parse(req.body.deliveryZones)
+            : req.body.deliveryZones;
+
+          if (Array.isArray(deliveryZones)) {
+            for (const zone of deliveryZones) {
+              await db.query(`
+                INSERT INTO delivery_zones (
+                  restaurantId, name, coordinates, deliveryFee, minimumOrderAmount,
+                  createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+              `, [
+                restaurantId, zone.name || '', JSON.stringify(zone.coordinates || {}),
+                zone.deliveryFee || 0, zone.minimumOrderAmount || 0
+              ]);
+            }
+            console.log("Successfully added delivery zones");
+          } else {
+            console.log("Delivery zones not in expected array format");
+          }
+        }
+      } catch (zonesError) {
+        console.error("Error handling delivery zones:", zonesError);
+        // Continue execution, don't throw
+      }
+
+      // Commit transaction
+      console.log("Committing transaction");
+      await db.query('COMMIT');
+
+      // Get the created restaurant
+      console.log("Fetching created restaurant data");
+      const [restaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [restaurantId]);
+
+      console.log("Restaurant creation successful");
+      res.status(201).json({
+        status: 'success',
+        message: 'Restaurant created successfully',
+        data: restaurant[0]
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      if (transactionStarted) {
+        console.error("Error during creation, rolling back:", error);
+        await db.query('ROLLBACK');
+      }
+      throw error;
+    }
+  } catch (error) {
+    // Handle any other errors
+    console.error('Error creating restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to create restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update a restaurant
+ * @route PUT /api/admin/restaurants/:id
+ * @access Admin
+ */
+exports.updateAdminRestaurant = async (req, res) => {
+  try {
+    console.log("Updating restaurant with data:", req.body);
+    console.log("Files:", req.files || "No files");
+
+    const { id } = req.params;
+
+    // Extract fields with default values to prevent undefined errors
+    const {
+      name,
+      cuisine,
+      email,
+      phone,
+      address,
+      city,
+      state,
+      zipCode,
+      latitude,
+      longitude,
+      deliveryFee,
+      minimumOrderAmount,
+      status,
+      description,
+      hasSpecificZones,
+      deliveryRadius,
+      priceRange
+    } = req.body;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Get logo from file upload if available - safely handle it
+    const logo = req.files && req.files.logo && req.files.logo[0] ? req.files.logo[0].filename : null;
+
+    // Start transaction
+    await db.query('START TRANSACTION');
+
+    try {
+      // Build update query
+      const updates = [];
+      const params = [];
+
+      if (name) {
+        updates.push('name = ?');
+        params.push(name);
+      }
+
+      if (cuisine) {
+        updates.push('cuisineType = ?');
+        params.push(cuisine);
+      }
+
+      if (email) {
+        updates.push('email = ?');
+        params.push(email);
+      }
+
+      if (phone) {
+        updates.push('phone = ?');
+        params.push(phone);
+      }
+
+      if (address) {
+        updates.push('address = ?');
+        params.push(address);
+      }
+
+      if (city !== undefined) {
+        updates.push('city = ?');
+        params.push(city);
+      }
+
+      if (state !== undefined) {
+        updates.push('state = ?');
+        params.push(state);
+      }
+
+      if (zipCode !== undefined) {
+        updates.push('zipCode = ?');
+        params.push(zipCode);
+      }
+
+      if (latitude !== undefined) {
+        updates.push('latitude = ?');
+        params.push(latitude);
+      }
+
+      if (longitude !== undefined) {
+        updates.push('longitude = ?');
+        params.push(longitude);
+      }
+
+      if (deliveryFee !== undefined) {
+        updates.push('deliveryFee = ?');
+        params.push(deliveryFee);
+      }
+
+      if (minimumOrderAmount !== undefined) {
+        updates.push('minimumOrderAmount = ?');
+        params.push(minimumOrderAmount);
+      }
+
+      if (status) {
+        updates.push('status = ?');
+        params.push(status);
+      }
+
+      if (description !== undefined) {
+        updates.push('description = ?');
+        params.push(description);
+      }
+
+      if (priceRange !== undefined) {
+        updates.push('priceRange = ?');
+        params.push(priceRange);
+      }
+
+      if (hasSpecificZones !== undefined) {
+        updates.push('hasSpecificZones = ?');
+        params.push(hasSpecificZones === 'true' ? true : false);
+      }
+
+      if (deliveryRadius !== undefined) {
+        updates.push('deliveryRadius = ?');
+        params.push(deliveryRadius);
+      }
+
+      if (logo) {
+        updates.push('logo = ?');
+        params.push(logo);
+      }
+
+      // Only proceed with update if there are fields to update
+      if (updates.length > 0) {
+        params.push(id); // Add ID for WHERE clause
+
+        const updateQuery = `
+          UPDATE restaurants
+          SET ${updates.join(', ')}, updatedAt = NOW()
+          WHERE id = ?
+        `;
+
+        await db.query(updateQuery, params);
+      }
+
+      // Handle operating hours if provided
+      try {
+        if (req.body.openingHours) {
+          // First delete existing hours
+          await db.query('DELETE FROM operating_hours WHERE restaurantId = ?', [id]);
+
+          // Then add new hours
+          const operatingHours = typeof req.body.openingHours === 'string'
+            ? JSON.parse(req.body.openingHours)
+            : req.body.openingHours;
+
+          if (Array.isArray(operatingHours)) {
+            for (let i = 0; i < operatingHours.length; i++) {
+              const day = i;
+              const { isOpen = false, openTime = null, closeTime = null } = operatingHours[i] || {};
+
+              await db.query(`
+                INSERT INTO operating_hours (
+                  restaurantId, dayOfWeek, isOpen, openTime, closeTime,
+                  createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+              `, [
+                id, day, isOpen === true || isOpen === 'true', openTime, closeTime
+              ]);
+            }
+          }
+        }
+      } catch (opHoursError) {
+        console.error("Error handling operating hours:", opHoursError);
+        // Continue execution, don't throw
+      }
+
+      // Handle delivery zones if provided
+      try {
+        if (req.body.deliveryZones) {
+          // First delete existing zones
+          await db.query('DELETE FROM delivery_zones WHERE restaurantId = ?', [id]);
+
+          // Then add new zones
+          const deliveryZones = typeof req.body.deliveryZones === 'string'
+            ? JSON.parse(req.body.deliveryZones)
+            : req.body.deliveryZones;
+
+          if (Array.isArray(deliveryZones)) {
+            for (const zone of deliveryZones) {
+              await db.query(`
+                INSERT INTO delivery_zones (
+                  restaurantId, name, coordinates, deliveryFee, minimumOrderAmount,
+                  createdAt, updatedAt
+                ) VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+              `, [
+                id, zone.name || '', JSON.stringify(zone.coordinates || {}),
+                zone.deliveryFee || 0, zone.minimumOrderAmount || 0
+              ]);
+            }
+          }
+        }
+      } catch (zonesError) {
+        console.error("Error handling delivery zones:", zonesError);
+        // Continue execution, don't throw
+      }
+
+      // Commit transaction
+      await db.query('COMMIT');
+
+      // Get the updated restaurant
+      const [restaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Restaurant updated successfully',
+        data: restaurant[0]
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    // Rollback transaction on error if we started one
+    try {
+      await db.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Error during rollback:', rollbackError);
+    }
+
+    console.error('Error updating restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to update restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Delete a restaurant
+ * @route DELETE /api/admin/restaurants/:id
+ * @access Admin
+ */
+exports.deleteAdminRestaurant = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Delete restaurant and related data
+    await db.query('DELETE FROM restaurants WHERE id = ?', [id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Restaurant deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to delete restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Approve a restaurant
+ * @route POST /api/admin/restaurants/:id/approve
+ * @access Admin
+ */
+exports.approveRestaurant = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Update restaurant status
+    await db.query('UPDATE restaurants SET status = ?, updatedAt = NOW() WHERE id = ?', ['active', id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Restaurant approved successfully'
+    });
+  } catch (error) {
+    console.error('Error approving restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to approve restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reject a restaurant
+ * @route POST /api/admin/restaurants/:id/reject
+ * @access Admin
+ */
+exports.rejectRestaurant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Update restaurant status
+    await db.query('UPDATE restaurants SET status = ?, rejectionReason = ?, updatedAt = NOW() WHERE id = ?',
+      ['rejected', reason || 'Application rejected by admin', id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Restaurant rejected successfully'
+    });
+  } catch (error) {
+    console.error('Error rejecting restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to reject restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Suspend a restaurant
+ * @route POST /api/admin/restaurants/:id/suspend
+ * @access Admin
+ */
+exports.suspendRestaurant = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Update restaurant status
+    await db.query('UPDATE restaurants SET status = ?, suspensionReason = ?, updatedAt = NOW() WHERE id = ?',
+      ['suspended', reason || 'Suspended by admin', id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Restaurant suspended successfully'
+    });
+  } catch (error) {
+    console.error('Error suspending restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to suspend restaurant',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Activate a restaurant
+ * @route POST /api/admin/restaurants/:id/activate
+ * @access Admin
+ */
+exports.activateRestaurant = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Basic validation
+    if (!id || isNaN(parseInt(id))) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid restaurant ID'
+      });
+    }
+
+    // Check if restaurant exists
+    const [existingRestaurant] = await db.query('SELECT * FROM restaurants WHERE id = ?', [id]);
+
+    if (!existingRestaurant || existingRestaurant.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Restaurant not found'
+      });
+    }
+
+    // Update restaurant status
+    await db.query('UPDATE restaurants SET status = ?, suspensionReason = NULL, updatedAt = NOW() WHERE id = ?',
+      ['active', id]);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Restaurant activated successfully'
+    });
+  } catch (error) {
+    console.error('Error activating restaurant:', error);
+    return res.status(500).json({
+      message: 'Failed to activate restaurant',
+      error: error.message
+    });
+  }
 };

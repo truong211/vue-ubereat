@@ -1,182 +1,103 @@
-import { createStore } from 'vuex'
-import auth from './modules/auth'
-import cart from './modules/cart'
-import orders from './modules/orders'
-import order from './modules/order'
-import restaurantAdmin from './modules/restaurantAdmin'
-import admin from './modules/admin'
-import ui from './modules/ui'
-import reviews from './modules/reviews'
-import orderTracking from './modules/orderTracking'
-import categories from './modules/categories'
-import restaurants from './modules/restaurants'
-import websocketService from '@/services/websocket'
-import chat from './modules/chat'
-import notifications from './modules/notifications'
-import restaurantOrders from './modules/restaurantOrders'
-import analytics from './modules/analytics'
-import users from './modules/users'
-import disputes from './modules/disputes'
-import favorites from './modules/favorites'
-import user from './modules/user'
-import product from './modules/product'
+import { createStore } from 'vuex';
+import { useStore as baseUseStore } from 'vuex';
+import category from './modules/category';
+import product from './modules/product';
+import user from './modules/user';
+import users from './modules/users';
+import page from './modules/page';
+import notifications from './modules/notifications';
+import cart from './modules/cart';
+import orders from './modules/orders';
+import ui from './modules/ui';
+import admin from './modules/admin';
+import restaurants from './modules/restaurants';
+import favorites from './modules/favorites';
 
-// Create a new store instance.
 const store = createStore({
-  state: {
-    loading: false,
-    error: null,
-    webSocket: {
-      status: 'disconnected', // 'connected', 'disconnected', 'error'
-      lastMessage: null
-    },
-    systemNotifications: []
-  },
-
-  mutations: {
-    setLoading(state, loading) {
-      state.loading = loading
-    },
-    setError(state, error) {
-      state.error = error
-    },
-    clearError(state) {
-      state.error = null
-    },
-    setWebSocketStatus(state, status) {
-      state.webSocket.status = status
-    },
-    setLastMessage(state, message) {
-      state.webSocket.lastMessage = message
-    },
-    addNotification(state, notification) {
-      state.systemNotifications.unshift({
-        id: Date.now(),
-        timestamp: new Date(),
-        read: false,
-        ...notification
-      })
-    },
-    markNotificationAsRead(state, notificationId) {
-      const notification = state.systemNotifications.find(n => n.id === notificationId)
-      if (notification) {
-        notification.read = true
-      }
-    },
-    markAllNotificationsAsRead(state) {
-      state.systemNotifications.forEach(n => n.read = true)
-    },
-    clearNotifications(state) {
-      state.systemNotifications = []
-    }
-  },
-
-  actions: {
-    setLoading({ commit }, loading) {
-      commit('setLoading', loading)
-    },
-    setError({ commit }, error) {
-      commit('setError', error)
-    },
-    clearError({ commit }) {
-      commit('clearError')
-    },
-    initWebSocket({ commit, dispatch, state }) {
-      // Initialize WebSocket service
-      websocketService.init(this)
-
-      // Watch for auth state changes manually instead of using this.watch
-      let prevUser = state.auth.user;
-      this.subscribe((mutation, state) => {
-        if (mutation.type.startsWith('auth/') && state.auth.user !== prevUser) {
-          prevUser = state.auth.user;
-          if (state.auth.user) {
-            websocketService.connect();
-          } else {
-            websocketService.disconnect();
-            commit('setWebSocketStatus', 'disconnected');
-          }
-        }
-      });
-    },
-    setWebSocketStatus({ commit }, status) {
-      commit('setWebSocketStatus', status)
-    },
-    addNotification({ commit }, notification) {
-      commit('addNotification', notification)
-      // Play notification sound if enabled
-      if (notification.sound !== false) {
-        const audio = new Audio('/sounds/notification.mp3')
-        audio.play().catch(error => {
-          console.error('Failed to play notification sound:', error)
-        })
-      }
-    },
-    markNotificationAsRead({ commit }, notificationId) {
-      commit('markNotificationAsRead', notificationId)
-    },
-    markAllNotificationsAsRead({ commit }) {
-      commit('markAllNotificationsAsRead')
-    },
-    clearNotifications({ commit }) {
-      commit('clearNotifications')
-    },
-    // Generic WebSocket message sender
-    sendWebSocketMessage(_, { type, payload }) {
-      websocketService.send(type, payload)
-    },
-    
-    // Handle incoming push notification
-    handlePushNotification({ dispatch }, notification) {
-      // Add to notifications module
-      dispatch('notifications/handlePushNotification', notification);
-      
-      // Play notification sound if enabled
-      if (notification.sound !== false) {
-        const audio = new Audio('/sounds/notification.mp3');
-        audio.play().catch(error => {
-          console.error('Failed to play notification sound:', error);
-        });
-      }
-    }
-  },
-
-  getters: {
-    isLoading: state => state.loading,
-    getError: state => state.error,
-    isWebSocketConnected: state => state.webSocket.status === 'connected',
-    webSocketStatus: state => state.webSocket.status,
-    unreadNotifications: state => state.systemNotifications.filter(n => !n.read),
-    allNotifications: state => state.systemNotifications
-  },
-
   modules: {
-    auth,
+    category,
+    product,
+    user,
+    users,
+    notifications,
+    page,
     cart,
     orders,
-    order,
-    restaurantAdmin,
-    admin,
     ui,
-    reviews,
-    orderTracking,
-    categories,
+    admin,
     restaurants,
-    chat,
-    notifications,
-    restaurantOrders,
-    analytics,
-    users,
-    disputes,
     favorites,
-    user,
-    product
+  },
+  state: {
+    // Root state if needed
+    connectionError: false,
+    errorMessage: null,
+    isBackendAvailable: true
+  },
+  mutations: {
+    // Root mutations if needed
+    SET_CONNECTION_ERROR(state, status) {
+      state.connectionError = status;
+      state.isBackendAvailable = !status;
+    },
+    SET_ERROR(state, message) {
+      state.errorMessage = message;
+    },
+    CLEAR_ERROR(state) {
+      state.errorMessage = null;
+    }
+  },
+  actions: {
+    // Root actions if needed
+    initWebSocket({ commit }) {
+      // Initialize websocket connection
+      console.log('Initializing main WebSocket connection');
+    },
+    setConnectionError({ commit }, status) {
+      commit('SET_CONNECTION_ERROR', status);
+    },
+    setError({ commit }, message) {
+      commit('SET_ERROR', message);
+    },
+    clearError({ commit }) {
+      commit('CLEAR_ERROR');
+    },
+    // New action to check if backend is available
+    async checkBackendConnection({ commit }) {
+      try {
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        // Simple health check endpoint
+        const response = await fetch(`${API_URL}/health`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          // Short timeout for health check
+          signal: AbortSignal.timeout(3000)
+        });
+        
+        if (response.ok) {
+          commit('SET_CONNECTION_ERROR', false);
+          return true;
+        } else {
+          commit('SET_CONNECTION_ERROR', true);
+          return false;
+        }
+      } catch (error) {
+        console.warn('Backend connection check failed:', error.message);
+        commit('SET_CONNECTION_ERROR', true);
+        return false;
+      }
+    }
+  },
+  getters: {
+    isBackendAvailable: state => state.isBackendAvailable,
+    hasConnectionError: state => state.connectionError,
+    errorMessage: state => state.errorMessage
   }
-})
+});
 
-// Provide useStore composable for Composition API
-export function useStore() {
-  return store
-}
+// Create a type-safe composable
+export const useStore = () => {
+  return baseUseStore();
+};
 
-export default store
+export default store;

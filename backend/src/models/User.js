@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
 
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
@@ -27,7 +28,102 @@ module.exports = (sequelize, DataTypes) => {
     },
     phone: {
       type: DataTypes.STRING(20),
+      allowNull: true,
+      unique: true,
+    },
+    address: {
+      type: DataTypes.STRING(255),
       allowNull: true
+    },
+    role: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'customer',
+      allowNull: false
+    },
+    status: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'active',
+      allowNull: false
+    },
+    profileImage: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    lastLogin: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    isEmailVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    isPhoneVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    emailVerificationOtp: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    emailVerificationExpires: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    phoneVerificationOtp: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    phoneVerificationExpires: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    resetPasswordOtp: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    resetPasswordExpires: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    socialProvider: {
+      type: DataTypes.STRING(20),
+      allowNull: true
+    },
+    socialId: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    socialToken: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    verificationToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    verificationExpires: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    resetPasswordToken: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    preferredLanguage: {
+      type: DataTypes.STRING(10),
+      defaultValue: 'en'
+    },
+    notificationPreferences: {
+      type: DataTypes.JSON,
+      defaultValue: {
+        email: true,
+        push: true,
+        sms: false
+      }
     },
     favoriteFoods: {
       type: DataTypes.JSON,
@@ -36,11 +132,92 @@ module.exports = (sequelize, DataTypes) => {
     favoriteRestaurants: {
       type: DataTypes.JSON,
       defaultValue: []
+    },
+    favoriteDishes: {
+      type: DataTypes.JSON,
+      defaultValue: []
     }
   }, {
     tableName: 'users',
-    timestamps: true
+    timestamps: true,
+    hooks: {
+      // Hash password before creating a user
+      beforeCreate: async (user) => {
+        if (user.password) {
+          // Convert password to string if needed, but don't trim it
+          const passwordToHash = typeof user.password === 'string' 
+            ? user.password 
+            : user.password.toString();
+          
+          const salt = await bcrypt.genSalt(12);
+          user.password = await bcrypt.hash(passwordToHash, salt);
+        }
+      },
+      // Hash password before updating a user if password changes
+      beforeUpdate: async (user) => {
+        if (user.changed('password')) {
+          // Convert password to string if needed, but don't trim it
+          const passwordToHash = typeof user.password === 'string' 
+            ? user.password 
+            : user.password.toString();
+          
+          const salt = await bcrypt.genSalt(12);
+          user.password = await bcrypt.hash(passwordToHash, salt);
+        }
+      }
+    }
   });
+
+  // Static method for password comparison
+  User.correctPassword = async (candidatePassword, userPassword) => {
+    try {
+      if (!userPassword) {
+        console.log('Password comparison failed: No stored password hash');
+        return false;
+      }
+      
+      if (!candidatePassword) {
+        console.log('Password comparison failed: No candidate password provided');
+        return false;
+      }
+      
+      // Convert to string but DO NOT trim the password - this could be causing the issue
+      const passwordToTest = typeof candidatePassword === 'string' 
+        ? candidatePassword 
+        : candidatePassword.toString();
+      
+      console.log('--- DEBUG: Pre-Comparison Values ---');
+      console.log('Plaintext Password Length:', passwordToTest.length);
+      console.log('Stored Password Hash Length:', userPassword.length);
+      
+      // Use pure bcrypt compare without any modifications to the input
+      const bcryptCompare = require('bcryptjs').compare;
+      const isMatch = await bcryptCompare(passwordToTest, userPassword);
+      console.log('Password validation result:', isMatch);
+      return isMatch;
+    } catch (error) {
+      console.error('Password comparison error:', error);
+      return false;
+    }
+  };
+
+  // Instance method for password validation
+  User.prototype.validatePassword = async function(candidatePassword) {
+    return User.correctPassword(candidatePassword, this.password);
+  };
+  
+  // Update last login timestamp for a user
+  User.updateLoginTimestamp = async function(userId) {
+    return this.update(
+      { lastLogin: new Date() },
+      { where: { id: userId } }
+    );
+  };
+
+  // Find user by email - convenience method
+  User.findByEmail = async function(email) {
+    return this.findOne({ where: { email } });
+  };
 
   // Add a food to user's favorites
   User.prototype.addFavoriteFood = async function(foodId) {
@@ -145,4 +322,4 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   return User;
-}; 
+};

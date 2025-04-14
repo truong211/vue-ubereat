@@ -430,24 +430,49 @@
             </v-col>
           </v-row>
         </div>
+
+        <!-- Related Products Section -->
+        <section class="related-products-section mt-8">
+          <v-container>
+            <RelatedProducts 
+              :productId="productId"
+              :categoryId="product.categoryId"
+              title="Sản phẩm tương tự"
+              :maxItems="8"
+            />
+          </v-container>
+        </section>
       </template>
     </v-container>
   </div>
 </template>
 
 <script>
-import { mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useCartStore } from '@/stores/cart';       // Import Pinia cart store
+import { useUserStore } from '@/stores/user';       // Import Pinia user store
+import { useNotificationStore } from '@/stores/notification'; // Import Pinia notification store
 import axios from 'axios';
 import { format } from 'date-fns';
 import { PRODUCT } from '@/services/api.endpoints';
+import RelatedProducts from '@/components/product/RelatedProducts.vue';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'ProductDetailPage',
   props: {
     productId: {
       type: [String, Number],
       required: true
     }
+  },
+  components: {
+    RelatedProducts
+  },
+  setup() {
+    const cartStore = useCartStore();
+    const userStore = useUserStore();
+    const notificationStore = useNotificationStore();
+    return { cartStore, userStore, notificationStore }; // Expose store instances
   },
   data() {
     return {
@@ -542,13 +567,7 @@ export default {
     this.checkFavoriteStatus();
   },
   methods: {
-    ...mapActions({
-      addToCartAction: 'cart/addToCart',
-      addToFavorites: 'user/addToFavorites',
-      removeFromFavorites: 'user/removeFromFavorites',
-      checkIfFavorite: 'user/checkIfFavorite',
-      showToast: 'notification/showToast'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
 
     async fetchProductDetails() {
       // Redirect to products page if productId is undefined
@@ -621,7 +640,7 @@ export default {
       if (!this.product) return;
 
       try {
-        const isFavorite = await this.checkIfFavorite(this.product.id);
+        const isFavorite = await this.userStore.checkIfFavorite(this.product.id); // Call action on userStore
         this.isFavorite = isFavorite;
       } catch (error) {
         console.error('Error checking favorite status:', error);
@@ -633,14 +652,16 @@ export default {
 
       try {
         if (this.isFavorite) {
-          await this.removeFromFavorites(this.product.id);
-          this.showToast({
+          await this.userStore.removeFromFavorites(this.product.id); // Call action on userStore
+          // Call action on notificationStore
+          this.notificationStore.showToast({
             message: `${this.product.name} đã được xóa khỏi danh sách yêu thích`,
             type: 'info'
           });
         } else {
-          await this.addToFavorites(this.product.id);
-          this.showToast({
+          await this.userStore.addToFavorites(this.product.id); // Call action on userStore
+          // Call action on notificationStore
+          this.notificationStore.showToast({
             message: `${this.product.name} đã được thêm vào danh sách yêu thích`,
             type: 'success'
           });
@@ -650,7 +671,8 @@ export default {
         this.isFavorite = !this.isFavorite;
       } catch (error) {
         console.error('Error toggling favorite:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: error.response?.data?.message || 'Không thể cập nhật danh sách yêu thích',
           type: 'error'
         });
@@ -670,7 +692,8 @@ export default {
       } else {
         // Fallback - copy URL to clipboard
         navigator.clipboard.writeText(window.location.href);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: 'Đã sao chép liên kết vào bộ nhớ tạm!',
           type: 'success'
         });
@@ -758,18 +781,21 @@ export default {
       if (!product) return;
 
       try {
-        await this.$store.dispatch('cart/addToCart', {
+        // Call action on cartStore instance
+        await this.cartStore.addToCart({
           productId: product.id,
           quantity: 1
         });
 
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: `${product.name} đã được thêm vào giỏ hàng`,
           type: 'success'
         });
       } catch (error) {
         console.error('Error adding to cart:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: error.response?.data?.message || 'Không thể thêm sản phẩm vào giỏ hàng',
           type: 'error'
         });
@@ -808,14 +834,16 @@ export default {
           }
         }
 
-        await this.addToCartAction({
+        // Call action on cartStore instance
+        await this.cartStore.addToCart({
           productId: this.product.id,
           quantity: this.quantity,
           options: Object.keys(options).length > 0 ? options : null,
           notes: this.specialInstructions || null
         });
 
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: `${this.product.name} đã được thêm vào giỏ hàng của bạn`,
           type: 'success'
         });
@@ -825,7 +853,8 @@ export default {
         this.specialInstructions = '';
       } catch (error) {
         console.error('Error adding to cart:', error);
-        this.showToast({
+        // Call action on notificationStore
+        this.notificationStore.showToast({
           message: error.response?.data?.message || 'Không thể thêm sản phẩm vào giỏ hàng',
           type: 'error'
         });
@@ -834,7 +863,7 @@ export default {
       }
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

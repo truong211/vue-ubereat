@@ -1,14 +1,14 @@
 <template>
   <div>
     <div class="d-flex align-center mb-6">
-      <h1 class="text-h4">Menu Management</h1>
+      <h1 class="text-h4">{{ $t('restaurant.menu.title') }}</h1>
       <v-spacer></v-spacer>
       <v-btn
         color="primary"
         prepend-icon="mdi-plus"
         @click="openItemDialog()"
       >
-        Add Menu Item
+        {{ $t('restaurant.menu.addMenuItem') }}
       </v-btn>
     </div>
 
@@ -19,7 +19,7 @@
         show-arrows
         color="primary"
       >
-        <v-tab value="all">All Items</v-tab>
+        <v-tab value="all">{{ $t('restaurant.menu.allItems') }}</v-tab>
         <v-tab
           v-for="category in categories"
           :key="category.id"
@@ -66,7 +66,7 @@
               class="ma-2"
               :color="item.available ? 'success' : 'error'"
             >
-              {{ item.available ? 'Available' : 'Unavailable' }}
+              {{ item.available ? $t('common.available') : $t('common.unavailable') }}
             </v-chip>
           </v-img>
 
@@ -381,6 +381,7 @@
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
+import { useI18n } from 'vue-i18n'
 
 export default {
   name: 'RestaurantMenu',
@@ -389,6 +390,7 @@ export default {
     const store = useStore()
     const itemForm = ref(null)
     const categoryForm = ref(null)
+    const { t, locale } = useI18n()
 
     // State
     const activeCategory = ref('all')
@@ -625,6 +627,17 @@ export default {
       confirmDelete,
       handleDelete,
       formatPrice
+    }
+  },
+
+  methods: {
+    // Format price
+    formatPrice(price) {
+      const locale = this.$i18n.locale
+      return new Intl.NumberFormat(locale === 'vi' ? 'vi-VN' : 'en-US', {
+        style: 'currency',
+        currency: locale === 'vi' ? 'VND' : 'USD'
+      }).format(price)
     }
   }
 }

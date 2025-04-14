@@ -67,11 +67,20 @@ module.exports = (sequelize, DataTypes) => {
 
   // Define associations
   OrderStatusLog.associate = function(models) {
-    OrderStatusLog.belongsTo(models.order, { foreignKey: 'orderId', as: 'order' });
-    OrderStatusLog.belongsTo(models.user, { foreignKey: 'changedById', as: 'changedBy' });
-    
+    if (models.Order) {
+      OrderStatusLog.belongsTo(models.Order, { foreignKey: 'orderId', as: 'order' });
+    } else {
+      console.warn('Order model not found when associating OrderStatusLog model');
+    }
+
+    if (models.User) {
+      OrderStatusLog.belongsTo(models.User, { foreignKey: 'changedById', as: 'changedBy' });
+    } else {
+      console.warn('User model not found when associating OrderStatusLog model');
+    }
+
     // This association is defined in Order model as well, may cause conflicts
-    // models.order.hasMany(OrderStatusLog, { foreignKey: 'orderId', as: 'statusLogs' });
+    // models.Order.hasMany(OrderStatusLog, { foreignKey: 'orderId', as: 'statusLogs' });
   };
 
   return OrderStatusLog;

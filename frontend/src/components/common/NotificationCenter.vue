@@ -385,17 +385,27 @@ export default {
         pushEnabled.value = permission === 'granted'
         
         // Load other notification settings
-        const settings = await store.dispatch('notifications/loadPreferences')
-        enabledTypes.value = settings.enabledTypes || []
-        smsEnabled.value = settings.sms || false
-        emailEnabled.value = settings.email || false
+        try {
+          const settings = await store.dispatch('notifications/loadPreferences') || {}
+          enabledTypes.value = settings?.enabledTypes || []
+          smsEnabled.value = settings?.sms || false
+          emailEnabled.value = settings?.email || false
+        } catch (err) {
+          console.error('Failed to load notification preferences:', err)
+          // Initialize with defaults if settings can't be loaded
+          enabledTypes.value = []
+          smsEnabled.value = false
+          emailEnabled.value = false
+        }
         
-        // Check phone verification status
-        const user = store.state.auth.user
+        // Check phone verification status if auth user exists
+        const user = store?.state?.auth?.user
         phoneVerified.value = user?.phoneVerified || false
       } catch (error) {
         console.error('Failed to initialize notification settings:', error)
         pushSupported.value = false
+        // Initialize with defaults
+        enabledTypes.value = []
       }
     }
     

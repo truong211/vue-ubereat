@@ -72,7 +72,7 @@
               color="primary"
               variant="text"
               prepend-icon="mdi-email-open-multiple-outline"
-              @click="markAllAsRead"
+              @click="markAllAsReadAction"
               :disabled="!hasUnread"
               class="mr-2"
             >
@@ -168,7 +168,7 @@
                       variant="text"
                       size="small"
                       color="primary"
-                      @click.stop="markAsRead(notification.id)"
+                      @click.stop="markAsReadAction(notification.id)"
                       title="Mark as read"
                       class="mr-1"
                     ></v-btn>
@@ -252,14 +252,21 @@
 </template>
 
 <script>
-import { mapState, mapGetters, mapActions } from 'vuex';
+import { useNotificationsStore } from '@/stores/notifications'; // Import Pinia store
 import NotificationPreferences from '@/components/notifications/NotificationPreferences.vue';
 
-export default {
+import { defineComponent } from 'vue'; // Import defineComponent for better typing with Options API + setup
+
+export default defineComponent({ // Use defineComponent
   name: 'UserNotifications',
-  
+
   components: {
     NotificationPreferences
+  },
+
+  setup() {
+    const notificationsStore = useNotificationsStore();
+    return { notificationsStore }; // Expose store instance to the component context
   },
   
   data() {
@@ -289,15 +296,19 @@ export default {
   },
   
   computed: {
-    ...mapState('notifications', [
-      'notifications',
-      'loading'
-    ]),
-    
-    ...mapGetters('notifications', [
-      'unreadCount',
-      'notificationsByDate'
-    ]),
+    // Access state and getters from Pinia store instance
+    notifications() {
+      return this.notificationsStore.notifications;
+    },
+    loading() {
+      return this.notificationsStore.loading;
+    },
+    unreadCount() {
+      return this.notificationsStore.unreadCount; // Assuming getter exists in Pinia store
+    },
+    notificationsByDate() {
+      return this.notificationsStore.notificationsByDate; // Assuming getter exists in Pinia store
+    },
     
     hasNotifications() {
       return this.notifications && this.notifications.length > 0;
@@ -321,16 +332,12 @@ export default {
   },
   
   methods: {
-    ...mapActions('notifications', [
-      'fetchNotifications',
-      'markAsRead',
-      'markAllAsRead',
-      'deleteNotification'
-    ]),
+    // Methods will now call actions directly on the store instance
     
     async loadNotifications() {
       try {
-        const response = await this.fetchNotifications({
+        // Call action on the store instance
+        const response = await this.notificationsStore.fetchNotifications({
           page: this.currentPage,
           reset: true,
           filters: {
@@ -392,7 +399,7 @@ export default {
     openNotification(notification) {
       // Mark as read
       if (!notification.read) {
-        this.markAsRead(notification.id);
+        this.notificationsStore.markAsRead(notification.id); // Call action on the store instance
       }
       
       // Handle navigation based on notification type
@@ -441,7 +448,7 @@ export default {
       this.deletingNotification = true;
       
       try {
-        await this.deleteNotification(this.selectedNotification.id);
+        await this.notificationsStore.deleteNotification(this.selectedNotification.id); // Call action on the store instance
         this.showSnackbarMessage('Notification deleted successfully');
       } catch (error) {
         console.error('Error deleting notification:', error);
@@ -538,6 +545,27 @@ export default {
       this.snackbarText = text;
       this.snackbarColor = color;
       this.showSnackbar = true;
+    },
+
+    async markAllAsReadAction() { // Add the missing method
+      try {
+        await this.notificationsStore.markAllAsRead(); // Call action on the store instance
+        this.showSnackbarMessage('All notifications marked as read');
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+        this.showSnackbarMessage('Failed to mark all as read', 'error');
+      }
+    },
+
+    async markAsReadAction(notificationId) { // Add the missing method
+      try {
+        await this.notificationsStore.markAsRead(notificationId); // Call action on the store instance
+        // Optionally show a snackbar, though it might be too noisy for single marks
+        // this.showSnackbarMessage('Notification marked as read');
+      } catch (error) {
+        console.error(`Error marking notification ${notificationId} as read:`, error);
+        this.showSnackbarMessage('Failed to mark notification as read', 'error');
+      }
     }
   },
   
@@ -553,7 +581,7 @@ export default {
     // Reset page title
     document.title = 'UberEat';
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

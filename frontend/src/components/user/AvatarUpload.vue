@@ -84,10 +84,11 @@
 </template>
 
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed } from 'vue'
 import VueCropper from 'vue-cropperjs'
 import 'cropperjs/dist/cropper.css'
-import { useStore } from '@/store'
+import { useAuthStore } from '@/stores/auth'
+import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
   modelValue: String,
@@ -95,10 +96,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue'])
-
-// Try to use the store from our useStore composable
-// But fallback to inject if there's any issue
-const store = inject('store') || useStore()
+const authStore = useAuthStore()
+const userStore = useUserStore()
 const fileInput = ref(null)
 const cropper = ref(null)
 const showCropper = ref(false)
@@ -107,7 +106,8 @@ const tempImageUrl = ref('')
 
 // Compute user initials from name
 const initials = computed(() => {
-  const name = store.state.auth?.user?.name || ''
+  const user = authStore.currentUser
+  const name = user?.fullName || ''
   return name
     .split(' ')
     .map(part => part[0])
@@ -180,7 +180,7 @@ const uploadCroppedImage = async () => {
       const { avatarUrl } = await response.json()
       
       // Update store and emit new value
-      await store.dispatch('user/updateAvatar', avatarUrl)
+      await userStore.updateAvatar(avatarUrl)
       emit('update:modelValue', avatarUrl)
     } catch (error) {
       console.log('API endpoint not available (development mode), using mock data')
@@ -188,7 +188,7 @@ const uploadCroppedImage = async () => {
       const mockAvatarUrl = canvas.toDataURL('image/jpeg', 0.9)
       
       // Update store and emit new value with local image
-      await store.dispatch('user/updateAvatar', mockAvatarUrl)
+      await userStore.updateAvatar(mockAvatarUrl)
       emit('update:modelValue', mockAvatarUrl)
     }
   } catch (error) {

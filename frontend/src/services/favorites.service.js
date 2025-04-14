@@ -1,40 +1,38 @@
 import { apiClient } from './api.service';
 
-class FavoritesService {
-  // Favorite Foods
-  async getFavoriteFoods() {
-    return apiClient.get('/favorites/foods');
-  }
+export const favoritesService = {
+    // Get user's favorite foods
+    async getFavoriteFoods() {
+        try {
+            const response = await apiClient.get('/api/favorites/foods');
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching favorite foods:', error);
+            throw error;
+        }
+    },
 
-  async addFavoriteFood(foodId) {
-    return apiClient.post('/favorites/foods', { foodId });
-  }
+    // Add a food to favorites
+    async addToFavorites(foodId) {
+        try {
+            const response = await apiClient.post(`/api/favorites/foods/${foodId}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error adding to favorites:', error);
+            throw error;
+        }
+    },
 
-  async removeFavoriteFood(foodId) {
-    return apiClient.delete(`/favorites/foods/${foodId}`);
-  }
+    // Remove a food from favorites
+    async removeFromFavorites(foodId) {
+        try {
+            const response = await apiClient.delete(`/api/favorites/foods/${foodId}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error removing from favorites:', error);
+            throw error;
+        }
+    }
+};
 
-  // Favorite Restaurants
-  async getFavoriteRestaurants() {
-    return apiClient.get('/favorites/restaurants');
-  }
-
-  async addFavoriteRestaurant(restaurantId) {
-    return apiClient.post('/favorites/restaurants', { restaurantId });
-  }
-
-  async removeFavoriteRestaurant(restaurantId) {
-    return apiClient.delete(`/favorites/restaurants/${restaurantId}`);
-  }
-
-  // Personalized Recommendations
-  async getPersonalizedRecommendations() {
-    return apiClient.get('/recommendations/foods');
-  }
-
-  async getRestaurantRecommendations() {
-    return apiClient.get('/recommendations/restaurants');
-  }
-}
-
-export const favoritesService = new FavoritesService();
+export default favoritesService;

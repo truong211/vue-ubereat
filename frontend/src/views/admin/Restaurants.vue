@@ -239,6 +239,64 @@
                 </v-list-item>
               </v-list>
             </v-col>
+
+            <!-- Operating Hours Section -->
+            <v-col cols="12" v-if="detailsDialog.restaurant.operatingHours">
+              <v-card variant="outlined" class="mt-3">
+                <v-card-title class="text-subtitle-1">
+                  <v-icon start>mdi-clock-outline</v-icon>
+                  Operating Hours
+                </v-card-title>
+                <v-divider></v-divider>
+                <v-card-text>
+                  <v-list density="compact">
+                    <v-list-item v-for="(day, index) in weekDays" :key="index" density="compact">
+                      <template v-slot:prepend>
+                        <v-icon :color="detailsDialog.restaurant.operatingHours[index]?.isOpen ? 'success' : 'grey'">
+                          {{ detailsDialog.restaurant.operatingHours[index]?.isOpen ? 'mdi-clock' : 'mdi-clock-outline' }}
+                        </v-icon>
+                      </template>
+                      <v-list-item-title>{{ day }}</v-list-item-title>
+                      <v-list-item-subtitle>
+                        <span v-if="detailsDialog.restaurant.operatingHours[index]?.isOpen">
+                          {{ detailsDialog.restaurant.operatingHours[index].openTime }} - {{ detailsDialog.restaurant.operatingHours[index].closeTime }}
+                        </span>
+                        <span v-else class="text-grey">Closed</span>
+                      </v-list-item-subtitle>
+                    </v-list-item>
+                  </v-list>
+                </v-card-text>
+              </v-card>
+            </v-col>
+
+            <!-- Delivery Information -->
+            <v-col cols="12">
+              <v-card variant="outlined">
+                <v-card-title class="text-subtitle-1">
+                  <v-icon start>mdi-truck-delivery</v-icon>
+                  Delivery Information
+                </v-card-title>
+                <v-divider></v-divider>
+                <v-card-text>
+                  <v-row>
+                    <v-col cols="12" md="6">
+                      <p><strong>Minimum Order:</strong> {{ formatPrice(detailsDialog.restaurant.minimumOrderAmount || 0) }}</p>
+                      <p v-if="!detailsDialog.restaurant.hasSpecificZones">
+                        <strong>Delivery Radius:</strong> {{ detailsDialog.restaurant.deliveryRadius }} km
+                      </p>
+                    </v-col>
+                    <v-col cols="12" md="6" v-if="detailsDialog.restaurant.hasSpecificZones && detailsDialog.restaurant.deliveryZones?.length > 0">
+                      <p><strong>Delivery Zones:</strong></p>
+                      <v-chip-group>
+                        <v-chip v-for="zone in detailsDialog.restaurant.deliveryZones" :key="zone.id" size="small">
+                          {{ zone.name }}
+                        </v-chip>
+                      </v-chip-group>
+                    </v-col>
+                  </v-row>
+                </v-card-text>
+              </v-card>
+            </v-col>
           </v-row>
         </v-card-text>
 
@@ -312,6 +370,107 @@
               </v-col>
 
               <v-col cols="12">
+                <v-divider class="mb-3"></v-divider>
+                <div class="text-subtitle-1 mb-2">Operating Hours</div>
+                <v-row v-for="(day, index) in weekDays" :key="day">
+                  <v-col cols="12" md="3">
+                    <v-checkbox
+                      v-model="editDialog.restaurant.operatingHours[index].isOpen"
+                      :label="day"
+                      hide-details
+                    ></v-checkbox>
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field
+                      v-model="editDialog.restaurant.operatingHours[index].openTime"
+                      label="Opening Time"
+                      type="time"
+                      variant="outlined"
+                      density="compact"
+                      :disabled="!editDialog.restaurant.operatingHours[index].isOpen"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="4">
+                    <v-text-field
+                      v-model="editDialog.restaurant.operatingHours[index].closeTime"
+                      label="Closing Time"
+                      type="time"
+                      variant="outlined"
+                      density="compact"
+                      :disabled="!editDialog.restaurant.operatingHours[index].isOpen"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <v-col cols="12">
+                <v-divider class="mb-3"></v-divider>
+                <div class="text-subtitle-1 mb-2">Delivery Zones</div>
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="editDialog.restaurant.deliveryRadius"
+                      label="Delivery Radius (km)"
+                      type="number"
+                      variant="outlined"
+                      :rules="[v => v > 0 || 'Delivery radius must be greater than 0']"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="editDialog.restaurant.minimumOrderAmount"
+                      label="Minimum Order Amount (VND)"
+                      type="number"
+                      variant="outlined"
+                      :rules="[v => v >= 0 || 'Minimum order must be non-negative']"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+                <v-row>
+                  <v-col cols="12" class="mb-3">
+                    <v-switch
+                      v-model="editDialog.restaurant.hasSpecificZones"
+                      label="Use specific delivery zones instead of radius"
+                      hide-details
+                    ></v-switch>
+                  </v-col>
+                </v-row>
+                <v-row v-if="editDialog.restaurant.hasSpecificZones">
+                  <v-col cols="12">
+                    <v-btn
+                      color="primary"
+                      variant="text"
+                      prepend-icon="mdi-plus"
+                      @click="addDeliveryZone"
+                      class="mb-2"
+                    >
+                      Add Delivery Zone
+                    </v-btn>
+                    <v-data-table
+                      v-if="editDialog.restaurant.deliveryZones.length > 0"
+                      :headers="deliveryZoneHeaders"
+                      :items="editDialog.restaurant.deliveryZones"
+                      density="compact"
+                      class="elevation-1"
+                    >
+                      <template v-slot:item.actions="{ item }">
+                        <v-btn
+                          icon="mdi-delete"
+                          variant="text"
+                          size="small"
+                          color="error"
+                          @click="removeDeliveryZone(item.raw)"
+                        ></v-btn>
+                      </template>
+                    </v-data-table>
+                    <v-alert v-else type="info" class="mt-2" variant="tonal">
+                      No delivery zones added yet. Click "Add Delivery Zone" to create one.
+                    </v-alert>
+                  </v-col>
+                </v-row>
+              </v-col>
+
+              <v-col cols="12">
                 <v-file-input
                   v-model="editDialog.restaurant.logoFile"
                   label="Restaurant Logo"
@@ -351,7 +510,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { useToast } from 'vue-toastification'
-import { adminAPI } from '@/services/api.service'
+import { adminAPI, apiClient } from '@/services/api.service'
 
 export default {
   name: 'AdminRestaurants',
@@ -365,6 +524,7 @@ export default {
     const itemsPerPage = ref(10)
     const totalRestaurants = ref(0)
     const restaurants = ref([])
+    const restaurantForm = ref(null)
 
     // Filters
     const filters = ref({
@@ -413,6 +573,13 @@ export default {
       { title: 'Suspended', value: 'suspended' }
     ]
 
+    const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    const deliveryZoneHeaders = [
+      { title: 'Zone Name', key: 'name' },
+      { title: 'Actions', key: 'actions', align: 'end' }
+    ]
+
     // Methods
     const loadRestaurants = async (options = {}) => {
       loading.value = true
@@ -425,12 +592,76 @@ export default {
           search: filters.value.search || undefined,
           sort: filters.value.sortBy || 'createdAt_desc'
         }
-        
-        const response = await adminAPI.getRestaurants(params)
-        restaurants.value = response.data.restaurants
-        totalRestaurants.value = response.data.total
+
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/restaurants',
+          '/api/admin/restaurants'
+        ];
+
+        let success = false;
+        let response = null;
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+          try {
+            console.log(`Attempting to load restaurants from ${endpoint}`);
+            response = await apiClient.get(endpoint, { params });
+            console.log(`Success with ${endpoint}`);
+            success = true;
+            break;
+          } catch (error) {
+            console.error(`Failed with ${endpoint}:`, error);
+            lastError = error;
+          }
+        }
+
+        if (!success || !response) {
+          let errorMsg = 'Failed to load restaurants - no valid API endpoint found';
+
+          // Try to get a more specific error message
+          if (lastError?.response?.data?.message) {
+            errorMsg = lastError.response.data.message;
+          } else if (lastError?.message) {
+            errorMsg = lastError.message;
+          }
+
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All restaurant endpoints failed:', lastError);
+          restaurants.value = [];
+          totalRestaurants.value = 0;
+          loading.value = false;
+          return;
+        }
+
+        // Process the successful response
+        const data = response.data;
+        console.log('Restaurant data received:', data);
+
+        // Handle different API response formats
+        if (data.restaurants && Array.isArray(data.restaurants)) {
+          restaurants.value = data.restaurants;
+          totalRestaurants.value = data.total || data.restaurants.length;
+        } else if (Array.isArray(data)) {
+          restaurants.value = data;
+          totalRestaurants.value = data.length;
+        } else if (data.data && Array.isArray(data.data)) {
+          restaurants.value = data.data;
+          totalRestaurants.value = data.total || data.data.length;
+        } else if (data.data && !Array.isArray(data.data)) {
+          // Single restaurant object in data property
+          restaurants.value = [data.data];
+          totalRestaurants.value = 1;
+        } else {
+          console.warn('Unexpected response format:', data);
+          restaurants.value = [];
+          totalRestaurants.value = 0;
+        }
       } catch (error) {
-        toast.error('Failed to load restaurants')
+        console.error('Error loading restaurants:', error);
+        toast.error('Failed to load restaurants');
+        restaurants.value = [];
+        totalRestaurants.value = 0;
       } finally {
         loading.value = false
       }
@@ -466,40 +697,221 @@ export default {
           phone: '',
           address: '',
           logoFile: null,
-          status: 'active'
+          status: 'active',
+          operatingHours: weekDays.map(() => ({ isOpen: false, openTime: '', closeTime: '' })),
+          deliveryRadius: 5,
+          minimumOrderAmount: 0,
+          hasSpecificZones: false,
+          deliveryZones: []
         }
       }
     }
 
     const saveRestaurant = async () => {
       try {
-        const formData = new FormData()
         const restaurant = editDialog.value.restaurant
-        
-        // Add all text fields
+
+        // Manual validation as a fallback
+        if (!restaurant.name || !restaurant.cuisine || !restaurant.address) {
+          toast.error('Name, cuisine, and address are required!');
+          return;
+        }
+
+        // Try to validate the form if the reference exists
+        console.log('Restaurant form reference:', restaurantForm.value);
+        if (restaurantForm.value) {
+          try {
+            console.log('Attempting to validate form...');
+            const validationResult = await restaurantForm.value.validate();
+            console.log('Form validation result:', validationResult);
+
+            if (!validationResult.valid) {
+              toast.error('Please fill in all required fields');
+              return;
+            }
+          } catch (validationError) {
+            console.error('Form validation error:', validationError);
+            // Continue with manual validation if form validation fails
+          }
+        } else {
+          console.warn('Form reference is not available, using manual validation');
+        }
+
+        const formData = new FormData()
+
+        // Ensure required fields are explicitly added first
+        formData.append('name', restaurant.name);
+        formData.append('cuisine', restaurant.cuisine);
+        formData.append('address', restaurant.address);
+
+        // Add other basic fields
+        if (restaurant.email) formData.append('email', restaurant.email);
+        if (restaurant.phone) formData.append('phone', restaurant.phone);
+        if (restaurant.status) formData.append('status', restaurant.status);
+        if (restaurant.deliveryRadius) formData.append('deliveryRadius', restaurant.deliveryRadius);
+        if (restaurant.minimumOrderAmount) formData.append('minimumOrderAmount', restaurant.minimumOrderAmount);
+        if (restaurant.hasSpecificZones !== undefined) formData.append('hasSpecificZones', restaurant.hasSpecificZones);
+
+        // Add the rest of text fields
         for (const key in restaurant) {
-          if (key !== 'logoFile' && key !== 'logo' && restaurant[key] !== null) {
-            formData.append(key, restaurant[key])
+          // Skip fields we've already handled or that should be handled specially
+          if (['name', 'cuisine', 'address', 'email', 'phone', 'status',
+               'deliveryRadius', 'minimumOrderAmount', 'hasSpecificZones',
+               'logoFile', 'logo', 'operatingHours', 'deliveryZones'].includes(key)) {
+            continue;
+          }
+
+          if (restaurant[key] !== null && restaurant[key] !== undefined) {
+            formData.append(key, restaurant[key]);
           }
         }
-        
+
+        // Handle special objects that need to be JSON stringified
+        if (restaurant.operatingHours) {
+          // Skip openingHours as it's not supported in the database yet
+          // formData.append('openingHours', JSON.stringify(restaurant.operatingHours));
+          console.log('Skipping operatingHours as it may not be supported in the database yet');
+        }
+
+        if (restaurant.deliveryZones && restaurant.deliveryZones.length > 0) {
+          formData.append('deliveryZones', JSON.stringify(restaurant.deliveryZones));
+        }
+
         // Add logo file if provided
         if (restaurant.logoFile) {
-          formData.append('logo', restaurant.logoFile)
+          formData.append('logo', restaurant.logoFile);
         }
-        
+
+        // Show form data contents for debugging
+        console.log('Form data contents:');
+        let hasEntries = false;
+        for (const pair of formData.entries()) {
+          console.log(`${pair[0]}: ${pair[1]}`);
+          hasEntries = true;
+        }
+
+        // Double-check that we have form data before proceeding
+        if (!hasEntries) {
+          console.error('Form data is empty!');
+          toast.error('Form data is empty. Please fill in all required fields.');
+          return;
+        }
+
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/admin/restaurants',  // Try admin endpoint first
+          '/api/restaurants'
+        ];
+
+        let success = false;
+        let lastError = null;
+
         if (editDialog.value.isNew) {
-          await adminAPI.createRestaurant(formData)
-          toast.success('Restaurant created successfully')
+          // Create a new restaurant
+          for (const endpoint of endpoints) {
+            try {
+              console.log(`Attempting to create restaurant with ${endpoint}`);
+              const response = await apiClient.post(endpoint, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              console.log(`Success with ${endpoint}:`, response.data);
+              success = true;
+              toast.success('Restaurant created successfully');
+
+              // If we got a single restaurant back, add it to the list immediately
+              if (response.data && response.data.data) {
+                console.log('Adding new restaurant to list:', response.data.data);
+                if (!Array.isArray(response.data.data)) {
+                  // Single restaurant object
+                  restaurants.value.unshift(response.data.data);
+                  totalRestaurants.value += 1;
+                }
+              }
+
+              break;
+            } catch (error) {
+              console.error(`Failed with ${endpoint}:`, error.response?.data || error.message);
+
+              // Check for specific validation errors
+              if (error.response?.status === 400) {
+                console.log('Validation error:', error.response.data);
+
+                // Check if we have a specific validation message
+                let errorMessage = 'Validation failed';
+                if (error.response?.data?.message) {
+                  errorMessage = error.response.data.message;
+                }
+
+                // Show the validation error to the user
+                toast.error(`Validation error: ${errorMessage}`);
+
+                // Don't try other endpoints if we have validation errors
+                lastError = error;
+                break;
+              }
+
+              lastError = error;
+            }
+          }
         } else {
-          await adminAPI.updateRestaurant(restaurant.id, formData)
-          toast.success('Restaurant updated successfully')
+          // Update an existing restaurant
+          for (const endpoint of endpoints) {
+            try {
+              const updateUrl = `${endpoint}/${restaurant.id}`;
+              console.log(`Attempting to update restaurant with ${updateUrl}`);
+              const response = await apiClient.put(updateUrl, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              console.log(`Success with ${updateUrl}:`, response.data);
+              success = true;
+              toast.success('Restaurant updated successfully');
+              break;
+            } catch (error) {
+              console.error(`Failed with ${endpoint}/${restaurant.id}:`, error.response?.data || error.message);
+
+              // Check for specific validation errors
+              if (error.response?.status === 400) {
+                console.log('Validation error:', error.response.data);
+
+                // Check if we have a specific validation message
+                let errorMessage = 'Validation failed';
+                if (error.response?.data?.message) {
+                  errorMessage = error.response.data.message;
+                }
+
+                // Show the validation error to the user
+                toast.error(`Validation error: ${errorMessage}`);
+
+                // Don't try other endpoints if we have validation errors
+                lastError = error;
+                break;
+              }
+
+              lastError = error;
+            }
+          }
         }
-        
-        editDialog.value.show = false
-        loadRestaurants()
+
+        if (!success) {
+          let errorMsg = 'Operation failed - no valid API endpoint found';
+
+          // Try to get a more specific error message
+          if (lastError?.response?.data?.message) {
+            errorMsg = lastError.response.data.message;
+          } else if (lastError?.message) {
+            errorMsg = lastError.message;
+          }
+
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All endpoints failed:', lastError);
+          return;
+        }
+
+        editDialog.value.show = false;
+        loadRestaurants();
       } catch (error) {
-        toast.error('Failed to save restaurant')
+        console.error('Error in saveRestaurant:', error);
+        toast.error(`Error: ${error.response?.data?.message || 'Failed to save restaurant'}`);
       }
     }
 
@@ -516,12 +928,56 @@ export default {
 
     const confirmApproveRestaurant = async (restaurant) => {
       try {
-        await adminAPI.approveRestaurant(restaurant.id)
-        toast.success('Restaurant approved successfully')
-        confirmDialog.value.show = false
-        loadRestaurants()
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/restaurants',
+          '/api/restaurant-admin/restaurants',
+          '/api/admin/restaurants'
+        ];
+
+        let success = false;
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+          try {
+            const updateUrl = `${endpoint}/${restaurant.id}`;
+            console.log(`Attempting to approve restaurant with ${updateUrl}`);
+            await apiClient.put(updateUrl, { status: 'active' });
+            console.log(`Success with ${updateUrl}`);
+            success = true;
+            toast.success('Restaurant approved successfully');
+            break;
+          } catch (error) {
+            // Try special approval endpoints if regular update fails
+            try {
+              const approvalUrl = `${endpoint}/${restaurant.id}/approve`;
+              console.log(`Attempting to approve restaurant with ${approvalUrl}`);
+              await apiClient.post(approvalUrl);
+              console.log(`Success with ${approvalUrl}`);
+              success = true;
+              toast.success('Restaurant approved successfully');
+              break;
+            } catch (approvalError) {
+              console.error(`Failed with ${endpoint}/${restaurant.id}/approve:`, approvalError);
+            }
+
+            console.error(`Failed with ${endpoint}/${restaurant.id}:`, error);
+            lastError = error;
+          }
+        }
+
+        if (!success) {
+          const errorMsg = lastError?.response?.data?.message || 'Operation failed - no valid API endpoint found';
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All endpoints failed:', lastError);
+          return;
+        }
+
+        confirmDialog.value.show = false;
+        loadRestaurants();
       } catch (error) {
-        toast.error('Failed to approve restaurant')
+        console.error('Error in approveRestaurant:', error);
+        toast.error(`Error: ${error.response?.data?.message || 'Failed to approve restaurant'}`);
       }
     }
 
@@ -538,12 +994,56 @@ export default {
 
     const confirmRejectRestaurant = async (restaurant) => {
       try {
-        await adminAPI.rejectRestaurant(restaurant.id)
-        toast.success('Restaurant rejected successfully')
-        confirmDialog.value.show = false
-        loadRestaurants()
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/restaurants',
+          '/api/restaurant-admin/restaurants',
+          '/api/admin/restaurants'
+        ];
+
+        let success = false;
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+          try {
+            const updateUrl = `${endpoint}/${restaurant.id}`;
+            console.log(`Attempting to reject restaurant with ${updateUrl}`);
+            await apiClient.put(updateUrl, { status: 'rejected' });
+            console.log(`Success with ${updateUrl}`);
+            success = true;
+            toast.success('Restaurant rejected successfully');
+            break;
+          } catch (error) {
+            // Try special reject endpoints if regular update fails
+            try {
+              const rejectUrl = `${endpoint}/${restaurant.id}/reject`;
+              console.log(`Attempting to reject restaurant with ${rejectUrl}`);
+              await apiClient.post(rejectUrl);
+              console.log(`Success with ${rejectUrl}`);
+              success = true;
+              toast.success('Restaurant rejected successfully');
+              break;
+            } catch (rejectError) {
+              console.error(`Failed with ${endpoint}/${restaurant.id}/reject:`, rejectError);
+            }
+
+            console.error(`Failed with ${endpoint}/${restaurant.id}:`, error);
+            lastError = error;
+          }
+        }
+
+        if (!success) {
+          const errorMsg = lastError?.response?.data?.message || 'Operation failed - no valid API endpoint found';
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All endpoints failed:', lastError);
+          return;
+        }
+
+        confirmDialog.value.show = false;
+        loadRestaurants();
       } catch (error) {
-        toast.error('Failed to reject restaurant')
+        console.error('Error in rejectRestaurant:', error);
+        toast.error(`Error: ${error.response?.data?.message || 'Failed to reject restaurant'}`);
       }
     }
 
@@ -560,12 +1060,43 @@ export default {
 
     const confirmSuspendRestaurant = async (restaurant) => {
       try {
-        await adminAPI.updateRestaurant(restaurant.id, { status: 'suspended' })
-        toast.success('Restaurant suspended successfully')
-        confirmDialog.value.show = false
-        loadRestaurants()
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/restaurants',
+          '/api/restaurant-admin/restaurants',
+          '/api/admin/restaurants'
+        ];
+
+        let success = false;
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+          try {
+            const updateUrl = `${endpoint}/${restaurant.id}`;
+            console.log(`Attempting to suspend restaurant with ${updateUrl}`);
+            await apiClient.put(updateUrl, { status: 'suspended' });
+            console.log(`Success with ${updateUrl}`);
+            success = true;
+            toast.success('Restaurant suspended successfully');
+            break;
+          } catch (error) {
+            console.error(`Failed with ${endpoint}/${restaurant.id}:`, error);
+            lastError = error;
+          }
+        }
+
+        if (!success) {
+          const errorMsg = lastError?.response?.data?.message || 'Operation failed - no valid API endpoint found';
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All endpoints failed:', lastError);
+          return;
+        }
+
+        confirmDialog.value.show = false;
+        loadRestaurants();
       } catch (error) {
-        toast.error('Failed to suspend restaurant')
+        console.error('Error in suspendRestaurant:', error);
+        toast.error(`Error: ${error.response?.data?.message || 'Failed to suspend restaurant'}`);
       }
     }
 
@@ -582,17 +1113,61 @@ export default {
 
     const confirmActivateRestaurant = async (restaurant) => {
       try {
-        await adminAPI.updateRestaurant(restaurant.id, { status: 'active' })
-        toast.success('Restaurant activated successfully')
-        confirmDialog.value.show = false
-        loadRestaurants()
+        // Try multiple potential endpoints sequentially
+        const endpoints = [
+          '/api/restaurants',
+          '/api/restaurant-admin/restaurants',
+          '/api/admin/restaurants'
+        ];
+
+        let success = false;
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+          try {
+            const updateUrl = `${endpoint}/${restaurant.id}`;
+            console.log(`Attempting to activate restaurant with ${updateUrl}`);
+            await apiClient.put(updateUrl, { status: 'active' });
+            console.log(`Success with ${updateUrl}`);
+            success = true;
+            toast.success('Restaurant activated successfully');
+            break;
+          } catch (error) {
+            console.error(`Failed with ${endpoint}/${restaurant.id}:`, error);
+            lastError = error;
+          }
+        }
+
+        if (!success) {
+          const errorMsg = lastError?.response?.data?.message || 'Operation failed - no valid API endpoint found';
+          toast.error(`Error: ${errorMsg}`);
+          console.error('All endpoints failed:', lastError);
+          return;
+        }
+
+        confirmDialog.value.show = false;
+        loadRestaurants();
       } catch (error) {
-        toast.error('Failed to activate restaurant')
+        console.error('Error in activateRestaurant:', error);
+        toast.error(`Error: ${error.response?.data?.message || 'Failed to activate restaurant'}`);
+      }
+    }
+
+    const addDeliveryZone = () => {
+      editDialog.value.restaurant.deliveryZones.push({ name: '', raw: {} })
+    }
+
+    const removeDeliveryZone = (zone) => {
+      const index = editDialog.value.restaurant.deliveryZones.findIndex(z => z.raw === zone)
+      if (index !== -1) {
+        editDialog.value.restaurant.deliveryZones.splice(index, 1)
       }
     }
 
     // Utility functions
     const getStatusColor = (status) => {
+      if (!status) return 'grey';
+
       switch (status) {
         case 'active': return 'success'
         case 'suspended': return 'error'
@@ -602,7 +1177,8 @@ export default {
     }
 
     const formatStatus = (status) => {
-      return status.charAt(0).toUpperCase() + status.slice(1)
+      if (!status) return 'Unknown';
+      return status.charAt(0).toUpperCase() + status.slice(1);
     }
 
     const formatPrice = (price) => {
@@ -639,6 +1215,9 @@ export default {
       detailsDialog,
       editDialog,
       confirmDialog,
+      weekDays,
+      deliveryZoneHeaders,
+      restaurantForm,
       loadRestaurants,
       applyFilters,
       viewRestaurant,
@@ -649,6 +1228,8 @@ export default {
       rejectRestaurant,
       suspendRestaurant,
       activateRestaurant,
+      addDeliveryZone,
+      removeDeliveryZone,
       getStatusColor,
       formatStatus,
       formatPrice

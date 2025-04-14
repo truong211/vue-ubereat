@@ -1,266 +1,226 @@
-import { restaurantService } from '../../services/restaurant.service';
-
-// Initial state
-const state = {
-  restaurants: [],
-  featuredRestaurants: [],
-  popularRestaurants: [],
-  restaurantDetails: null,
-  restaurantMenu: [],
-  restaurantReviews: [],
-  loading: false,
-  error: null,
-  totalRestaurants: 0,
-  userLocation: null
-};
-
-// Getters
-const getters = {
-  getRestaurantById: (state) => (id) => {
-    return state.restaurants.find(restaurant => restaurant.id == id);
-  },
-  getNearbyRestaurants: (state) => (maxDistance = 5) => {
-    if (!state.userLocation) return [];
-    return state.restaurants
-      .filter(restaurant => restaurant.distance && restaurant.distance <= maxDistance)
-      .sort((a, b) => a.distance - b.distance);
-  },
-  getHighestRatedRestaurants: (state) => (limit = 5) => {
-    return [...state.restaurants]
-      .sort((a, b) => b.rating - a.rating)
-      .slice(0, limit);
-  },
-  getRestaurantsByCategory: (state) => (categoryId) => {
-    return state.restaurants.filter(restaurant => {
-      const categories = restaurant.categories || [];
-      return categories.some(cat => cat.id == categoryId);
-    });
-  }
-};
-
-// Actions
-const actions = {
-  async fetchRestaurants({ commit }, params = {}) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getAllRestaurants(params);
-      commit('SET_RESTAURANTS', response.data.data.restaurants);
-      commit('SET_TOTAL_RESTAURANTS', response.data.results);
-      return response.data;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurants');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async fetchRestaurantById({ commit }, { id, params = {} }) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getRestaurantById(id, params);
-      
-      // Handle different response structures with fallbacks
-      let restaurantData;
-      
-      if (response.data && response.data.data && response.data.data.restaurant) {
-        // Standard API response structure
-        restaurantData = response.data.data.restaurant;
-      } else if (response.data && response.data.restaurant) {
-        // Alternative API response structure
-        restaurantData = response.data.restaurant;
-      } else if (response.data && typeof response.data === 'object') {
-        // Direct restaurant object in response
-        restaurantData = response.data;
-      } else {
-        // Fallback to empty object if no recognized structure
-        console.warn('Unexpected restaurant data structure:', response);
-        restaurantData = {};
-      }
-      
-      // Ensure basic restaurant properties exist to prevent errors
-      if (!restaurantData.menuCategories) {
-        restaurantData.menuCategories = [];
-      }
-      if (!restaurantData.reviews) {
-        restaurantData.reviews = [];
-      }
-      if (!restaurantData.categories) {
-        restaurantData.categories = [];
-      }
-      
-      commit('SET_RESTAURANT_DETAILS', restaurantData);
-      return restaurantData;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant details');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async fetchRestaurantMenu({ commit }, id) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getRestaurantMenu(id);
-      
-      // Handle different response structures with fallbacks
-      let menuData = [];
-      
-      if (response.data && response.data.data && response.data.data.categories) {
-        // Standard API response structure
-        menuData = response.data.data.categories;
-      } else if (response.data && response.data.categories) {
-        // Alternative API response structure
-        menuData = response.data.categories;
-      } else if (response.data && Array.isArray(response.data)) {
-        // Direct array of categories in response
-        menuData = response.data;
-      } else if (response.data && response.data.menu && Array.isArray(response.data.menu)) {
-        // Menu property containing array
-        menuData = response.data.menu;
-      } else {
-        // Fallback to empty array if no recognized structure
-        console.warn('Unexpected menu data structure:', response);
-      }
-      
-      commit('SET_RESTAURANT_MENU', menuData);
-      return menuData;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant menu');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async fetchRestaurantReviews({ commit }, { id, params = {} }) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getRestaurantReviews(id, params);
-      
-      // Handle different response structures with fallbacks
-      let reviewsData = [];
-      
-      if (response.data && response.data.data && response.data.data.reviews) {
-        // Standard API response structure
-        reviewsData = response.data.data.reviews;
-      } else if (response.data && response.data.reviews) {
-        // Alternative API response structure
-        reviewsData = response.data.reviews;
-      } else if (response.data && Array.isArray(response.data)) {
-        // Direct array of reviews in response
-        reviewsData = response.data;
-      } else {
-        // Fallback to empty array if no recognized structure
-        console.warn('Unexpected reviews data structure:', response);
-      }
-      
-      commit('SET_RESTAURANT_REVIEWS', reviewsData);
-      return reviewsData;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch restaurant reviews');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async searchRestaurantsByLocation({ commit }, params = {}) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.searchByLocation(params);
-      commit('SET_RESTAURANTS', response.data.data.restaurants);
-      commit('SET_TOTAL_RESTAURANTS', response.data.results);
-      return response.data;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to search restaurants by location');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async fetchFeaturedRestaurants({ commit }, params = {}) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getFeaturedRestaurants(params);
-      commit('SET_FEATURED_RESTAURANTS', response.data.data.restaurants);
-      return response.data.data.restaurants;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch featured restaurants');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  async fetchPopularRestaurants({ commit }, params = {}) {
-    commit('SET_LOADING', true);
-    try {
-      const response = await restaurantService.getPopularRestaurants(params);
-      commit('SET_POPULAR_RESTAURANTS', response.data.data.restaurants);
-      return response.data.data.restaurants;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch popular restaurants');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-
-  setUserLocation({ commit }, location) {
-    commit('SET_USER_LOCATION', location);
-  },
-
-  // Add compatibility action for components using fetchRestaurantDetails
-  async fetchRestaurantDetails({ dispatch }, id) {
-    console.warn('fetchRestaurantDetails is deprecated, use fetchRestaurantById instead');
-    return await dispatch('fetchRestaurantById', { id });
-  }
-};
-
-// Mutations
-const mutations = {
-  SET_RESTAURANTS(state, restaurants) {
-    state.restaurants = restaurants;
-  },
-  SET_TOTAL_RESTAURANTS(state, total) {
-    state.totalRestaurants = total;
-  },
-  SET_FEATURED_RESTAURANTS(state, restaurants) {
-    state.featuredRestaurants = restaurants;
-  },
-  SET_POPULAR_RESTAURANTS(state, restaurants) {
-    state.popularRestaurants = restaurants;
-  },
-  SET_RESTAURANT_DETAILS(state, restaurant) {
-    state.restaurantDetails = restaurant;
-  },
-  SET_RESTAURANT_MENU(state, menu) {
-    state.restaurantMenu = menu;
-  },
-  SET_RESTAURANT_REVIEWS(state, reviews) {
-    state.restaurantReviews = reviews;
-  },
-  SET_LOADING(state, isLoading) {
-    state.loading = isLoading;
-  },
-  SET_ERROR(state, error) {
-    state.error = error;
-  },
-  SET_USER_LOCATION(state, location) {
-    state.userLocation = location;
-  },
-  CLEAR_RESTAURANT_DETAILS(state) {
-    state.restaurantDetails = null;
-  }
-};
+import { restaurantService } from '@/services/restaurant.service'
 
 export default {
   namespaced: true,
-  state,
-  getters,
-  actions,
-  mutations
-};
+  
+  state: {
+    restaurants: [],
+    filteredRestaurants: [],
+    featuredRestaurants: [],
+    popularRestaurants: [],
+    restaurantDetails: null,
+    restaurantMenu: [],
+    restaurantReviews: [],
+    loading: false,
+    error: null,
+    totalRestaurants: 0,
+    userLocation: null,
+    filters: {
+      search: '',
+      cuisine: null,
+      sortBy: 'rating',
+      rating: null,
+      deliveryTime: null,
+      distance: null,
+      priceRange: null,
+      latitude: null,
+      longitude: null,
+      category_id: null,
+      page: 1,
+      limit: 12
+    }
+  },
+
+  getters: {
+    getRestaurantById: (state) => (id) => {
+      return state.restaurants.find(restaurant => restaurant.id == id)
+    },
+    
+    getNearbyRestaurants: (state) => (maxDistance = 5) => {
+      if (!state.userLocation) return []
+      return state.restaurants
+        .filter(restaurant => restaurant.distance && restaurant.distance <= maxDistance)
+        .sort((a, b) => a.distance - b.distance)
+    },
+    
+    getFilteredRestaurants: (state) => {
+      let results = [...state.restaurants]
+      const filters = state.filters
+
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase()
+        results = results.filter(restaurant =>
+          restaurant.name.toLowerCase().includes(searchLower) ||
+          (restaurant.cuisine && restaurant.cuisine.toLowerCase().includes(searchLower))
+        )
+      }
+
+      if (filters.cuisine) {
+        results = results.filter(restaurant =>
+          restaurant.cuisine === filters.cuisine
+        )
+      }
+
+      if (filters.rating) {
+        results = results.filter(restaurant =>
+          (restaurant.rating || 0) >= filters.rating
+        )
+      }
+
+      if (filters.deliveryTime) {
+        results = results.filter(restaurant => {
+          const deliveryTime = typeof restaurant.delivery_time === 'string'
+            ? parseInt(restaurant.delivery_time.split('-')[1] || restaurant.delivery_time, 10)
+            : restaurant.delivery_time
+          return (deliveryTime || 60) <= filters.deliveryTime
+        })
+      }
+
+      if (filters.distance && state.userLocation) {
+        results = results.filter(restaurant =>
+          (restaurant.distance || 999) <= filters.distance
+        )
+      }
+
+      if (filters.priceRange) {
+        results = results.filter(restaurant =>
+          restaurant.price_range === filters.priceRange
+        )
+      }
+
+      switch (filters.sortBy) {
+        case 'rating':
+          results.sort((a, b) => (b.rating || 0) - (a.rating || 0))
+          break
+        case 'name_asc':
+          results.sort((a, b) => a.name.localeCompare(b.name))
+          break
+        case 'name_desc':
+          results.sort((a, b) => b.name.localeCompare(a.name))
+          break
+        case 'distance':
+          if (state.userLocation) {
+            results.sort((a, b) => (a.distance || 999) - (b.distance || 999))
+          }
+          break
+        case 'delivery_time':
+          results.sort((a, b) => {
+            const aTime = typeof a.delivery_time === 'string'
+              ? parseInt(a.delivery_time.split('-')[0] || a.delivery_time, 10)
+              : a.delivery_time || 60
+            const bTime = typeof b.delivery_time === 'string'
+              ? parseInt(b.delivery_time.split('-')[0] || b.delivery_time, 10)
+              : b.delivery_time || 60
+            return aTime - bTime
+          })
+          break
+      }
+
+      return results
+    }
+  },
+
+  mutations: {
+    SET_RESTAURANTS(state, restaurants) {
+      state.restaurants = restaurants
+    },
+    SET_TOTAL_RESTAURANTS(state, total) {
+      state.totalRestaurants = total
+    },
+    SET_LOADING(state, loading) {
+      state.loading = loading
+    },
+    SET_ERROR(state, error) {
+      state.error = error
+    },
+    SET_USER_LOCATION(state, location) {
+      state.userLocation = location
+    },
+    SET_FILTERS(state, filters) {
+      state.filters = { ...state.filters, ...filters }
+    },
+    RESET_FILTERS(state) {
+      state.filters = {
+        search: '',
+        cuisine: null,
+        sortBy: 'rating',
+        rating: null,
+        deliveryTime: null,
+        distance: null,
+        priceRange: null,
+        latitude: state.filters.latitude,
+        longitude: state.filters.longitude,
+        category_id: null,
+        page: 1,
+        limit: 12
+      }
+    },
+    INCREMENT_PAGE(state) {
+      state.filters.page++
+    },
+    SET_PAGE(state, page) {
+      state.filters.page = page
+    },
+    TOGGLE_RESTAURANT_FAVORITE(state, restaurantId) {
+      const restaurant = state.restaurants.find(r => r.id === restaurantId)
+      if (restaurant) {
+        restaurant.isFavorite = !restaurant.isFavorite
+      }
+    }
+  },
+
+  actions: {
+    async fetchRestaurants({ commit, state }, params = {}) {
+      commit('SET_LOADING', true)
+      try {
+        if (params) {
+          commit('SET_FILTERS', params)
+        }
+        
+        console.log('[Store Debug] Fetching restaurants with filters:', state.filters)
+        const response = await restaurantService.getAllRestaurants(state.filters)
+        console.log('[Store Debug] Received restaurants:', response.data.data.restaurants.length)
+        
+        commit('SET_RESTAURANTS', response.data.data.restaurants)
+        commit('SET_TOTAL_RESTAURANTS', response.data.results)
+        commit('SET_ERROR', null)
+        
+        return response.data
+      } catch (error) {
+        const errorMessage = error.response?.data?.message || 'Failed to fetch restaurants'
+        commit('SET_ERROR', errorMessage)
+        throw error
+      } finally {
+        commit('SET_LOADING', false)
+      }
+    },
+
+    setUserLocation({ commit }, location) {
+      commit('SET_USER_LOCATION', location)
+    },
+
+    resetFilters({ commit }) {
+      commit('RESET_FILTERS')
+    },
+
+    async loadMoreRestaurants({ commit, dispatch }) {
+      commit('INCREMENT_PAGE')
+      return await dispatch('fetchRestaurants')
+    },
+
+    async changePage({ commit, dispatch }, page) {
+      commit('SET_PAGE', page)
+      return await dispatch('fetchRestaurants')
+    },
+
+    async toggleFavorite({ commit }, restaurantId) {
+      try {
+        await restaurantService.toggleFavorite(restaurantId)
+        commit('TOGGLE_RESTAURANT_FAVORITE', restaurantId)
+      } catch (error) {
+        console.error('Failed to toggle favorite:', error)
+        throw error
+      }
+    }
+  }
+}

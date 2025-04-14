@@ -2,6 +2,54 @@ const { Restaurant, RestaurantSettings } = require('../models');
 const { AppError } = require('../middleware/error.middleware');
 
 /**
+ * Update restaurant settings
+ * @route PATCH /api/restaurants/:id/settings
+ * @access Private (Restaurant Owner)
+ */
+exports.updateRestaurantSettings = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // Find restaurant and verify ownership
+    const restaurant = await Restaurant.findOne({
+      where: { id, userId: req.user.id }
+    });
+
+    if (!restaurant) {
+      return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    // Create or update restaurant settings
+    const [settings, created] = await RestaurantSettings.findOrCreate({
+      where: { restaurantId: id },
+      defaults: {
+        restaurantId: id,
+        ...updates
+      }
+    });
+
+    if (!created) {
+      await settings.update(updates);
+    }
+
+    // Get updated settings
+    const updatedSettings = await RestaurantSettings.findOne({
+      where: { restaurantId: id }
+    });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        settings: updatedSettings
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Get restaurant settings
  * @route GET /api/restaurants/:id/settings
  * @access Private (Restaurant Owner)
@@ -49,7 +97,7 @@ exports.getRestaurantSettings = async (req, res, next) => {
 exports.updateOperatingHours = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { openingHours } = req.body;
+    let { openingHours } = req.body;
 
     // Check if restaurant exists and user is authorized
     const restaurant = await Restaurant.findOne({
@@ -58,6 +106,16 @@ exports.updateOperatingHours = async (req, res, next) => {
 
     if (!restaurant) {
       return next(new AppError('Restaurant not found or you are not authorized', 404));
+    }
+
+    // Parse JSON if sent as string
+    if (typeof openingHours === 'string') {
+      try {
+        openingHours = JSON.parse(openingHours);
+      } catch (error) {
+        console.error('Error parsing openingHours JSON:', error);
+        return next(new AppError('Invalid opening hours format. Must be valid JSON.', 400));
+      }
     }
 
     // Validate opening hours format
@@ -78,8 +136,31 @@ exports.updateOperatingHours = async (req, res, next) => {
       }
     }
 
-    // Update restaurant opening hours
-    await restaurant.update({ openingHours });
+    // Create or update restaurant settings for compatibility
+    const [settings, created] = await RestaurantSettings.findOrCreate({
+      where: { restaurantId: id },
+      defaults: {
+        restaurantId: id,
+        openingHours: openingHours
+      }
+    });
+
+    if (!created) {
+      await settings.update({
+        openingHours: openingHours
+      });
+    }
+
+    // Update restaurant opening hours in main table
+    try {
+      await restaurant.update({ 
+        openingHours: openingHours,
+        updatedAt: new Date() 
+      });
+    } catch (error) {
+      console.log('Restaurant model update error:', error.message);
+      // Continue execution since we have the settings table as backup
+    }
 
     // Emit socket event for real-time updates (if applicable)
     if (req.app.get('socketio')) {
@@ -93,10 +174,12 @@ exports.updateOperatingHours = async (req, res, next) => {
     res.status(200).json({
       status: 'success',
       data: {
-        openingHours: restaurant.openingHours
+        openingHours: openingHours,
+        restaurantId: id
       }
     });
   } catch (error) {
+    console.error('Error in updateOperatingHours:', error);
     next(error);
   }
 };

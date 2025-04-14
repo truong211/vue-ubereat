@@ -20,18 +20,18 @@ const isProd = getEnvVar('VITE_NODE_ENV', '') === 'production';
 const isDev = getEnvVar('VITE_NODE_ENV', 'development') === 'development';
 
 // Base URLs with environment-specific defaults
-const DEFAULT_BASE_URL = isDev ? 'http://localhost:3001' : window.location.origin;
+const DEFAULT_BASE_URL = isDev ? 'http://localhost:3000' : window.location.origin;
 const API_BASE = getEnvVar('VITE_API_BASE_URL', DEFAULT_BASE_URL);
 
 // API and WebSocket URLs
-export const API_URL = getEnvVar('VITE_API_URL', `${API_BASE}`);
+export const API_URL = getEnvVar('VITE_API_URL', `${API_BASE}/api`);
 
 // For WebSocket, use secure connection (wss) if on https, otherwise use ws
 const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 // Remove trailing slash from base url if present
 const baseUrl = API_BASE.replace(/\/$/, '');
-// For local dev, default to localhost:3001, otherwise use current host with ws protocol
-const defaultWsUrl = isDev ? 'ws://localhost:3001' : `${wsProtocol}//${window.location.host}`;
+// For local dev, default to localhost:3000, otherwise use current host with ws protocol
+const defaultWsUrl = isDev ? 'ws://localhost:3000' : `${wsProtocol}//${window.location.host}`;
 export const WS_URL = getEnvVar('VITE_WS_URL', defaultWsUrl);
 
 // JWT version for token invalidation (change this when changing JWT secrets)
@@ -67,6 +67,8 @@ export const clearAuthStorage = () => {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('token');
   localStorage.removeItem('refresh_token');
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
   localStorage.removeItem('user');
   // Also clear cookies by setting expiration in the past
   document.cookie = 'jwt=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';

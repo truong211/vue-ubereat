@@ -1,311 +1,142 @@
-require('dotenv').config(); // Load environment variables FIRST
-
+require('dotenv').config({ path: '../.env' });
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
-const path = require('path');
-const http = require('http');
+const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
-const passport = require('./config/passport');
-const session = require('express-session');
-const { initializeSocketIO } = require('./socket/handlers');
-const { setIO } = require('./socket/socketServer');
-const socketStateMonitor = require('./socket/stateMonitor');
+// const csrf = require('csurf'); // Temporarily comment out CSRF
+const { getDb } = require('./models');
+const { apiLimiter } = require('./middleware/rate-limit.middleware');
 
-// Import routes
-const authRoutes = require('./routes/auth.routes');
-const analyticsRoutes = require('./routes/analytics.routes');
-const userRoutes = require('./routes/user.routes');
-const userSingularRoutes = require('./routes/user-singular.routes');
-const restaurantRoutes = require('./routes/restaurant.routes');
-const restaurantSettingsRoutes = require('./routes/restaurantSettings.routes');
-const categoryRoutes = require('./routes/category.routes');
-const productRoutes = require('./routes/product.routes');
-const cartRoutes = require('./routes/cart.routes');
-const orderRoutes = require('./routes/order.routes');
-const reviewRoutes = require('./routes/review.routes');
-const promotionRoutes = require('./routes/promotion.routes');
-const paymentRoutes = require('./routes/payment.routes');
-const staticPageRoutes = require('./routes/staticPage.routes');
-const siteConfigRoutes = require('./routes/siteConfig.routes');
-const trackingRoutes = require('./routes/tracking.routes');
-const notificationRoutes = require('./routes/notification.routes');
-const menuRoutes = require('./routes/menu.routes');
-const articleRoutes = require('./routes/article.routes');
-const bannerRoutes = require('./routes/banner.routes');
-const addressRoutes = require('./routes/address.routes');
-const favoriteRoutes = require('./routes/favorite.routes');
-const loyaltyRoutes = require('./routes/loyalty.routes');
-const reviewResponseRoutes = require('./routes/review-response.routes');
-const recommendationRoutes = require('./routes/recommendation.routes');
-const adminRoutes = require('./routes/admin.routes');
-const faqRoutes = require('./routes/faq.routes');
-const deliveryConfigRoutes = require('./routes/deliveryConfig.routes');
-
-// Import middleware
-const { errorHandler, notFound } = require('./middleware/error.middleware');
-const { authMiddleware } = require('./middleware/auth.middleware');
-
-// Import database connection
-const db = require('./config/database');
-
-// Create Express app
 const app = express();
-const server = http.createServer(app);
+const PORT = process.env.PORT || 3000;
 
-// Initialize Socket.IO with our handlers
-const io = initializeSocketIO(server);
-setIO(io);
+// Initialize database and start server
+async function initializeApp() {
+  try {
+    // Initialize database connection
+    const db = await getDb();
+    console.log('Database initialized successfully');
 
-// Load promotion notifications with try/catch
-let promotionNotifications = null;
-try {
-  const PromotionNotifications = require('./socket/promotionNotifications');
-  promotionNotifications = new PromotionNotifications(io);
-  console.log('Promotion notifications service loaded successfully');
-} catch (error) {
-  console.error('Error loading promotion notifications service:', error);
-}
+    // Request logging middleware
+    app.use((req, res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+      console.log('Headers:', req.headers);
+      next();
+    });
 
-// Load promotion monitoring service with try/catch
-try {
-  const promotionMonitoring = require('./services/promotionMonitoring.service');
-  
-  // Check if setIo method exists before calling it
-  if (promotionMonitoring && typeof promotionMonitoring.setIo === 'function') {
-    promotionMonitoring.setIo(io);
-    console.log('Promotion monitoring service initialized with Socket.IO');
-  }
-  
-  console.log('Promotion monitoring service loaded successfully');
-} catch (error) {
-  console.error('Error loading promotion monitoring service:', error);
-}
+    // CORS configuration - Put this BEFORE Helmet
+    app.use(cors({
+      origin: 'http://localhost:5173', // Frontend URL
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'X-Requested-With', 
+        'Accept', 
+        'Origin', 
+        'x-frame-options'
+      ],
+      exposedHeaders: ['Authorization']
+    }));
 
-// Start socket state monitoring
-socketStateMonitor.start();
+    // Enhanced Security Headers with Helmet - Make it more permissive for development
+    app.use(helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+      crossOriginOpenerPolicy: false
+    }));
 
-// Middleware
-const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
-console.log('CORS Origin set to:', corsOrigin);
+    // Body parsing middleware with size limits - Put this BEFORE routes
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.use(cors({
-  origin: [corsOrigin, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000', 'http://localhost:3001'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(morgan('dev'));
+    // Cookie parser middleware with enhanced security
+    app.use(cookieParser());
 
-// Session configuration for Passport
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'uber_eats_clone_secret',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { 
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    httpOnly: true,
-    sameSite: 'lax',
-    path: '/'
-  }
-}));
-
-// Initialize Passport
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, '..', process.env.UPLOAD_DIR || 'uploads')));
-
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/users', authMiddleware, userRoutes);
-app.use('/api/user', authMiddleware, userSingularRoutes);
-app.use('/api/restaurants', restaurantRoutes);
-app.use('/api/restaurant-settings', restaurantSettingsRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/orders', authMiddleware, orderRoutes);
-app.use('/api/reviews', reviewRoutes);
-app.use('/api/promotions', promotionRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/pages', staticPageRoutes);
-app.use('/api/config', siteConfigRoutes);
-app.use('/api/tracking', authMiddleware, trackingRoutes);
-app.use('/api/notifications', authMiddleware, notificationRoutes);
-app.use('/api/favorites', authMiddleware, favoriteRoutes);
-app.use('/api/recommendations', recommendationRoutes);
-app.use('/api/menu', menuRoutes);
-app.use('/api/articles', articleRoutes);
-app.use('/api/banners', bannerRoutes);
-app.use('/api/addresses', authMiddleware, addressRoutes);
-app.use('/api/loyalty', loyaltyRoutes);
-app.use('/api/review-responses', reviewResponseRoutes);
-app.use('/api/faqs', faqRoutes);
-app.use('/api/delivery-configs', deliveryConfigRoutes);
-
-// Admin routes with debugging middleware
-app.use('/api/admin', (req, res, next) => {
-  console.log('Admin API Request:', {
-    method: req.method,
-    url: req.originalUrl,
-    params: req.params,
-    query: req.query,
-    body: req.method === 'GET' ? undefined : req.body
-  });
-  next();
-}, adminRoutes);
-
-// Add the same admin routes without the /api prefix to handle frontend requests
-app.use('/admin', (req, res, next) => {
-  console.log('Admin Direct Request:', {
-    method: req.method,
-    url: req.originalUrl,
-    params: req.params,
-    query: req.query,
-    body: req.method === 'GET' ? undefined : req.body
-  });
-  next();
-}, adminRoutes);
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Server is running' });
-});
-
-// Root admin redirect
-app.get('/admin', (req, res) => {
-  res.redirect('/admin/dashboard');
-});
-
-// Not found middleware
-app.use(notFound);
-
-// Error handling middleware
-app.use(errorHandler);
-
-// Test database connection
-db.authenticate()
-  .then(() => {
-    console.log('Database connection has been established successfully.');
-    
-    // Create missing tables if they don't exist
-    const createMissingTables = async () => {
-      try {
-        // Check and create user_favorites table
-        await db.query(`
-          CREATE TABLE IF NOT EXISTS user_favorites (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            userId INT NOT NULL,
-            itemId INT NOT NULL,
-            type ENUM('food', 'restaurant', 'category') NOT NULL,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE KEY favorite_user_item_type (userId, itemId, type)
-          )
-        `);
-        console.log('Checked/created user_favorites table');
-        
-        // Update notifications table to include isSystemWide and validUntil fields
-        try {
-          // First check if the columns exist using separate try-catch blocks for each column
-          let hasSystemWideColumn = false;
-          let hasValidUntilColumn = false;
-          
-          try {
-            const [columnsResult] = await db.query(`
-              SHOW COLUMNS FROM notifications LIKE 'isSystemWide'
-            `);
-            hasSystemWideColumn = columnsResult.length > 0;
-          } catch (err) {
-            console.error('Error checking for isSystemWide column:', err);
-          }
-          
-          try {
-            const [validUntilResult] = await db.query(`
-              SHOW COLUMNS FROM notifications LIKE 'validUntil'
-            `);
-            hasValidUntilColumn = validUntilResult.length > 0;
-          } catch (err) {
-            console.error('Error checking for validUntil column:', err);
-          }
-          
-          // Add each column separately to handle errors individually
-          if (!hasSystemWideColumn) {
-            try {
-              await db.query('ALTER TABLE notifications ADD COLUMN isSystemWide BOOLEAN DEFAULT FALSE');
-              console.log('Added isSystemWide column to notifications table');
-            } catch (err) {
-              if (err.code === 'ER_DUP_FIELDNAME') {
-                console.log('isSystemWide column already exists');
-              } else {
-                console.error('Error adding isSystemWide column:', err);
-              }
-            }
-          }
-          
-          if (!hasValidUntilColumn) {
-            try {
-              await db.query('ALTER TABLE notifications ADD COLUMN validUntil DATETIME');
-              console.log('Added validUntil column to notifications table');
-            } catch (err) {
-              if (err.code === 'ER_DUP_FIELDNAME') {
-                console.log('validUntil column already exists');
-              } else {
-                console.error('Error adding validUntil column:', err);
-              }
-            }
-          }
-          
-          // Modify userId column always
-          try {
-            await db.query('ALTER TABLE notifications MODIFY COLUMN userId INT NULL');
-            console.log('Modified userId column in notifications table');
-          } catch (err) {
-            console.error('Error modifying userId column:', err);
-          }
-          
-          console.log('Updated notifications table schema');
-        } catch (err) {
-          console.error('Error updating notifications table:', err);
-        }
-      } catch (err) {
-        console.error('Error creating missing tables:', err);
+    // Temporarily disable CSRF
+    /*
+    app.use(csrf({
+      cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path: '/',
+        maxAge: 3600 // 1 hour
       }
+    }));
+
+    // Provide CSRF token
+    app.get('/api/csrf-token', (req, res) => {
+      res.json({ csrfToken: req.csrfToken() });
+    });
+    */
+
+    // Health check endpoint (before any middleware)
+    app.get('/api/health', (req, res) => {
+      res.json({ status: 'ok', message: 'API is running' });
+    });
+
+    // Apply rate limiting to all API routes
+    app.use('/api', apiLimiter);
+
+    // Load all route modules
+    const routes = {
+      auth: require('./routes/auth.routes'),
+      user: require('./routes/user.routes'),
+      restaurant: require('./routes/restaurant.routes'),
+      restaurantSettings: require('./routes/restaurantSettings.routes'),
+      order: require('./routes/order.routes'),
+      grocery: require('./routes/grocery.routes'),
+      category: require('./routes/category.routes'),
+      product: require('./routes/product.routes'),
+      page: require('./routes/page.routes'),
+      notification: require('./routes/notification.routes'),
+      favorites: require('./routes/favorites.routes')
     };
-    
-    // Run the table creation
-    createMissingTables();
-    
-    // No need for synchronization since we're using the SQL file directly
-    return Promise.resolve();
-  })
-  .catch(err => {
-    console.error('Unable to connect to the database:', err);
-  });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received. Shutting down gracefully...');
-  socketStateMonitor.stop();
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
-});
+    // Register API routes in specific order
+    app.use('/api/auth', routes.auth); // Auth routes first
+    app.use('/api/pages', routes.page); // Public routes next
+    app.use('/api/categories', routes.category);
+    app.use('/api/products', routes.product);
+    app.use('/api/restaurants', routes.restaurant);
+    app.use('/api/restaurant-settings', routes.restaurantSettings);
+    app.use('/api/users', routes.user);
+    app.use('/api/notifications', routes.notification);
+    app.use('/api/orders', routes.order);
+    app.use('/api/groceries', routes.grocery);
+    app.use('/api/favorites', routes.favorites);
 
-// Start server
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    // Error handling middleware
+    app.use((err, req, res, next) => {
+      console.error('API Error:', err);
+      res.status(err.status || 500).json({
+        error: true,
+        message: err.message || 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+      });
+    });
 
-// Export for testing
-module.exports = { app, server, io };
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+
+    // Graceful shutdown
+    process.on('SIGTERM', () => {
+      console.log('SIGTERM received. Shutting down gracefully...');
+      process.exit(0);
+    });
+
+  } catch (error) {
+    console.error('Failed to initialize application:', error);
+    process.exit(1);
+  }
+}
+
+// Start the application
+initializeApp();
+
+module.exports = app;

@@ -1,236 +1,64 @@
-import axios from 'axios';
-import { API_URL } from '../config';
-import api from './api';
+import { apiClient } from './api.service'; // Use the configured client
 
-const API_ENDPOINT = `${API_URL}/restaurants`;
-
-/**
- * Restaurant Service for handling all restaurant-related API calls
- */
-export const restaurantService = {
-  /**
-   * Get all restaurants with optional filtering
-   * @param {Object} params - Query parameters for filtering restaurants
-   * @returns {Promise} - Promise with restaurant data
-   */
-  getAllRestaurants(params = {}) {
-    return axios.get(API_ENDPOINT, { params });
+const restaurantService = {
+  getRestaurants: async (params = {}) => {
+    return apiClient.get('/api/restaurants', { params });
   },
   
-  /**
-   * Get restaurant by ID
-   * @param {string|number} id - Restaurant ID
-   * @param {Object} params - Optional query parameters (e.g., user location)
-   * @returns {Promise} - Promise with restaurant data
-   */
-  getRestaurantById(id, params = {}) {
-    return axios.get(`${API_ENDPOINT}/${id}`, { params });
+  getRestaurantById: async (id) => {
+    return apiClient.get(`/api/restaurants/${id}`);
   },
   
-  /**
-   * Get restaurant menu
-   * @param {string|number} id - Restaurant ID
-   * @returns {Promise} - Promise with menu data
-   */
-  getRestaurantMenu(id) {
-    return axios.get(`${API_ENDPOINT}/${id}/menu`);
+  getNearbyRestaurants: async (params = {}) => {
+    return apiClient.get('/api/restaurants/nearby', { params });
   },
   
-  /**
-   * Get restaurant reviews
-   * @param {string|number} id - Restaurant ID
-   * @param {Object} params - Query parameters for pagination
-   * @returns {Promise} - Promise with reviews data
-   */
-  getRestaurantReviews(id, params = {}) {
-    return axios.get(`${API_ENDPOINT}/${id}/reviews`, { params });
+  searchRestaurants: async (params = {}) => {
+    return apiClient.get('/api/restaurants/search', { params });
   },
   
-  /**
-   * Search restaurants by location
-   * @param {Object} params - Query parameters including latitude, longitude, radius
-   * @returns {Promise} - Promise with nearby restaurant data
-   */
-  searchByLocation(params = {}) {
-    return axios.get(`${API_ENDPOINT}/search`, { params });
-  },
-  
-  /**
-   * Get featured restaurants
-   * @param {Object} params - Query parameters (can include user location)
-   * @returns {Promise} - Promise with featured restaurant data
-   */
-  getFeaturedRestaurants(params = {}) {
-    return axios.get(`${API_ENDPOINT}/featured`, { params });
-  },
-  
-  /**
-   * Get popular restaurants
-   * @param {Object} params - Query parameters (limit, etc.)
-   * @returns {Promise} - Promise with popular restaurant data
-   */
-  getPopularRestaurants(params = {}) {
-    return axios.get(`${API_ENDPOINT}/popular`, { params });
-  },
-  
-  /**
-   * Create a new restaurant (for restaurant owners)
-   * @param {Object} data - Restaurant data
-   * @returns {Promise} - Promise with created restaurant data
-   */
-  createRestaurant(data) {
-    const formData = new FormData();
-    
-    // Add all text fields
-    Object.keys(data).forEach(key => {
-      if (key !== 'logo' && key !== 'coverImage') {
-        if (typeof data[key] === 'object' && data[key] !== null) {
-          formData.append(key, JSON.stringify(data[key]));
-        } else {
-          formData.append(key, data[key]);
-        }
-      }
-    });
-    
-    // Add images if provided
-    if (data.logo) {
-      formData.append('logo', data.logo);
-    }
-    if (data.coverImage) {
-      formData.append('coverImage', data.coverImage);
-    }
-    
-    return axios.post(API_ENDPOINT, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+  getFeaturedRestaurants: async (limit = 6) => {
+    return apiClient.get('/api/restaurants/featured', {
+      params: { limit }
     });
   },
   
-  /**
-   * Update an existing restaurant
-   * @param {string|number} id - Restaurant ID
-   * @param {Object} data - Updated restaurant data
-   * @returns {Promise} - Promise with updated restaurant data
-   */
-  updateRestaurant(id, data) {
-    const formData = new FormData();
-    
-    // Add all text fields
-    Object.keys(data).forEach(key => {
-      if (key !== 'logo' && key !== 'coverImage') {
-        if (typeof data[key] === 'object' && data[key] !== null) {
-          formData.append(key, JSON.stringify(data[key]));
-        } else {
-          formData.append(key, data[key]);
-        }
-      }
-    });
-    
-    // Add images if provided
-    if (data.logo) {
-      formData.append('logo', data.logo);
-    }
-    if (data.coverImage) {
-      formData.append('coverImage', data.coverImage);
-    }
-    
-    return axios.patch(`${API_ENDPOINT}/${id}`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
+  getRestaurantReviews: async (id, params = {}) => {
+    return apiClient.get(`/api/restaurants/${id}/reviews`, { params });
   },
   
-  /**
-   * Delete a restaurant
-   * @param {string|number} id - Restaurant ID
-   * @returns {Promise} - Empty promise on success
-   */
-  deleteRestaurant(id) {
-    return axios.delete(`${API_ENDPOINT}/${id}`);
+  submitRestaurantReview: async (id, reviewData) => {
+    return apiClient.post(`/api/restaurants/${id}/reviews`, reviewData);
   },
-
-  /**
-   * Search restaurants with filters
-   * @param {Object} params - Search parameters
-   * @returns {Promise} Promise with restaurant data
-   */
-  async searchRestaurants(params = {}) {
-    const {
-      search = '',
-      cuisines = [],
-      sortBy = 'rating',
-      rating = null,
-      priceRange = [],
-      maxDeliveryTime = null,
-      maxDistance = null,
-      freeDelivery = false,
-      openNow = false,
-      page = 1,
-      limit = 12,
-      latitude = null,
-      longitude = null
-    } = params;
-
-    const response = await api.get('/restaurants/search', {
-      params: {
-        search,
-        cuisines: cuisines.join(','),
-        sort: sortBy,
-        minRating: rating,
-        priceRange: priceRange.join(','),
-        maxDeliveryTime,
-        maxDistance,
-        freeDelivery,
-        openNow,
-        page,
-        limit,
-        latitude,
-        longitude
-      }
-    });
-
-    return response.data;
+  
+  toggleFavorite: async (id) => {
+    // Assuming favorites are handled by /api/favorites
+    // This might need adjustment based on backend routes. Let's assume /api/restaurants/:id/favorite for now.
+    return apiClient.post(`/api/restaurants/${id}/favorite`);
   },
-
-  /**
-   * Get search suggestions based on partial search
-   * @param {string} query - Partial search query
-   * @returns {Promise} Promise with suggestions data
-   */
-  async getSearchSuggestions(query) {
-    if (!query || query.length < 2) return {
-      restaurants: [],
-      cuisines: [],
-      dishes: []
-    };
-    
-    const response = await api.get('/restaurants/suggestions', {
-      params: { query }
-    });
-
-    return response.data;
+  
+  getFavoriteRestaurants: async () => {
+    // Assuming favorites are handled by /api/favorites
+    // This might need adjustment based on backend routes. Let's assume /api/restaurants/favorites for now.
+    return apiClient.get('/api/restaurants/favorites');
   },
-
-  /**
-   * Get popular cuisine types
-   * @returns {Promise} Promise with cuisine types data
-   */
-  async getCuisineTypes() {
-    const response = await api.get('/restaurants/cuisines');
-    return response.data;
+  
+  getAllRestaurants: async (params = {}) => {
+    return apiClient.get('/api/restaurants', { params });
   },
-
-  /**
-   * Get nearby restaurants based on location
-   * @param {Object} params - Location parameters
-   * @returns {Promise} Promise with nearby restaurant data
-   */
-  async getNearbyRestaurants(params = {}) {
-    const response = await api.get('/restaurants/nearby', { 
-      params
-    });
-    return response.data;
+  
+  getRestaurantMenu: async (id) => {
+    return apiClient.get(`/api/restaurants/${id}/menu`);
+  },
+  
+  searchByLocation: async (params = {}) => {
+    return apiClient.get('/api/restaurants/search/location', { params });
+  },
+  
+  getPopularRestaurants: async (params = {}) => {
+    return apiClient.get('/api/restaurants/popular', { params });
   }
 };
+
+export { restaurantService };
+export default restaurantService;

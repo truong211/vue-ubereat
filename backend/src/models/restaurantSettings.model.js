@@ -1,70 +1,80 @@
-const { DataTypes } = require('sequelize');
+const { Model } = require('sequelize');
 
-module.exports = (sequelize) => {
-  const RestaurantSettings = sequelize.define('RestaurantSettings', {
+module.exports = (sequelize, DataTypes) => {
+  class RestaurantSettings extends Model {
+    static associate(models) {
+      console.log('Available models in RestaurantSettings.associate:', Object.keys(models));
+      const { Restaurant } = models;
+
+      // Simplified association setup
+      if (Restaurant) {
+        this.belongsTo(Restaurant, {
+          foreignKey: 'restaurantId',
+          as: 'restaurant',
+          onDelete: 'CASCADE'
+        });
+        console.log('RestaurantSettings-Restaurant association set up');
+      } else {
+        console.error('Restaurant model is missing for RestaurantSettings association');
+      }
+    }
+  }
+
+  RestaurantSettings.init({
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
-      autoIncrement: true,
+      autoIncrement: true
     },
     restaurantId: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: 'Restaurants',
-        key: 'id',
-      },
+        model: 'restaurants',
+        key: 'id'
+      }
     },
     isOpen: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: true,
+      defaultValue: true
     },
     availabilityStatus: {
       type: DataTypes.ENUM('online', 'busy', 'offline', 'temporarily_closed'),
       allowNull: false,
-      defaultValue: 'online',
+      defaultValue: 'online'
     },
     busyLevel: {
       type: DataTypes.INTEGER,
       allowNull: true,
       validate: {
         min: 1,
-        max: 5,
-      },
-      comment: 'Busy level from 1-5, with 5 being extremely busy',
+        max: 5
+      }
     },
     estimatedPrepTime: {
       type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: 'Current estimated food preparation time in minutes',
+      allowNull: true
     },
     statusMessage: {
       type: DataTypes.STRING(255),
-      allowNull: true,
-      comment: 'Optional message to display about the current status',
+      allowNull: true
     },
     autoOfflineThreshold: {
       type: DataTypes.INTEGER,
-      allowNull: true,
-      comment: 'Number of pending orders that triggers auto-busy status',
+      allowNull: true
     },
     acceptingOrders: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: true,
-    },
+      defaultValue: true
+    }
   }, {
+    sequelize,
+    modelName: 'RestaurantSettings',
     tableName: 'restaurant_settings',
-    timestamps: true,
+    timestamps: true
   });
-
-  RestaurantSettings.associate = (models) => {
-    RestaurantSettings.belongsTo(models.Restaurant, {
-      foreignKey: 'restaurantId',
-      onDelete: 'CASCADE',
-    });
-  };
 
   return RestaurantSettings;
 };

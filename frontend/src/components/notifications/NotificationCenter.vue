@@ -64,7 +64,7 @@
           >
             <v-list-item
               :value="notification"
-              :class="{ 'unread': !notification.read }"
+              :class="{ 'unread': !notification.read && !notification.isRead }"
               @click="handleNotificationClick(notification)"
             >
               <!-- Icon -->
@@ -96,7 +96,7 @@
 
                   <v-list density="compact">
                     <v-list-item
-                      v-if="!notification.read"
+                      v-if="!notification.read && !notification.isRead"
                       prepend-icon="mdi-check"
                       title="Mark as read"
                       @click="markAsRead(notification.id)"
@@ -147,32 +147,32 @@
 
 <script>
 import { ref, computed } from 'vue'
-import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { formatDistanceToNow } from 'date-fns'
+import { useNotificationStore } from '@/stores/notifications'
 
 export default {
   name: 'NotificationCenter',
 
   setup() {
-    const store = useStore()
+    const notificationsStore = useNotificationStore()
     const router = useRouter()
     const showMenu = ref(false)
     const activeTab = ref('all')
 
     // Computed
-    const notifications = computed(() => store.state.notifications.notifications || [])
-    const unreadCount = computed(() => store.getters['notifications/unreadCount'])
-    const hasUnread = computed(() => unreadCount.value > 0)
+    const notifications = computed(() => notificationsStore.notifications || [])
+    const unreadCount = computed(() => notificationsStore.unreadCount)
+    const hasUnread = computed(() => notificationsStore.hasUnread)
 
     const filteredNotifications = computed(() => {
       if (!notifications.value) return []
-      
+
       let filtered = [...notifications.value]
 
       switch (activeTab.value) {
         case 'unread':
-          filtered = filtered.filter(n => !n.read)
+          filtered = filtered.filter(n => !n.read && !n.isRead)
           break
         case 'orders':
           filtered = filtered.filter(n => n.type === 'order_status')
@@ -202,57 +202,56 @@ export default {
     }
 
     const formatTime = (timestamp) => {
+      if (!timestamp) return ''
       return formatDistanceToNow(new Date(timestamp), { addSuffix: true })
     }
 
     const handleNotificationClick = (notification) => {
-      // Mark as read
       if (!notification.read) {
-        store.dispatch('notifications/markAsRead', notification.id)
+        notificationsStore.markAsRead(notification.id)
       }
 
       // Handle navigation based on notification type
       switch (notification.type) {
         case 'order_status':
-          router.push(`/orders/${notification.data.orderId}`)
-          break
-        case 'driver_location':
-          router.push(`/orders/${notification.data.orderId}/tracking`)
+          if (notification.orderId) {
+            router.push(`/orders/${notification.orderId}`)
+          }
           break
         case 'chat':
-          if (notification.data.driverId) {
-            router.push(`/chat/driver/${notification.data.driverId}`)
-          } else {
-            router.push('/support')
+          if (notification.chatId) {
+            router.push(`/chat/${notification.chatId}`)
           }
           break
         case 'promotion':
-          router.push(`/promotions/${notification.data.id}`)
+          if (notification.promotionId) {
+            router.push(`/promotions/${notification.promotionId}`)
+          }
           break
       }
 
       showMenu.value = false
     }
 
-    const markAsRead = async (id) => {
-      await store.dispatch('notifications/markAsRead', id)
+    const markAsRead = (notificationId) => {
+      notificationsStore.markAsRead(notificationId)
     }
 
-    const markAllAsRead = async () => {
-      await store.dispatch('notifications/markAllAsRead')
+    const markAllAsRead = () => {
+      notificationsStore.markAllAsRead()
     }
 
-    const removeNotification = async (id) => {
-      await store.dispatch('notifications/removeNotification', id)
+    const removeNotification = (notificationId) => {
+      notificationsStore.deleteNotification(notificationId)
     }
 
     return {
       showMenu,
       activeTab,
       notifications,
-      filteredNotifications,
       unreadCount,
       hasUnread,
+      filteredNotifications,
       getNotificationIcon,
       formatTime,
       handleNotificationClick,

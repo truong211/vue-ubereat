@@ -70,10 +70,16 @@
 </template>
 
 <script>
-import { mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useAuthStore } from '@/stores/auth'; // Import Pinia auth store
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'OtpVerification',
+  setup() {
+    const authStore = useAuthStore();
+    return { authStore }; // Expose store instance
+  },
+
   data() {
     return {
       otp: '',
@@ -101,10 +107,7 @@ export default {
     }
   },
   methods: {
-    ...mapActions({
-      verifyOTP: 'auth/verifyOTP',
-      resendOTP: 'auth/resendOTP'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
 
     startResendTimer() {
       this.resendCountdown = 60;
@@ -124,7 +127,8 @@ export default {
       this.errorMessage = '';
 
       try {
-        await this.verifyOTP({
+        // Call action on authStore instance
+        await this.authStore.verifyOTP({
           email: this.$route.query.email,
           otp: this.otp,
           type: this.$route.query.type || 'email'
@@ -145,7 +149,8 @@ export default {
       this.errorMessage = '';
 
       try {
-        await this.resendOTP({
+        // Call action on authStore instance
+        await this.authStore.resendOTP({
           email: this.$route.query.email,
           type: this.$route.query.type || 'email'
         });
@@ -169,5 +174,5 @@ export default {
       clearInterval(this.resendTimer);
     }
   }
-};
+}); // Close defineComponent
 </script>

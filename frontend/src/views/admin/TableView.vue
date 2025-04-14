@@ -305,7 +305,7 @@ export default {
       error.value = false
       
       try {
-        const response = await axios.get(`http://localhost:3000/api/admin/${props.tableName}/${props.id}`)
+        const response = await axios.get(`/api/admin/${props.tableName}/${props.id}`)
         recordData.value = response.data
         
         // After loading record, discover related tables
@@ -322,7 +322,7 @@ export default {
     const discoverRelatedTables = async () => {
       try {
         // Get potential related tables based on common patterns
-        const response = await axios.get(`http://localhost:3000/api/admin/related-tables/${props.tableName}/${props.id}`)
+        const response = await axios.get(`/api/admin/related-tables/${props.tableName}/${props.id}`)
         
         if (response.data.length > 0) {
           relatedTables.value = response.data.map(relation => ({
@@ -349,7 +349,7 @@ export default {
     
     const loadRelatedRecords = async (relation) => {
       try {
-        const response = await axios.get(`http://localhost:3000/api/admin/${relation.table}`, {
+        const response = await axios.get(`/api/admin/${relation.table}`, {
           params: {
             [`${relation.foreignKey}`]: props.id,
             limit: 5

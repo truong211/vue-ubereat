@@ -6,6 +6,8 @@ const fetch = require('node-fetch');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const twilio = require('twilio');
+// Import the password utility for consistent hashing
+const { hashPassword, verifyPassword, SALT_ROUNDS } = require('../utils/password.util');
 
 // Google OAuth configuration
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -40,10 +42,18 @@ exports.register = async (req, res) => {
       });
     }
     
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Log original password for debugging
+    console.log('--- DEBUG: Password Hashing on Registration ---');
+    console.log('Original Password:', password);
+    console.log('Original Password Length:', password ? password.length : 0);
     
-    // Create new user
+    // Use the centralized password utility for hashing
+    const hashedPassword = await hashPassword(password);
+    
+    console.log('Generated Hash Length:', hashedPassword.length);
+    console.log('Generated Hash:', hashedPassword);
+    
+    // Create new user with the consistently hashed password
     const user = new User({
       name,
       email,
@@ -87,21 +97,42 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     
+    // Enhanced debug for login
+    console.log('--- DEBUG: Login Password Verification ---');
+    console.log('Login attempt for email:', email);
+    console.log('Login Password:', password);
+    console.log('Password length:', password ? password.length : 0);
+    
     // Find user
     const user = await User.findOne({ email });
     
     if (!user) {
+      console.log('Login failed: User not found for email:', email);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    console.log('User found:', {
+      id: user._id,
+      email: user.email,
+      passwordLength: user.password ? user.password.length : 0
+    });
+    
+    console.log('--- DEBUG: Pre-Comparison Values ---');
+    console.log('Login Password:', password);
+    console.log('Plaintext Password Length:', password ? password.length : 0);
+    console.log('Stored Password Hash:', user.password);
+    console.log('Stored Password Hash Length:', user.password ? user.password.length : 0);
+    
+    // Use the centralized password verification utility
+    const isPasswordValid = await verifyPassword(password, user.password);
+    console.log('Password validation result:', isPasswordValid);
     
     if (!isPasswordValid) {
+      console.log('Login attempt failed: Invalid password for email:', email);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     
-    // Check if user is verified
+    // Password is valid - check if user is verified
     if (!user.isVerified) {
       return res.status(401).json({ 
         message: 'Please verify your email before logging in' 
@@ -115,6 +146,8 @@ exports.login = async (req, res) => {
       { expiresIn: '7d' }
     );
     
+    console.log('Login successful for user:', email);
+    
     res.status(200).json({
       token,
       user: {
@@ -127,6 +160,7 @@ exports.login = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ message: error.message });
   }
 };

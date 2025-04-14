@@ -7,6 +7,9 @@
             <v-icon size="40" color="white">mdi-account</v-icon>
           </v-avatar>
           <h1 class="text-h5 font-weight-bold">Đăng nhập</h1>
+          <p class="text-subtitle-1 text-medium-emphasis mt-2">
+            Chào mừng bạn trở lại! Hãy đăng nhập để tiếp tục.
+          </p>
         </div>
 
         <v-alert
@@ -27,13 +30,10 @@
             label="Email"
             type="email"
             variant="outlined"
-            :rules="[
-              v => !!v || 'Vui lòng nhập email',
-              v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) || 'Email không hợp lệ'
-            ]"
             prepend-inner-icon="mdi-email"
+            :rules="[v => !!v || 'Email là bắt buộc', v => /.+@.+\..+/.test(v) || 'Email không hợp lệ']"
             required
-            class="mb-4"
+            class="mb-3"
           ></v-text-field>
 
           <!-- Password Field -->
@@ -41,14 +41,11 @@
             v-model="formData.password"
             label="Mật khẩu"
             :type="showPassword ? 'text' : 'password'"
+            variant="outlined"
+            prepend-inner-icon="mdi-lock"
             :append-inner-icon="showPassword ? 'mdi-eye-off' : 'mdi-eye'"
             @click:append-inner="showPassword = !showPassword"
-            variant="outlined"
-            :rules="[
-              v => !!v || 'Vui lòng nhập mật khẩu',
-              v => v.length >= 6 || 'Mật khẩu phải có ít nhất 6 ký tự'
-            ]"
-            prepend-inner-icon="mdi-lock"
+            :rules="[v => !!v || 'Mật khẩu là bắt buộc']"
             required
             class="mb-2"
           ></v-text-field>
@@ -75,7 +72,7 @@
             size="large"
             :loading="isLoading"
             :disabled="!isFormValid || isLoading"
-            class="mb-6"
+            class="mb-6 login-btn"
           >
             Đăng nhập
           </v-btn>
@@ -86,184 +83,180 @@
           </div>
 
           <!-- Social Login Buttons -->
-          <div class="d-flex gap-2 mb-4">
+          <div class="d-flex flex-column gap-2 mb-4">
             <v-btn
-              variant="outlined"
-              color="error"
-              prepend-icon="mdi-google"
+              color="#DB4437"
               block
-              @click="googleLogin"
+              variant="elevated"
               :loading="socialLoading.google"
-              :disabled="isLoading"
+              @click="googleLogin"
             >
+              <v-icon start>mdi-google</v-icon>
               Google
             </v-btn>
 
             <v-btn
-              variant="outlined"
-              color="primary"
-              prepend-icon="mdi-facebook"
+              color="#4267B2"
               block
-              @click="facebookLogin"
+              variant="elevated"
               :loading="socialLoading.facebook"
-              :disabled="isLoading"
+              @click="facebookLogin"
             >
+              <v-icon start>mdi-facebook</v-icon>
               Facebook
             </v-btn>
           </div>
 
           <!-- Register Link -->
-          <div class="text-center mt-4">
-            <span class="text-medium-emphasis">Chưa có tài khoản?</span>
-            <router-link to="/auth/register" class="ml-1 text-primary text-decoration-none">Đăng ký</router-link>
+          <div class="text-center">
+            <p class="text-body-2 mb-1">Chưa có tài khoản?</p>
+            <router-link
+              to="/register"
+              class="text-decoration-none font-weight-medium"
+            >
+              Đăng ký ngay
+            </router-link>
           </div>
         </v-form>
+
+        <!-- Return Home Link -->
+        <div class="text-center mt-6">
+          <v-btn
+            to="/"
+            variant="text"
+            prepend-icon="mdi-arrow-left"
+            class="back-home-link"
+            size="small"
+          >
+            Quay lại trang chủ
+          </v-btn>
+        </div>
       </v-card>
     </div>
   </div>
 </template>
 
-<script>
-import { ref, computed } from 'vue';
-import { useStore } from 'vuex';
+<script setup>
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
+import socialAuth from '@/services/social-auth';
 
-export default {
-  name: 'Login',
+const router = useRouter();
+const route = useRoute();
+const authStore = useAuthStore();
 
-  setup() {
-    const store = useStore();
-    const router = useRouter();
-    const route = useRoute();
+// Form refs
+const form = ref(null);
+const isFormValid = ref(false);
+const showPassword = ref(false);
 
-    // Form refs
-    const form = ref(null);
-    const isFormValid = ref(false);
-    const showPassword = ref(false);
+// Form data
+const formData = ref({
+  email: '',
+  password: '',
+});
 
-    // Form data
-    const formData = ref({
-      email: '',
-      password: '',
-    });
+// UI state
+const rememberMe = ref(false);
+const message = ref('');
+const messageType = ref('info');
+const isLoading = ref(false);
+const socialLoading = ref({
+  google: false,
+  facebook: false
+});
 
-    // UI state
-    const rememberMe = ref(false);
-    const message = ref('');
-    const messageType = ref('info');
-    const socialLoading = ref({
-      google: false,
-      facebook: false
-    });
+// Computed
+const redirectPath = computed(() => route.query.redirect || '/');
 
-    // Computed
-    const isLoading = computed(() => store.getters['auth/loading']);
+// Handle form validation errors
+const handleValidationError = (error) => {
+  message.value = error.message || 'Vui lòng kiểm tra thông tin đăng nhập.';
+  messageType.value = 'error';
+};
 
-    // Check for redirects
-    const redirectPath = computed(() => route.query.redirect || '/');
+// Handle API errors
+const handleApiError = (error) => {
+  message.value = error.response?.data?.message || 'Có lỗi xảy ra. Vui lòng thử lại sau.';
+  messageType.value = 'error';
+  console.error('API error:', error);
+};
 
-    // Methods
-    const login = async () => {
-      if (!isFormValid.value) return;
-
-      try {
-        message.value = '';
-        await store.dispatch('auth/login', {
-          email: formData.value.email,
-          password: formData.value.password
-        });
-
-        // Redirect after successful login
-        router.push(redirectPath.value);
-      } catch (error) {
-        message.value = error || 'Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập.';
-        messageType.value = 'error';
-      }
-    };
-
-    const googleLogin = async () => {
-      try {
-        socialLoading.value.google = true;
-        message.value = '';
-
-        // Your implementation will depend on how you set up Google Auth
-        // This is a placeholder - you'll need to implement the actual OAuth flow
-        const result = await window.gapi.auth2.getAuthInstance().signIn();
-        const accessToken = result.getAuthResponse().id_token;
-
-        await store.dispatch('auth/loginWithSocial', {
-          provider: 'google',
-          accessToken
-        });
-
-        // Redirect after successful login
-        router.push(redirectPath.value);
-      } catch (error) {
-        message.value = 'Đăng nhập bằng Google thất bại. Vui lòng thử lại.';
-        messageType.value = 'error';
-        console.error('Google login error:', error);
-      } finally {
-        socialLoading.value.google = false;
-      }
-    };
-
-    const facebookLogin = async () => {
-      try {
-        socialLoading.value.facebook = true;
-        message.value = '';
-
-        // Your implementation will depend on how you set up Facebook Auth
-        // This is a placeholder - you'll need to implement the actual OAuth flow
-        const response = await new Promise((resolve) => {
-          window.FB.login((response) => {
-            resolve(response);
-          }, { scope: 'email,public_profile' });
-        });
-
-        if (response.status === 'connected') {
-          const accessToken = response.authResponse.accessToken;
-
-          await store.dispatch('auth/loginWithSocial', {
-            provider: 'facebook',
-            accessToken
-          });
-
-          // Redirect after successful login
-          router.push(redirectPath.value);
-        } else {
-          throw new Error('Facebook login failed');
-        }
-      } catch (error) {
-        message.value = 'Đăng nhập bằng Facebook thất bại. Vui lòng thử lại.';
-        messageType.value = 'error';
-        console.error('Facebook login error:', error);
-      } finally {
-        socialLoading.value.facebook = false;
-      }
-    };
-
-    // Check for error message in query params (e.g., from callback failures)
-    if (route.query.error) {
-      message.value = route.query.error;
+// Login function
+const login = async () => {
+  try {
+    isLoading.value = true;
+    message.value = '';
+    
+    // Validate form
+    const { valid } = await form.value.validate();
+    if (!valid) {
+      message.value = 'Vui lòng điền đầy đủ thông tin.';
       messageType.value = 'error';
+      return;
     }
-
-    return {
-      form,
-      isFormValid,
-      formData,
-      rememberMe,
-      showPassword,
-      message,
-      messageType,
-      isLoading,
-      socialLoading,
-      login,
-      googleLogin,
-      facebookLogin
-    };
+    
+    // Login with email/password
+    await authStore.login(formData.value);
+    
+    // Redirect to home page or intended path
+    router.push(redirectPath.value);
+  } catch (error) {
+    console.error('Login error:', error);
+    message.value = error.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra thông tin đăng nhập.';
+    messageType.value = 'error';
+    
+    // Log additional error details for debugging
+    if (error.response) {
+      console.log('Error response:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
+  } finally {
+    isLoading.value = false;
   }
 };
+
+// Social login handler
+const handleSocialLogin = async (provider) => {
+  const loadingKey = provider.toLowerCase();
+  socialLoading.value[loadingKey] = true;
+  message.value = '';
+
+  try {
+    const result = await socialAuth.loginWithSocial(provider);
+    await authStore.loginWithSocial({
+      provider,
+      ...result
+    });
+    router.push(redirectPath.value);
+  } catch (error) {
+    handleApiError(error);
+    message.value = `Đăng nhập bằng ${provider} thất bại. Vui lòng thử lại.`;
+  } finally {
+    socialLoading.value[loadingKey] = false;
+  }
+};
+
+// Social login functions
+const googleLogin = () => handleSocialLogin('google');
+const facebookLogin = () => handleSocialLogin('facebook');
+
+// Initialize
+onMounted(() => {
+  // Check for error message in query params
+  if (route.query.error) {
+    message.value = route.query.error;
+    messageType.value = 'error';
+  }
+
+  // Initialize social auth SDKs
+  socialAuth.initSocialAuth().catch(error => {
+    console.error('Failed to initialize social auth:', error);
+  });
+});
 </script>
 
 <style scoped>
@@ -298,38 +291,46 @@ export default {
   z-index: 1;
 }
 
+.login-btn {
+  transition: transform 0.2s ease;
+}
+
+.login-btn:hover {
+  transform: translateY(-2px);
+}
+
 .divider-text {
   position: relative;
   padding: 0 10px;
-  background: white;
+  background-color: white;
   z-index: 1;
   color: rgba(0, 0, 0, 0.6);
+  font-size: 0.875rem;
 }
 
-.divider-text::before {
+.text-center.my-4.position-relative::before {
   content: '';
   position: absolute;
   top: 50%;
-  left: -40%;
-  right: -40%;
+  left: 0;
+  right: 0;
   height: 1px;
   background-color: rgba(0, 0, 0, 0.12);
-  z-index: -1;
+  z-index: 0;
 }
 
-/* Animation for the login form */
-.login-form {
-  animation: fadeInUp 0.5s ease-out;
+.back-home-link {
+  opacity: 0.7;
+  transition: opacity 0.2s;
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+.back-home-link:hover {
+  opacity: 1;
+}
+
+@media (max-width: 600px) {
+  .login-form {
+    padding: 0;
   }
 }
 </style>

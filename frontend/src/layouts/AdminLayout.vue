@@ -5,18 +5,11 @@
       <v-app-bar-nav-icon @click="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title>Admin Dashboard</v-toolbar-title>
       <v-spacer></v-spacer>
-      
+
       <!-- Notification Center -->
-      <div v-if="showNotifications" key="notification-enabled">
-        <notification-center @error="handleNotificationError" />
-      </div>
-      <v-btn v-else icon @click="retryLoadNotifications" key="notification-disabled">
-        <v-icon>mdi-bell-off</v-icon>
-        <v-tooltip activator="parent" location="bottom">
-          Notifications unavailable. Click to retry.
-        </v-tooltip>
-      </v-btn>
-      
+      <notification-center />
+      <!-- Error handling is now managed via Vuex state and globalError -->
+
       <!-- User Menu -->
       <v-menu offset-y>
         <template v-slot:activator="{ props }">
@@ -56,7 +49,7 @@
           <template v-slot:prepend>
             <v-icon>{{ item.icon }}</v-icon>
           </template>
-          
+
           <div class="d-flex align-center">
             <v-list-item-title>{{ item.title }}</v-list-item-title>
           </div>
@@ -73,7 +66,7 @@
               <template v-slot:prepend>
                 <v-icon>{{ group.icon }}</v-icon>
               </template>
-              
+
               <div class="d-flex align-center">
                 <v-list-item-title>{{ group.title }}</v-list-item-title>
               </div>
@@ -88,7 +81,7 @@
             <template v-slot:prepend>
               <v-icon>{{ subItem.icon }}</v-icon>
             </template>
-            
+
             <div class="d-flex align-center">
               <v-list-item-title>{{ subItem.title }}</v-list-item-title>
             </div>
@@ -102,7 +95,7 @@
               <template v-slot:prepend>
                 <v-icon>mdi-tag-multiple</v-icon>
               </template>
-              
+
               <div class="d-flex align-center">
                 <v-list-item-title>Promotions</v-list-item-title>
               </div>
@@ -115,7 +108,7 @@
             <template v-slot:prepend>
               <v-icon>mdi-ticket-percent</v-icon>
             </template>
-            
+
             <div class="d-flex align-center">
               <v-list-item-title>Manage Promotions</v-list-item-title>
             </div>
@@ -127,7 +120,7 @@
             <template v-slot:prepend>
               <v-icon>mdi-calendar-star</v-icon>
             </template>
-            
+
             <div class="d-flex align-center">
               <v-list-item-title>Campaigns</v-list-item-title>
             </div>
@@ -176,8 +169,12 @@
 </template>
 
 <script>
-import { mapState } from 'vuex';
+import { defineComponent } from 'vue';
+import { useUiStore } from '@/stores/ui';
+import { useNotificationsStore } from '@/stores/notifications';
+import { useAuthStore } from '@/stores/auth';
 import NotificationCenter from '@/components/admin/NotificationCenter.vue';
+// Note: Using admin-specific NotificationCenter
 
 const menuItems = [
   {
@@ -206,7 +203,7 @@ const menuItems = [
       },
       {
         title: 'Customers',
-        to: '/admin/users?role=customer',
+        to: '/admin/customer-accounts',
         icon: 'mdi-account'
       },
       {
@@ -215,6 +212,43 @@ const menuItems = [
         icon: 'mdi-shield-account'
       }
     ]
+  },
+  {
+    title: 'Restaurant Management',
+    icon: 'mdi-store',
+    items: [
+      {
+        title: 'All Restaurants',
+        to: '/admin/restaurants',
+        icon: 'mdi-store-outline'
+      },
+      {
+        title: 'Pending Approvals',
+        to: '/admin/restaurants/pending',
+        icon: 'mdi-clock-outline'
+      }
+    ]
+  },
+  {
+    title: 'Menu Management',
+    icon: 'mdi-food-fork-drink',
+    items: [
+      {
+        title: 'Products',
+        to: '/admin/products',
+        icon: 'mdi-food-apple'
+      },
+      {
+        title: 'Categories',
+        to: '/admin/categories',
+        icon: 'mdi-shape'
+      }
+    ]
+  },
+  {
+    title: 'Order Management',
+    icon: 'mdi-clipboard-list',
+    to: '/admin/orders'
   },
   {
     title: 'Delivery Management',
@@ -238,68 +272,70 @@ const menuItems = [
     to: '/admin/analytics',
     exact: true
   },
+  {
+    title: 'Customer Support',
+    icon: 'mdi-headset',
+    to: '/admin/support',
+    exact: true
+  },
   // ...other menu items...
 ]
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'AdminLayout',
 
   components: {
     NotificationCenter
   },
 
+  setup() {
+    const uiStore = useUiStore();
+    const notificationsStore = useNotificationsStore();
+    const authStore = useAuthStore();
+    return { uiStore, notificationsStore, authStore }; // Expose store instances
+  },
+
   data() {
     return {
       drawer: true,
       menuItems,
-      showNotifications: true,
+      // showNotifications: true, // Removed - Notification center always shown
       globalError: null,
-      notificationRetries: 0,
+      // notificationRetries: 0, // Removed - Retry logic is in Vuex store
       disabledComponents: [] // Track components that have errors
     };
   },
 
   computed: {
-    ...mapState('ui', ['snackbar'])
+    // Access state/getters from Pinia stores
+    snackbar() {
+      return this.uiStore.snackbar;
+    },
+    notificationError() {
+      return this.notificationsStore.error; // Assuming 'error' getter/state
+    },
+    isNotificationsLoading() {
+      return this.notificationsStore.isLoading; // Assuming 'isLoading' getter/state
+    }
   },
 
   methods: {
     async logout() {
       try {
-        await this.$store.dispatch('auth/logout');
+        await this.authStore.logout(); // Call action on authStore
         this.$router.push({ name: 'Login' });
       } catch (error) {
         console.error('Logout error:', error);
         this.setGlobalError('Logout failed. Please try again.');
       }
     },
-    
-    retryLoadNotifications() {
-      if (this.notificationRetries < 3) {
-        this.showNotifications = true;
-        this.notificationRetries++;
-      } else {
-        this.$store.dispatch('ui/showSnackbar', {
-          text: 'Notification service is currently unavailable',
-          color: 'warning',
-          timeout: 3000
-        });
-      }
-    },
-    
-    handleNotificationError(error) {
-      console.error('Notification error:', error);
-      // Disable the notification component but don't show errors in UI
-      // as these are background errors that shouldn't affect main functionality
-      this.showNotifications = false;
-      
-      // Don't set global error for notification issues as they're not critical
-      // this.setGlobalError(`Notification service error: ${error}`);
-    },
-    
+
+    // Removed retryLoadNotifications - Handled by Vuex store action
+    // Removed handleNotificationError - Error state is now watched
+
     setGlobalError(error) {
       if (!error) return;
-      
+
       if (typeof error === 'string') {
         this.globalError = error;
       } else if (error && error.message) {
@@ -307,7 +343,7 @@ export default {
       } else {
         this.globalError = 'An unexpected error occurred';
       }
-      
+
       // Auto-dismiss after 10 seconds
       setTimeout(() => {
         if (this.globalError) {
@@ -315,7 +351,7 @@ export default {
         }
       }, 10000);
     },
-    
+
     // Safe initialization of WebSocket to prevent navigation issues
     initWebSocket() {
       try {
@@ -334,51 +370,65 @@ export default {
     }
   },
 
+  watch: {
+    notificationError(newError) {
+      if (newError) {
+        // Display notification errors using the global error display
+        this.setGlobalError(`Notifications Error: ${newError}`);
+        // Clear the error in the store after displaying it
+        // to prevent it showing again on next load if not cleared by a successful fetch
+        this.notificationsStore.clearError(); // Assuming a 'clearError' action/mutation exists
+      }
+    }
+  },
+
   mounted() {
     // Initialize WebSocket connection with delay to avoid competing with other init processes
     setTimeout(() => {
       this.initWebSocket();
     }, 1000);
-    
+
     // Add navigation guard to prevent errors during navigation
     this.$router.beforeEach((to, from, next) => {
       // Clear any error states that might be present
       this.globalError = null;
-      
+
       // If we're navigating away from admin area
       if (from.path.startsWith('/admin') && !to.path.startsWith('/admin')) {
-        // Make sure notifications are disabled to prevent callback errors after component unmount
-        this.showNotifications = false;
+        // No longer need to manage showNotifications state
+        // this.showNotifications = false;
       }
-      
+
       next();
     });
   },
-  
+
   errorCaptured(err, vm, info) {
     // Handle errors in child components
     console.error('Error captured in AdminLayout:', err, info);
-    
-    // If the error is from NotificationCenter, hide it without propagating error
-    if (vm.$options && vm.$options.name === 'NotificationCenter') {
-      this.showNotifications = false;
-      return false; // Prevent error from propagating further
+
+    // If the error is from NotificationCenter, log it but let the watcher handle UI
+    if (vm.$options && (vm.$options.name === 'NotificationCenter' || vm.$options.name === 'AdminNotificationCenter')) { // Check both possible names
+       console.error('Error originating from NotificationCenter:', err);
+       // Don't set global error here directly, let the watcher handle store errors
+       // this.showNotifications = false; // Removed
+       return false; // Prevent error from propagating further
     }
-    
+
     // Track which component had an error
     if (vm.$options && vm.$options.name) {
       if (!this.disabledComponents.includes(vm.$options.name)) {
         this.disabledComponents.push(vm.$options.name);
       }
     }
-    
+
     // Generic error handling for other components
     this.setGlobalError(err.message || 'An unexpected error occurred');
-    
+
     // Return false to stop error propagation which can cause UI issues
     return false;
   },
-  
+
   // Safe cleanup when layout is destroyed
   beforeUnmount() {
     // Clear any pending timeouts
@@ -386,7 +436,7 @@ export default {
       clearTimeout(this.globalErrorTimeout);
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

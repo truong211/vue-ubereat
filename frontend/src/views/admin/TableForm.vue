@@ -254,7 +254,7 @@ export default {
         if (error.response?.status === 404) {
           try {
             // Try fallback direct URL
-            const baseUrl = window.location.origin || 'http://localhost:3000';
+            const baseUrl = window.location.origin; // Use current origin for frontend URLs
             const fallbackUrl = `${baseUrl}/admin/tables/${props.tableName}/structure`;
             console.log('Trying fallback URL:', fallbackUrl);
             
@@ -322,7 +322,7 @@ export default {
         if (error.response?.status === 404) {
           try {
             // Try fallback direct URL
-            const baseUrl = window.location.origin || 'http://localhost:3000';
+            const baseUrl = window.location.origin; // Use current origin for frontend URLs
             const fallbackUrl = `${baseUrl}/admin/tables/${props.tableName}/${props.id}`;
             console.log('Trying fallback URL:', fallbackUrl);
             
@@ -377,8 +377,9 @@ export default {
         const displayField = foreignKeyDisplayFields.value[field.name]
         
         // Use proper URL construction with API base
-        const baseUrl = window.location.origin || 'http://localhost:3000';
-        const url = `${baseUrl}/api/admin/tables/${tableName}`;
+        // Construct API URL using environment variable
+        const apiUrl = import.meta.env.VITE_API_URL || ''; // Fallback to empty string if not set
+        const url = `${apiUrl}/api/admin/tables/${tableName}`;
         
         console.log('Loading foreign key options from:', url);
         
@@ -407,7 +408,7 @@ export default {
         
         // Try alternative URL as fallback
           try {
-            const baseUrl = window.location.origin || 'http://localhost:3000';
+            const baseUrl = window.location.origin; // Use current origin for frontend URLs
           const fallbackUrl = `${baseUrl}/admin/tables/${tableName}`;
             console.log('Trying fallback URL:', fallbackUrl);
             
@@ -485,18 +486,20 @@ export default {
         let response
         
         // Use proper URL construction
-        const baseUrl = window.location.origin || 'http://localhost:3000';
+        // Base URL for API calls is handled by Axios instance or constructed below
         
         if (props.isEdit) {
           // Update existing record
-          const url = `${baseUrl}/api/admin/tables/${props.tableName}/${props.id}`;
+          const apiUrl = import.meta.env.VITE_API_URL || ''; // Fallback to empty string
+          const url = `${apiUrl}/api/admin/tables/${props.tableName}/${props.id}`;
           console.log('Updating record at:', url);
           
           response = await axios.put(url, formData.value);
           toast.success('Record updated successfully');
         } else {
           // Create new record
-          const url = `${baseUrl}/api/admin/tables/${props.tableName}`;
+          const apiUrl = import.meta.env.VITE_API_URL || ''; // Fallback to empty string
+          const url = `${apiUrl}/api/admin/tables/${props.tableName}`;
           console.log('Creating record at:', url);
           
           response = await axios.post(url, formData.value);
@@ -510,7 +513,7 @@ export default {
         
         // Try fallback URL
           try {
-            const baseUrl = window.location.origin || 'http://localhost:3000';
+            const baseUrl = window.location.origin; // Use current origin for fallback API URL attempt
             
             if (props.isEdit) {
               // Update existing record

@@ -444,11 +444,12 @@ class ReviewService {
    */
   async getAverageRating(restaurantId) {
     try {
-      const [result] = await db.query(
-        'SELECT AVG(rating) as averageRating FROM reviews WHERE restaurantId = ? AND isVisible = true',
-        [restaurantId]
-      );
-      
+      const avgResult = await Review.findOne({
+        where: { restaurantId, isVisible: true },
+        attributes: [[require('sequelize').fn('AVG', require('sequelize').col('rating')), 'averageRating']],
+        raw: true
+      });
+      return avgResult?.averageRating || 0;
       return result?.averageRating || 0;
     } catch (error) {
       console.error('Error getting average rating:', error);
@@ -463,18 +464,19 @@ class ReviewService {
    */
   async updateRestaurantRating(restaurantId) {
     try {
-      const [averageRating] = await db.query(
-        'SELECT AVG(rating) as avg FROM reviews WHERE restaurantId = ? AND isVisible = true',
-        [restaurantId]
-      );
-      
-      if (averageRating) {
-        await db.query(
-          'UPDATE restaurants SET rating = ? WHERE id = ?',
-          [averageRating.avg || 0, restaurantId]
+      const avgResult = await Review.findOne({
+        where: { restaurantId, isVisible: true },
+        attributes: [[require('sequelize').fn('AVG', require('sequelize').col('rating')), 'avg']],
+        raw: true
+      });
+      if (avgResult) {
+        await Restaurant.update(
+          { rating: avgResult.avg || 0 },
+          { where: { id: restaurantId } }
         );
         return true;
       }
+      return false;
       return false;
     } catch (error) {
       console.error('Error updating restaurant rating:', error);
@@ -489,20 +491,16 @@ class ReviewService {
    */
   async getRatingDistribution(restaurantId) {
     try {
-      const results = await db.query(`
-        SELECT 
-          rating, 
-          COUNT(*) as count 
-        FROM 
-          reviews 
-        WHERE 
-          restaurantId = ? 
-          AND isVisible = true 
-        GROUP BY 
-          rating 
-        ORDER BY 
-          rating DESC
-      `, [restaurantId]);
+      const results = await Review.findAll({
+        where: { restaurantId, isVisible: true },
+        attributes: [
+          'rating',
+          [require('sequelize').fn('COUNT', require('sequelize').col('id')), 'count']
+        ],
+        group: ['rating'],
+        order: [['rating', 'DESC']],
+        raw: true
+      });
       
       // Create a distribution object with all possible ratings
       const distribution = {

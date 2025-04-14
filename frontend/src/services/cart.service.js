@@ -1,40 +1,37 @@
-import { apiClient } from './api.service';
-import { CART } from './api.endpoints';
+import api from './api';
 
-class CartService {
-  // Get cart items for the current user
-  async getCartItems() {
-    return apiClient.get(CART.GET);
-  }
+const cartService = {
+  getCart: async () => {
+    return api.get('/cart');
+  },
   
-  // Add an item to the cart
-  async addToCart(productId, quantity = 1, options = null) {
-    return apiClient.post(CART.ADD, {
-      productId,
-      quantity,
-      options
-    });
-  }
+  addToCart: async (itemData) => {
+    return api.post('/cart/items', itemData);
+  },
   
-  // Update item quantity in the cart
-  async updateQuantity(cartItemId, quantity) {
-    return apiClient.put(CART.UPDATE(cartItemId), { quantity });
-  }
+  updateCartItem: async (itemId, updateData) => {
+    return api.put(`/cart/items/${itemId}`, updateData);
+  },
   
-  // Remove an item from the cart
-  async removeFromCart(cartItemId) {
-    return apiClient.delete(CART.REMOVE(cartItemId));
-  }
+  removeCartItem: async (itemId) => {
+    return api.delete(`/cart/items/${itemId}`);
+  },
   
-  // Clear the entire cart
-  async clearCart() {
-    return apiClient.delete(CART.CLEAR);
-  }
+  clearCart: async () => {
+    return api.delete('/cart');
+  },
   
-  // Validate cart (check item availability, price changes, etc.)
-  async validateCart() {
-    return apiClient.get(CART.VALIDATE);
+  applyCoupon: async (couponCode) => {
+    return api.post('/cart/coupon', { code: couponCode });
+  },
+  
+  removeCoupon: async () => {
+    return api.delete('/cart/coupon');
+  },
+  
+  getDeliveryEstimate: async (addressId) => {
+    return api.get(`/cart/delivery-estimate?addressId=${addressId}`);
   }
-}
+};
 
-export default new CartService(); 
+export default cartService; 

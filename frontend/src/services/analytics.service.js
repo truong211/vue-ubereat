@@ -1,4 +1,4 @@
-import api from '@/services/api';
+import { apiClient } from '@/services/api.service'; // Use the configured client
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 
 class AnalyticsService {
@@ -16,7 +16,7 @@ class AnalyticsService {
     } = options
 
     try {
-      const response = await api.get(`/analytics/sales/${restaurantId}`, {
+      const response = await apiClient.get(`/api/analytics/sales/${restaurantId}`, { // Add /api prefix
         params: {
           startDate: format(startDate, 'yyyy-MM-dd'),
           endDate: format(endDate, 'yyyy-MM-dd'),
@@ -41,7 +41,7 @@ class AnalyticsService {
     const { period = 'month' } = options;
 
     try {
-      const response = await api.get(`/analytics/customers/${restaurantId}`, {
+      const response = await apiClient.get(`/api/analytics/customers/${restaurantId}`, { // Add /api prefix
         params: { period }
       });
 
@@ -59,7 +59,7 @@ class AnalyticsService {
    */
   async getRealTimeMetrics(restaurantId) {
     try {
-      const response = await api.get(`/analytics/realtime/${restaurantId}`)
+      const response = await apiClient.get(`/api/analytics/realtime/${restaurantId}`) // Add /api prefix
       return this.processRealTimeData(response.data)
     } catch (error) {
       console.error('Failed to fetch real-time metrics:', error)
@@ -80,7 +80,7 @@ class AnalyticsService {
     } = options;
 
     try {
-      const response = await api.get(`/analytics/menu/${restaurantId}`, {
+      const response = await apiClient.get(`/api/analytics/menu/${restaurantId}`, { // Add /api prefix
         params: { period, limit }
       });
 
@@ -104,7 +104,7 @@ class AnalyticsService {
     } = options
 
     try {
-      const response = await api.get(`/analytics/delivery/${restaurantId}`, {
+      const response = await apiClient.get(`/api/analytics/delivery/${restaurantId}`, { // Add /api prefix
         params: {
           startDate: format(startDate, 'yyyy-MM-dd'),
           endDate: format(endDate, 'yyyy-MM-dd')
@@ -132,7 +132,7 @@ class AnalyticsService {
     } = options;
 
     try {
-      const response = await api.get(`/analytics/revenue/${restaurantId}`, {
+      const response = await apiClient.get(`/api/analytics/revenue/${restaurantId}`, { // Add /api prefix
         params: {
           timeRange,
           startDate: startDate ? format(startDate, 'yyyy-MM-dd') : undefined,

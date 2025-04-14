@@ -1,7 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const userController = require('../controllers/user.controller');
-const { protect, authMiddleware } = require('../middleware/auth.middleware');
+const { authMiddleware } = require('../middleware/auth.middleware');
 const multer = require('multer');
 const path = require('path');
 
@@ -44,7 +44,7 @@ const upload = multer({
 });
 
 // Apply auth middleware to all routes
-router.use(protect);
+router.use(authMiddleware);
 
 /**
  * @route GET /api/users/profile

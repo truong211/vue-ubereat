@@ -1,26 +1,27 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
+const config = require('../../config/database');
 
 // Load environment variables with explicit path
 require('dotenv').config({ path: path.join(__dirname, '../../.env') });
 
+// Determine environment
+const env = process.env.NODE_ENV || 'development';
+const dbConfig = config[env];
+
 // Create Sequelize instance
 const sequelize = new Sequelize(
-  process.env.DB_NAME || 'food_delivery', 
-  process.env.DB_USER || 'root', 
-  process.env.DB_PASSWORD || '123456', 
+  dbConfig.database,
+  dbConfig.username,
+  dbConfig.password,
   {
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 3306,
-    dialect: 'mysql',
-    logging: console.log,
-    pool: {
-      max: 10,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    }
+    host: dbConfig.host,
+    port: dbConfig.port,
+    dialect: dbConfig.dialect,
+    logging: dbConfig.logging,
+    pool: dbConfig.pool,
+    dialectOptions: dbConfig.dialectOptions
   }
 );
 
-module.exports = sequelize; 
+module.exports = sequelize;

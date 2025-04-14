@@ -1,4 +1,4 @@
-import api from '@/services/api';
+import { apiClient } from '@/services/api.service'; // Use the configured client
 
 // Initial state
 const state = {
@@ -28,7 +28,7 @@ const actions = {
       let url = `/orders?page=${page}&limit=${limit}`;
       if (status) url += `&status=${status}`;
       
-      const response = await api.get(url);
+      const response = await apiClient.get(`/api${url}`); // Add /api prefix
       commit('SET_ORDERS', response.data.data.orders);
       
       return response.data;
@@ -44,7 +44,7 @@ const actions = {
   async fetchOrderById({ commit }, id) {
     try {
       commit('SET_LOADING', true);
-      const response = await api.get(`/orders/${id}`);
+      const response = await apiClient.get(`/api/orders/${id}`); // Add /api prefix
       commit('SET_CURRENT_ORDER', response.data.data.order);
       return response.data.data.order;
     } catch (error) {
@@ -59,7 +59,7 @@ const actions = {
   async createOrder({ commit, dispatch }, { paymentMethod, deliveryInstructions = '' }) {
     try {
       commit('SET_LOADING', true);
-      const response = await api.post('/orders', {
+      const response = await apiClient.post('/api/orders', { // Add /api prefix
         paymentMethod,
         deliveryInstructions
       });
@@ -83,7 +83,7 @@ const actions = {
   async cancelOrder({ commit }, { id, cancellationReason }) {
     try {
       commit('SET_LOADING', true);
-      const response = await api.put(`/orders/${id}/cancel`, { cancellationReason });
+      const response = await apiClient.put(`/api/orders/${id}/cancel`, { cancellationReason }); // Add /api prefix
       commit('UPDATE_ORDER_STATUS', { id, status: 'cancelled' });
       return response.data;
     } catch (error) {
@@ -98,7 +98,7 @@ const actions = {
   async rateOrder({ commit }, { id, rating, review = '' }) {
     try {
       commit('SET_LOADING', true);
-      const response = await api.post(`/orders/${id}/review`, { rating, review });
+      const response = await apiClient.post(`/api/orders/${id}/review`, { rating, review }); // Add /api prefix
       commit('UPDATE_ORDER_RATING', { id, rating, review });
       return response.data;
     } catch (error) {

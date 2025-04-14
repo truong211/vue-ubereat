@@ -1,55 +1,58 @@
 const { query } = require('../config/database');
 
-// A simple class that mimics a Sequelize model but uses direct SQL connection
-class ReviewReport {
-  constructor(data = {}) {
-    Object.assign(this, data);
-  }
+// Change to a factory function pattern to match Sequelize expectations
+module.exports = (sequelize, DataTypes) => {
+  // A class that mimics a Sequelize model but uses direct SQL connection
+  class ReviewReport {
+    constructor(data = {}) {
+      Object.assign(this, data);
+    }
 
-  // For Sequelize compatibility
-  toJSON() {
-    return { ...this };
-  }
+    // For Sequelize compatibility
+    toJSON() {
+      return { ...this };
+    }
 
-  // Save method to mimic Sequelize's save
-  async save() {
-    // If the review report has an ID, it's an update, otherwise it's a create
-    if (this.id) {
-      const { id, ...data } = this;
-      
-      // Handle special fields like JSON
-      for (const [key, value] of Object.entries(data)) {
-        if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-          data[key] = JSON.stringify(value);
+    // Save method to mimic Sequelize's save
+    async save() {
+      // If the review report has an ID, it's an update, otherwise it's a create
+      if (this.id) {
+        const { id, ...data } = this;
+        
+        // Handle special fields like JSON
+        for (const [key, value] of Object.entries(data)) {
+          if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
+            data[key] = JSON.stringify(value);
+          }
         }
+        
+        // Create the SET part of the SQL
+        const setClauses = [];
+        const params = [];
+        
+        for (const [key, value] of Object.entries(data)) {
+          setClauses.push(`${key} = ?`);
+          params.push(value);
+        }
+        
+        // If there's nothing to update, just return
+        if (setClauses.length === 0) return this;
+        
+        // Add the ID to the parameters
+        params.push(id);
+        
+        const sql = `UPDATE review_reports SET ${setClauses.join(', ')} WHERE id = ?`;
+        await query(sql, params);
+        
+        return this;
+      } else {
+        throw new Error('Cannot save a review report without an ID');
       }
-      
-      // Create the SET part of the SQL
-      const setClauses = [];
-      const params = [];
-      
-      for (const [key, value] of Object.entries(data)) {
-        setClauses.push(`${key} = ?`);
-        params.push(value);
-      }
-      
-      // If there's nothing to update, just return
-      if (setClauses.length === 0) return this;
-      
-      // Add the ID to the parameters
-      params.push(id);
-      
-      const sql = `UPDATE review_reports SET ${setClauses.join(', ')} WHERE id = ?`;
-      await query(sql, params);
-      
-      return this;
-    } else {
-      throw new Error('Cannot save a review report without an ID');
     }
   }
 
   // Static methods to mimic Sequelize
-  static async findAll(options = {}) {
+  ReviewReport.findAll = async function(options = {}) {
     let sql = `
       SELECT rr.*, u.fullName as reporterName, r.comment as reviewComment
       FROM review_reports rr
@@ -133,9 +136,9 @@ class ReviewReport {
 
     const results = await query(sql, params);
     return results.map(data => new ReviewReport(data));
-  }
+  };
   
-  static async findByPk(id) {
+  ReviewReport.findByPk = async function(id) {
     if (!id) return null;
     
     const sql = `
@@ -148,9 +151,9 @@ class ReviewReport {
     
     const result = await query(sql, [id]);
     return result.length > 0 ? new ReviewReport(result[0]) : null;
-  }
+  };
 
-  static async findOne(options = {}) {
+  ReviewReport.findOne = async function(options = {}) {
     // Use findAll with limit 1
     const results = await ReviewReport.findAll({
       ...options,
@@ -158,9 +161,9 @@ class ReviewReport {
     });
     
     return results.length > 0 ? results[0] : null;
-  }
+  };
 
-  static async create(data) {
+  ReviewReport.create = async function(data) {
     // Process the data
     const reportData = { ...data };
     
@@ -183,9 +186,9 @@ class ReviewReport {
       id: result.insertId,
       ...reportData
     });
-  }
+  };
 
-  static async update(data, options = {}) {
+  ReviewReport.update = async function(data, options = {}) {
     // Process the data
     const reportData = { ...data };
     
@@ -225,9 +228,9 @@ class ReviewReport {
     
     const result = await query(sql, params);
     return [result.affectedRows];
-  }
+  };
 
-  static async destroy(options = {}) {
+  ReviewReport.destroy = async function(options = {}) {
     let sql = 'DELETE FROM review_reports';
     const params = [];
     
@@ -246,35 +249,16 @@ class ReviewReport {
     
     const result = await query(sql, params);
     return result.affectedRows;
-  }
+  };
 
   // These are stubs for Sequelize compatibility
-  static init() {
-    return ReviewReport;
-  }
-
-  static associate() {
+  ReviewReport.associate = function(models) {
     // No-op - we'll handle relationships in SQL queries directly
-  }
+  };
   
-  // Mock association methods as no-ops to prevent errors
-  static belongsTo() {}
-  static hasMany() {}
-  static belongsToMany() {}
-}
-
-// Export for both direct usage and Sequelize compatibility
-module.exports = ReviewReport;
-
-// Mock the Sequelize DataTypes for compatibility
-ReviewReport.DataTypes = {
-  STRING: 'STRING',
-  TEXT: 'TEXT',
-  INTEGER: 'INTEGER', 
-  FLOAT: 'FLOAT',
-  DECIMAL: 'DECIMAL',
-  DATE: 'DATE',
-  BOOLEAN: 'BOOLEAN',
-  JSON: 'JSON',
-  ENUM: function() { return 'ENUM'; }
-}; 
+  // Required properties for Sequelize compatibility
+  ReviewReport.name = 'ReviewReport';
+  ReviewReport.tableName = 'review_reports';
+  
+  return ReviewReport;
+};

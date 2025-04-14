@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../config/database');
 const { userSockets, orderRooms, setIO, getIO } = require('./socketState');
 const { handleAdminEvents } = require('./adminHandlers');
+const { handleSupportEvents } = require('./supportHandlers');
 
 // Get JWT secrets from environment variables with fallbacks
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-jwt-secret-key-for-development-only';
@@ -35,8 +36,8 @@ function initializeSocketIO(server) {
   io.use(async (socket, next) => {
     try {
       // Try to get token from different sources
-      const token = 
-        socket.handshake.auth?.token || 
+      const token =
+        socket.handshake.auth?.token ||
         socket.handshake.headers?.authorization?.replace('Bearer ', '') ||
         socket.handshake.query?.token;
 
@@ -48,14 +49,14 @@ function initializeSocketIO(server) {
 
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        
+
         // Check if token was issued after our JWT_ISSUED_AFTER timestamp
         if (decoded.iat && decoded.iat < JWT_ISSUED_AFTER) {
           console.log('Socket token was issued before the secret update. Treating as guest...');
           socket.user = { id: 'guest', role: 'guest' };
           return next();
         }
-        
+
         socket.user = {
           id: decoded.id || decoded.userId,
           role: decoded.role || 'customer',
@@ -79,7 +80,7 @@ function initializeSocketIO(server) {
   io.on('connection', (socket) => {
     const userId = socket.user?.id || 'guest';
     console.log(`User connected: ${userId}, role: ${socket.user?.role}`);
-    
+
     // Store socket in userSockets map
     if (userId !== 'guest') {
       userSockets.set(userId, socket);
@@ -102,7 +103,7 @@ function initializeSocketIO(server) {
     socket.on('error', (error) => {
       console.error(`Socket error for user ${userId}:`, error);
     });
-    
+
     // Handle connection errors
     socket.on('connect_error', (error) => {
       console.error(`Socket connection error for user ${userId}:`, error);
@@ -148,6 +149,14 @@ function initializeSocketIO(server) {
     handleDriverEvents(socket, driverIo);
   });
 
+  // Support namespace
+  const supportIo = io.of('/support');
+  supportIo.on('connection', (socket) => {
+    const userId = socket.user?.id || 'guest';
+    console.log(`Support connected: ${userId}, role: ${socket.user?.role}`);
+    handleSupportEvents(socket, supportIo);
+  });
+
   return io;
 }
 
@@ -175,7 +184,7 @@ function handleCustomerEvents(socket, io) {
   socket.on('chat_message', async (data) => {
     const { orderId, message } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast message to order room
     io.to(roomName).emit('chat_message', {
       orderId,
@@ -202,7 +211,7 @@ function handleRestaurantEvents(socket, io) {
   socket.on('update_order_status', async (data) => {
     const { orderId, status } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast status update to order room
     io.to(roomName).emit('order_status_updated', {
       orderId,
@@ -226,7 +235,7 @@ function handleRestaurantEvents(socket, io) {
   socket.on('chat_message', async (data) => {
     const { orderId, message } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast message to order room
     io.to(roomName).emit('chat_message', {
       orderId,
@@ -253,7 +262,7 @@ function handleDriverEvents(socket, io) {
   socket.on('update_location', async (data) => {
     const { orderId, location } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast location update to order room
     io.to(roomName).emit('driver_location_updated', {
       orderId,
@@ -267,7 +276,7 @@ function handleDriverEvents(socket, io) {
   socket.on('update_order_status', async (data) => {
     const { orderId, status } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast status update to order room
     io.to(roomName).emit('order_status_updated', {
       orderId,
@@ -291,7 +300,7 @@ function handleDriverEvents(socket, io) {
   socket.on('chat_message', async (data) => {
     const { orderId, message } = data;
     const roomName = `order:${orderId}`;
-    
+
     // Broadcast message to order room
     io.to(roomName).emit('chat_message', {
       orderId,

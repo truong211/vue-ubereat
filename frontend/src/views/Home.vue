@@ -17,6 +17,36 @@
           <div class="d-flex flex-column fill-height justify-center align-center text-white slide-content">
             <h1 class="text-h2 font-weight-bold mb-4 text-center slide-up">{{ slide.title }}</h1>
             <p class="text-h5 mb-6 text-center slide-up">{{ slide.subtitle }}</p>
+            
+            <!-- Call to Action Buttons -->
+            <div class="d-flex flex-wrap justify-center">
+              <v-btn
+                color="primary"
+                size="large"
+                class="mx-2 mb-2 mb-sm-0 hover-scale"
+                to="/restaurants"
+              >
+                Explore Restaurants
+              </v-btn>
+              <v-btn
+                color="success"
+                size="large"
+                class="mx-2 mb-2 mb-sm-0 hover-scale"
+                to="/order-now"
+              >
+                Order Now
+              </v-btn>
+              <v-btn
+                v-if="!isLoggedIn"
+                color="white"
+                size="large"
+                class="mx-2 hover-scale"
+                to="/register"
+                variant="outlined"
+              >
+                Sign Up Now
+              </v-btn>
+            </div>
           </div>
         </v-carousel-item>
       </v-carousel>
@@ -113,7 +143,39 @@
       </v-card>
     </v-container>
 
-    <v-container class="pt-12">
+    <!-- Login/Register CTA for non-logged in users -->
+    <v-container v-if="!isLoggedIn" class="my-6 auth-cta-container">
+      <v-card class="auth-cta-card pa-4" elevation="4">
+        <v-row align="center">
+          <v-col cols="12" md="8">
+            <h2 class="text-h5 mb-2">Sign in to enjoy personalized recommendations!</h2>
+            <p class="mb-0">Get access to exclusive deals, save your favorite restaurants, and track your orders.</p>
+          </v-col>
+          <v-col cols="12" md="4" class="d-flex justify-center justify-md-end mt-4 mt-md-0">
+            <v-btn
+              to="/login"
+              color="primary"
+              variant="flat"
+              class="mx-2"
+              min-width="100"
+            >
+              Login
+            </v-btn>
+            <v-btn
+              to="/register"
+              color="primary"
+              variant="outlined"
+              min-width="100"
+              class="mx-2"
+            >
+              Register
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-card>
+    </v-container>
+
+    <v-container class="pt-6">
       <!-- Promotional Banner -->
       <promotional-banner :banners="promotionalBanners"></promotional-banner>
 
@@ -192,6 +254,76 @@
       </v-container>
     </v-container>
 
+    <!-- Featured Products Section (New Enhanced Section) -->
+    <v-container class="py-8">
+      <div class="d-flex justify-space-between align-center mb-6">
+        <h2 class="text-h4">{{ $t('home.featuredProducts.title', 'Món Ngon Nổi Bật') }}</h2>
+        <v-btn variant="text" color="primary" to="/foods" class="hover-scale">
+          {{ $t('home.featuredProducts.viewAll', 'Xem tất cả món ăn') }}
+        </v-btn>
+      </div>
+      
+      <v-row>
+        <v-col 
+          v-for="(product, index) in featuredProducts" 
+          :key="index" 
+          cols="12" sm="6" md="4" lg="3"
+        >
+          <v-card
+            class="mx-auto product-card h-100"
+            hover
+          >
+            <div class="product-image-container">
+              <v-img
+                :src="product.imageUrl || '/img/product-placeholder.jpg'"
+                height="200"
+                cover
+                class="product-image"
+              ></v-img>
+              <div class="product-badge" v-if="product.discount">
+                -{{ product.discount }}%
+              </div>
+            </div>
+            
+            <v-card-text>
+              <div class="d-flex align-center mb-1">
+                <v-rating
+                  :model-value="product.rating"
+                  color="amber"
+                  density="compact"
+                  size="small"
+                  readonly
+                ></v-rating>
+                <span class="text-caption ml-2">({{ product.reviewCount }})</span>
+                <v-spacer></v-spacer>
+                <span class="text-caption">{{ product.restaurant }}</span>
+              </div>
+              
+              <h3 class="product-title text-subtitle-1 font-weight-bold mb-1">{{ product.name }}</h3>
+              <p class="product-description text-caption text-medium-emphasis mb-2">{{ product.description }}</p>
+              
+              <div class="d-flex align-center justify-space-between">
+                <div>
+                  <span class="text-h6 font-weight-bold primary--text">{{ formatPrice(product.price) }}</span>
+                  <span v-if="product.originalPrice" class="text-caption text-decoration-line-through ml-2">
+                    {{ formatPrice(product.originalPrice) }}
+                  </span>
+                </div>
+                <v-btn
+                  color="primary"
+                  icon
+                  variant="text"
+                  @click.stop="addToCart(product)"
+                >
+                  <v-icon>mdi-cart-plus</v-icon>
+                </v-btn>
+              </div>
+            </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+    </v-container>
+
     <!-- Featured restaurants section -->
     <v-container class="py-8">
       <featured-restaurants
@@ -228,21 +360,25 @@
     </v-container>
 
     <!-- App download section -->
-    <v-container class="py-12">
-      <v-row align="center">
-        <v-col cols="12" md="6">
-          <h2 class="text-h4 mb-4">{{ $t('home.app.title') }}</h2>
-          <p class="mb-6">{{ $t('home.app.description') }}</p>
-          <div class="d-flex flex-wrap">
-            <v-img src="/images/app-store.png" max-width="180" class="mr-4 mb-4 hover-scale"></v-img>
-            <v-img src="/images/google-play.png" max-width="180" class="mb-4 hover-scale"></v-img>
-          </div>
-        </v-col>
-        <v-col cols="12" md="6">
-          <v-img src="/images/app-mockup.png" max-width="400" class="mx-auto slide-up"></v-img>
-        </v-col>
-      </v-row>
+    <app-download-section
+      title="Tải ứng dụng để trải nghiệm tốt hơn"
+      description="Đặt món yêu thích, theo dõi đơn hàng theo thời gian thực và nhận nhiều ưu đãi độc quyền dành cho người dùng ứng dụng di động."
+    ></app-download-section>
+
+    <!-- Customer testimonials -->
+    <v-container fluid class="grey lighten-4 py-12">
+      <v-container>
+        <customer-testimonials></customer-testimonials>
+      </v-container>
     </v-container>
+
+    <!-- FAQ section -->
+    <faq-section
+      title="Câu hỏi thường gặp"
+      help-center-text="Xem tất cả câu hỏi"
+      help-center-link="/help"
+      contact-link="/contact"
+    ></faq-section>
 
     <!-- Location update dialog -->
     <v-dialog v-model="locationDialog" max-width="500">
@@ -267,19 +403,33 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
-import PromotionalBanner from '@/components/common/PromotionalBanner.vue'
-import ServicesSection from '@/components/common/ServicesSection.vue'
+// Import Pinia store directly
+import { useCategoryStore } from '@/stores/category.js'
+// Import other required Pinia stores
+import { useProductStore } from '@/stores/product.js'
+import { useRestaurantStore } from '@/stores/restaurant.js'
+import { useCartStore } from '@/stores/cart.js'
+import { useUserStore } from '@/stores/user.js'
+import { useAuthStore } from '@/stores/auth.js' // Corrected import path to .js
+import PromotionalBanner from '@/components/home/PromotionalBanner.vue'
+import ServicesSection from '@/components/home/ServicesSection.vue'
+import AppDownloadSection from '@/components/home/AppDownloadSection.vue'
+import CustomerTestimonials from '@/components/home/CustomerTestimonials.vue'
+import FaqSection from '@/components/home/FaqSection.vue'
 import NearbyRestaurants from '@/components/restaurant/NearbyRestaurants.vue'
 import FeaturedRestaurants from '@/components/restaurant/FeaturedRestaurants.vue'
 import FeaturedProducts from '@/components/product/FeaturedProducts.vue'
-import PersonalizedRecommendations from '@/components/restaurant/PersonalizedRecommendations.vue'
+import PersonalizedRecommendations from '@/components/recommendation/PersonalizedRecommendations.vue'
 
-export default {
+const HomeView = {
   name: 'HomeView',
 
   components: {
     PromotionalBanner,
     ServicesSection,
+    AppDownloadSection,
+    CustomerTestimonials,
+    FaqSection,
     NearbyRestaurants,
     FeaturedRestaurants,
     FeaturedProducts,
@@ -290,210 +440,229 @@ export default {
     const { t } = useI18n()
     const router = useRouter()
     const toast = useToast()
+    
+    // Initialize stores
+    const authStore = useAuthStore()
+    const categoryStore = useCategoryStore()
+    const productStore = useProductStore()      // Now using Pinia store
+    const restaurantStore = useRestaurantStore() // Now using Pinia store
+    const cartStore = useCartStore()          // Now using Pinia store
+    const userStore = useUserStore()          // Now using Pinia store
 
     const searchQuery = ref('')
     const showAdvancedSearch = ref(false)
-    const isLoggedIn = ref(true) // Would be determined by auth state in real app
+    const isLoggedIn = computed(() => authStore.isAuthenticated)
     const locationDialog = ref(false)
     const newLocation = ref('')
 
     // User location
     const userLocation = ref({
-      address: 'San Francisco, CA',
-      coordinates: { lat: 37.7749, lng: -122.4194 }
+      latitude: null,
+      longitude: null,
+      address: ''
     })
 
     // Search filters
     const filters = ref({
       cuisine: null,
-      sort: 'rating',
+      sort: 'popular',
       price: null,
       dietary: null
     })
 
     // Filter options
-    const cuisineOptions = [
-      { title: 'All Cuisines', value: null },
-      { title: 'American', value: 'american' },
-      { title: 'Italian', value: 'italian' },
-      { title: 'Chinese', value: 'chinese' },
-      { title: 'Japanese', value: 'japanese' },
-      { title: 'Mexican', value: 'mexican' },
-      { title: 'Thai', value: 'thai' },
-      { title: 'Indian', value: 'indian' }
-    ]
+    const cuisineOptions = ref([
+      'All Cuisines',
+      'Italian',
+      'Chinese',
+      'Japanese',
+      'Indian',
+      'Thai',
+      'Mexican',
+      'American'
+    ])
 
-    const sortOptions = [
+    const sortOptions = ref([
+      { title: 'Popularity', value: 'popular' },
       { title: 'Rating', value: 'rating' },
-      { title: 'Delivery Time', value: 'deliveryTime' },
-      { title: 'Distance', value: 'distance' },
-      { title: 'Popularity', value: 'popularity' }
-    ]
+      { title: 'Delivery Time', value: 'delivery_time' },
+      { title: 'Price: Low to High', value: 'price_asc' },
+      { title: 'Price: High to Low', value: 'price_desc' }
+    ])
 
-    const priceOptions = [
+    const priceOptions = ref([
       { title: 'All Prices', value: null },
-      { title: '$', value: '1' },
-      { title: '$$', value: '2' },
-      { title: '$$$', value: '3' },
-      { title: '$$$$', value: '4' }
-    ]
+      { title: '$', value: 'low' },
+      { title: '$$', value: 'medium' },
+      { title: '$$$', value: 'high' },
+      { title: '$$$$', value: 'luxury' }
+    ])
 
-    const dietaryOptions = [
-      { title: 'None', value: null },
+    const dietaryOptions = ref([
+      { title: 'All', value: null },
       { title: 'Vegetarian', value: 'vegetarian' },
       { title: 'Vegan', value: 'vegan' },
-      { title: 'Gluten-Free', value: 'gluten-free' },
+      { title: 'Gluten-Free', value: 'gluten_free' },
       { title: 'Halal', value: 'halal' },
       { title: 'Kosher', value: 'kosher' }
-    ]
+    ])
 
-    const carouselSlides = [
+    const carouselSlides = ref([
       {
-        image: '/images/banners/banner1.jpg',
-        title: t('home.hero.title'),
-        subtitle: t('home.hero.subtitle')
+        image: '/images/slider/food-delivery-1.jpg',
+        title: 'Fast Food Delivery',
+        subtitle: 'Order delicious meals from your favorite restaurants'
       },
       {
-        image: '/images/banners/banner2.jpg',
-        title: t('home.hero.title2'),
-        subtitle: t('home.hero.subtitle2')
+        image: '/images/slider/food-delivery-2.jpg',
+        title: 'Special Discounts',
+        subtitle: 'Get exclusive offers on your favorite cuisines'
       },
       {
-        image: '/images/banners/banner3.jpg',
-        title: t('home.hero.title3'),
-        subtitle: t('home.hero.subtitle3')
-      }
-    ]
-
-    const steps = [
-      {
-        icon: 'mdi-map-marker',
-        title: t('home.howItWorks.step1.title'),
-        description: t('home.howItWorks.step1.description')
-      },
-      {
-        icon: 'mdi-food',
-        title: t('home.howItWorks.step2.title'),
-        description: t('home.howItWorks.step2.description')
-      },
-      {
-        icon: 'mdi-bike-fast',
-        title: t('home.howItWorks.step3.title'),
-        description: t('home.howItWorks.step3.description')
-      }
-    ]
-
-    // Promotional banners
-    const promotionalBanners = ref([
-      {
-        title: 'Limited Time Offer: 30% OFF',
-        description: 'Use code WELCOME30 on your first order',
-        buttonText: 'Order Now',
-        link: '/restaurants',
-        image: '/images/banners/promo-banner1.jpg'
-      },
-      {
-        title: 'Free Delivery Weekend',
-        description: 'No delivery fees on all orders over $20',
-        buttonText: 'Explore Restaurants',
-        link: '/restaurants',
-        image: '/images/banners/promo-banner2.jpg'
-      },
-      {
-        title: 'Try Our New Partner Restaurants',
-        description: 'Exciting new flavors await',
-        buttonText: 'Discover Now',
-        link: '/restaurants',
-        image: '/images/banners/promo-banner3.jpg'
+        image: '/images/slider/food-delivery-3.jpg',
+        title: 'Premium Quality',
+        subtitle: 'Taste the difference with our selected restaurants'
       }
     ])
 
-    const popularCategories = [
-      { id: 1, name: 'Pizza', image: '/images/categories/pizza.jpg' },
-      { id: 2, name: 'Burgers', image: '/images/categories/burger.jpg' },
-      { id: 3, name: 'Sushi', image: '/images/categories/sushi.jpg' },
-      { id: 4, name: 'Healthy', image: '/images/categories/healthy.jpg' },
-      { id: 5, name: 'Italian', image: '/images/categories/italian.jpg' },
-      { id: 6, name: 'Chinese', image: '/images/categories/chinese.jpg' },
-      { id: 7, name: 'Indian', image: '/images/categories/indian.jpg' },
-      { id: 8, name: 'Mexican', image: '/images/categories/mexican.jpg' },
-      { id: 9, name: 'Thai', image: '/images/categories/thai.jpg' },
-      { id: 10, name: 'Desserts', image: '/images/categories/desserts.jpg' },
-      { id: 11, name: 'Breakfast', image: '/images/categories/breakfast.jpg' },
-      { id: 12, name: 'Drinks', image: '/images/categories/drinks.jpg' },
-    ]
-
-    const promotions = [
+    // How it works steps
+    const steps = ref([
       {
-        title: '50% OFF Your First Order',
-        description: 'Use this code for 50% off your first order over $20',
-        code: 'WELCOME50',
-        image: '/images/promotions/promo1.jpg'
+        icon: 'mdi-map-marker',
+        title: 'Set Your Location',
+        description: 'Choose your location to find nearby restaurants and stores.'
       },
       {
-        title: 'Free Delivery',
-        description: 'Get free delivery on all orders over $15',
-        code: 'FREEDEL',
-        image: '/images/promotions/promo2.jpg'
+        icon: 'mdi-food',
+        title: 'Choose Your Meal',
+        description: 'Browse restaurants and select your favorite dishes.'
+      },
+      {
+        icon: 'mdi-bike-fast',
+        title: 'Fast Delivery',
+        description: 'Track your order and enjoy quick delivery to your doorstep.'
       }
-    ]
+    ])
 
+    // Categories and Products
+    const popularCategories = ref([])
+    const featuredProducts = ref([])
+    
+    // Promotions
+    const promotions = ref([
+      {
+        image: '/images/promotions/promo1.jpg',
+        title: 'Special 2+1 Offer',
+        description: 'Order any 2 meals and get 1 free dessert.',
+        code: 'DESSERT123'
+      },
+      {
+        image: '/images/promotions/promo2.jpg',
+        title: 'Free Delivery',
+        description: 'Free delivery on orders over $25.',
+        code: 'FREEDEL25'
+      }
+    ])
+    
+    // Promotional banners
+    const promotionalBanners = ref([
+      {
+        image: '/images/banners/banner1.jpg',
+        title: 'Save 20% on Your First Order',
+        description: 'Use promo code WELCOME20 at checkout',
+        buttonText: 'Order Now',
+        link: '/restaurants'
+      }
+    ])
+    
     // Methods
     const searchRestaurants = () => {
-      // Build query parameters based on search and filters
-      const query = {
-        address: searchQuery.value
-      }
-
-      // Add any selected filters
-      if (filters.value.cuisine) query.cuisine = filters.value.cuisine
-      if (filters.value.price) query.price = filters.value.price
-      if (filters.value.dietary) query.dietary = filters.value.dietary
-      if (filters.value.sort) query.sort = filters.value.sort
-
-      // Navigate to restaurants page with query params
       router.push({
-        name: 'Restaurants',
-        query
+        path: '/search',
+        query: {
+          q: searchQuery.value,
+          ...filters.value
+        }
       })
     }
-
+    
     const filterByCategory = (categoryId) => {
       router.push({
-        name: 'Restaurants',
+        path: '/restaurants',
         query: { category: categoryId }
       })
     }
-
-    const updateLocation = () => {
-      locationDialog.value = true
+    
+    const updateLocation = async (location) => { // Ensure async is present
+      userLocation.value = location
+      try {
+        await userStore.updateLocation(location) // Assuming Pinia action might be async
+        console.log('User location updated via store.');
+      } catch (error) {
+        console.error('Failed to update location via store:', error);
+        toast.error('Could not update your location.'); // Add user feedback
+      }
     }
-
-    const confirmLocationUpdate = () => {
-      if (newLocation.value) {
-        userLocation.value = {
-          ...userLocation.value,
-          address: newLocation.value
-        }
-
-        toast.success(`Location updated to ${newLocation.value}`)
-
-        // In a real app, geocoding would be done here to get coordinates
-        // For this demo, we'll just update the address
-
-        locationDialog.value = false
-        newLocation.value = ''
+    
+    const fetchCategories = async () => {
+      try {
+        // Assuming fetchCategories returns the full list and updates the store state internally
+        await categoryStore.fetchCategories()
+        // Use a computed property or watch the store state for updates
+        // For now, let's assume the store updates its own state and we can access it
+        // This might need adjustment based on how categoryStore is implemented
+        popularCategories.value = categoryStore.categories.slice(0, 6) // Example access
+      } catch (error) {
+        console.error('Failed to fetch categories', error)
       }
     }
 
-    const handleFavoriteToggled = ({ id, isFavorite }) => {
-      // This would typically update a user's favorites in the application state
-      console.log(`Restaurant ${id} favorite status: ${isFavorite}`)
+    const fetchFeaturedProducts = async () => {
+      try {
+        // Assuming fetchFeaturedProducts updates the store state internally
+        await productStore.fetchFeaturedProducts()
+        // Access the state from the store
+        featuredProducts.value = productStore.featured // Example access
+      } catch (error) {
+        console.error('Failed to fetch featured products', error)
+      }
+    }
+    
+    const handleFavoriteToggled = async (restaurant) => {
+      if (!isLoggedIn.value) {
+        router.push('/login?redirect=' + encodeURIComponent(router.currentRoute.value.fullPath))
+        return
+      }
+      
+      try {
+        await restaurantStore.toggleFavorite(restaurant.id) // Assuming Pinia action name is the same
+      } catch (error) {
+        console.error('Failed to toggle favorite', error)
+      }
     }
 
-    onMounted(() => {
-      // Check if user is logged in
-      // In a real app this would be handled by auth service
+    const addToCart = async (product) => {
+      try {
+        await cartStore.addToCart(product) // Assuming Pinia action name is the same
+        toast.success(t('cart.addedToCart', { productName: product.name }))
+      } catch (error) {
+        console.error('Failed to add product to cart', error)
+      }
+    }
+
+    const formatPrice = (price) => {
+      if (typeof price !== 'number' || isNaN(price)) {
+        return ''
+      }
+      return `$${price.toFixed(2)}`
+    }
+
+    // Initialize
+    onMounted(async () => {
+      await Promise.all([
+        fetchCategories(),
+        fetchFeaturedProducts()
+      ])
     })
 
     return {
@@ -503,6 +672,7 @@ export default {
       popularCategories,
       promotions,
       promotionalBanners,
+      featuredProducts,
       isLoggedIn,
       userLocation,
       showAdvancedSearch,
@@ -516,11 +686,14 @@ export default {
       searchRestaurants,
       filterByCategory,
       updateLocation,
-      confirmLocationUpdate,
-      handleFavoriteToggled
+      handleFavoriteToggled,
+      addToCart,
+      formatPrice
     }
   }
 }
+
+export default HomeView
 </script>
 
 <style scoped>
@@ -578,6 +751,57 @@ export default {
   transform: scale(1.05);
 }
 
+.product-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.product-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
+}
+
+.product-image-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.product-image {
+  transition: transform 0.5s ease;
+}
+
+.product-card:hover .product-image {
+  transform: scale(1.1);
+}
+
+.product-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: #ff5252;
+  color: white;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.product-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.product-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  height: 32px;
+}
+
 @media (max-width: 600px) {
   .slide-content {
     padding: 1rem;
@@ -612,5 +836,86 @@ export default {
 
 .v-col:nth-child(3) .slide-up {
   animation-delay: 0.6s;
+}
+
+/* New styles for auth CTA */
+.auth-cta-container {
+  max-width: 1000px;
+}
+
+.auth-cta-card {
+  background: linear-gradient(to right, #ffffff, #f8f9fa);
+  border-left: 4px solid var(--primary-color);
+  border-radius: 8px;
+}
+
+/* Hero section styles */
+.hero-section {
+  position: relative;
+}
+
+.search-overlay {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.slide-content {
+  background-color: rgba(0, 0, 0, 0.4);
+  padding: 2rem;
+  border-radius: 8px;
+}
+
+.slide-up {
+  animation: slide-up 0.6s ease-out;
+}
+
+/* Animation keyframes */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Card styles */
+.category-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.category-card:hover {
+  transform: translateY(-5px);
+}
+
+.category-image {
+  transition: transform 0.5s ease;
+}
+
+.category-card:hover .category-image {
+  transform: scale(1.1);
+}
+
+.category-overlay {
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+}
+
+.hover-shadow:hover {
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+.hover-scale {
+  transition: transform 0.2s ease;
+}
+
+.hover-scale:hover {
+  transform: scale(1.05);
 }
 </style>

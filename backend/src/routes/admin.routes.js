@@ -96,6 +96,14 @@ router.get('/alerts', adminController.getSystemAlerts);
 router.get('/restaurants/pending', adminController.getPendingRestaurants);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
 
+// Product Management
+router.get('/products', adminController.getProducts);
+router.get('/products/:id', adminController.getProductById);
+router.post('/products', adminController.createProduct);
+router.put('/products/:id', adminController.updateProduct);
+router.patch('/products/:id/availability', adminController.updateProductAvailability);
+router.delete('/products/:id', adminController.deleteProduct);
+
 // Banner Management
 router.get('/banners', adminController.getBanners);
 router.post('/banners', adminController.createBanner);
@@ -119,5 +127,16 @@ router.get('/users/:id', adminController.getUserById);
 router.post('/users', adminController.createUser);
 router.put('/users/:id', adminController.updateUser);
 router.patch('/users/:id/status', adminController.updateUserStatus);
+
+// Restaurant management routes for admin
+router.get('/restaurants', adminController.getAdminRestaurants);
+router.get('/restaurants/:id', adminController.getAdminRestaurantById);
+router.post('/restaurants', adminController.createAdminRestaurant);
+router.put('/restaurants/:id', adminController.updateAdminRestaurant);
+router.delete('/restaurants/:id', adminController.deleteAdminRestaurant);
+router.post('/restaurants/:id/approve', adminController.approveRestaurant);
+router.post('/restaurants/:id/reject', adminController.rejectRestaurant);
+router.post('/restaurants/:id/suspend', adminController.suspendRestaurant);
+router.post('/restaurants/:id/activate', adminController.activateRestaurant);
 
 module.exports = router;

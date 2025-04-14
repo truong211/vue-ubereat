@@ -32,10 +32,11 @@ exports.getTableStructure = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error(`Error getting table structure for ${req.params.table || req.params.tableName}: ${error}`);
+    console.error(`Error getting table structure for ${req.params.table || req.params.tableName || 'unknown'}:`, error);
     return res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to get table structure',
+      error: error.message
     });
   }
 };
@@ -62,114 +63,174 @@ exports.getTableRecords = async (req, res) => {
       });
     }
     
-    // Extract query parameters
+    // Parse query parameters
     const limit = parseInt(req.query.limit) || 10;
     const offset = parseInt(req.query.offset) || 0;
-    const sortField = req.query.sort || 'id';
-    const sortOrder = req.query.order || 'ASC';
-    const searchQuery = req.query.q || '';
-    const filters = req.query.filters ? JSON.parse(req.query.filters) : {};
+    const sort = req.query.sort || 'id';
+    const order = req.query.order || 'asc';
+    const search = req.query.q || '';
+    let filters = {};
     
-    // Construct SQL query
-    let sql = `SELECT * FROM \`${tableName}\``;
-    const values = [];
+    try {
+      if (req.query.filters) {
+        filters = JSON.parse(req.query.filters);
+      }
+    } catch (e) {
+      console.error('Error parsing filters:', e);
+    }
     
-    // Add WHERE clause for search and filters
-    const whereClauses = [];
+    // Validate sort field to prevent SQL injection
+    if (!isValidFieldName(sort)) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid sort field'
+      });
+    }
     
-    // First handle search across searchable fields
-    if (searchQuery) {
-      // Get table structure to find searchable columns
+    // Build query
+    let query = `SELECT * FROM \`${tableName}\``;
+    let countQuery = `SELECT COUNT(*) as total FROM \`${tableName}\``;
+    const queryParams = [];
+    
+    // Add search filter if provided
+    if (search) {
       const structure = await getTableStructureHelper(tableName);
-      const searchableColumns = structure
-        .filter(col => isSearchableType(col.Type))
-        .map(col => col.Field);
+      const searchableFields = structure.fields.filter(f => 
+        isSearchableType(f.name)
+      ).map(f => f.name);
       
-      if (searchableColumns.length > 0) {
-        const searchConditions = searchableColumns.map(col => `${col} LIKE ?`);
-        whereClauses.push(`(${searchConditions.join(' OR ')})`);
-        searchableColumns.forEach(() => values.push(`%${searchQuery}%`));
+      if (searchableFields.length > 0) {
+        const searchConditions = searchableFields.map(field => `\`${field}\` LIKE ?`);
+        const whereSearch = `(${searchConditions.join(' OR ')})`;
+        
+        query += query.includes('WHERE') ? ` AND ${whereSearch}` : ` WHERE ${whereSearch}`;
+        countQuery += countQuery.includes('WHERE') ? ` AND ${whereSearch}` : ` WHERE ${whereSearch}`;
+        
+        // Add search parameter for each field
+        searchableFields.forEach(() => queryParams.push(`%${search}%`));
       }
     }
     
-    // Then handle specific column filters
-    Object.entries(filters).forEach(([column, value]) => {
-      // Handle different types of filters
-      if (Array.isArray(value)) {
-        // Handle range filters like price
-        if (value.length === 2) {
-          whereClauses.push(`${column} >= ? AND ${column} <= ?`);
-          values.push(value[0], value[1]);
+    // Add filters if provided
+    if (Object.keys(filters).length > 0) {
+      const structure = await getTableStructureHelper(tableName);
+      const validFields = structure.fields.map(f => f.name);
+      
+      const filterConditions = [];
+      
+      for (const [field, value] of Object.entries(filters)) {
+        if (validFields.includes(field)) {
+          if (value === null) {
+            filterConditions.push(`\`${field}\` IS NULL`);
+          } else {
+            filterConditions.push(`\`${field}\` = ?`);
+            queryParams.push(value);
+          }
         }
-      } else if (typeof value === 'string' || typeof value === 'number') {
-        whereClauses.push(`${column} = ?`);
-        values.push(value);
-      } else if (typeof value === 'boolean') {
-        whereClauses.push(`${column} = ?`);
-        values.push(value ? 1 : 0);
       }
-    });
-    
-    // Combine WHERE clauses if any
-    if (whereClauses.length > 0) {
-      sql += ' WHERE ' + whereClauses.join(' AND ');
+      
+      if (filterConditions.length > 0) {
+        const whereFilter = `(${filterConditions.join(' AND ')})`;
+        query += query.includes('WHERE') ? ` AND ${whereFilter}` : ` WHERE ${whereFilter}`;
+        countQuery += countQuery.includes('WHERE') ? ` AND ${whereFilter}` : ` WHERE ${whereFilter}`;
+      }
     }
     
-    // Add sorting
-    sql += ` ORDER BY ${sortField} ${sortOrder}`;
+    // Add order by
+    query += ` ORDER BY \`${sort}\` ${order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}`;
     
-    // Add pagination
-    sql += ` LIMIT ${limit} OFFSET ${offset}`;
+    // Add limit and offset
+    query += ' LIMIT ? OFFSET ?';
+    queryParams.push(limit, offset);
     
-    // Execute the query
-    const results = await db.query(sql, values);
+    // Execute queries
+    const countParams = [...queryParams]; // Clone for the count query
+    countParams.splice(-2); // Remove limit and offset
     
-    // Get total count (for pagination)
-    let countSql = `SELECT COUNT(*) as total FROM \`${tableName}\``;
-    if (whereClauses.length > 0) {
-      countSql += ' WHERE ' + whereClauses.join(' AND ');
+    // Execute total count query
+    const [countResult] = await db.query(countQuery, countParams);
+    const total = countResult[0]?.total || 0;
+    
+    // Execute records query
+    let records = [];
+    try {
+      records = await db.query(query, queryParams);
+    } catch (dbError) {
+      console.error(`Database error executing query: ${query}`, dbError);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Database error while fetching records',
+        error: dbError.message
+      });
     }
-    const countResult = await db.query(countSql, values);
-    const total = countResult[0].total;
     
+    // Return results
     return res.status(200).json({
       status: 'success',
       data: {
-        records: results,
+        records: records || [],
         total,
-        offset,
-        limit
+        page: Math.floor(offset / limit) + 1,
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
-    console.error(`Error getting records from ${req.params.table || req.params.tableName}: ${error}`);
+    console.error(`Error getting records from ${req.params.table || req.params.tableName || 'unknown'}:`, error);
     return res.status(500).json({
       status: 'error',
-      message: error.message
+      message: 'Failed to get records',
+      error: error.message
     });
   }
 };
 
-// Helper function to validate table names
+// Helper functions
 function isValidTableName(tableName) {
-  // Add your table name validation logic here
-  // For example, check against a whitelist of allowed tables
-  // or prevent access to sensitive tables
+  // Check if tableName is undefined or null or empty string
+  if (!tableName || tableName === 'undefined') {
+    return false;
+  }
   
-  // List of allowed tables to access through the UI
+  // Whitelist of allowed tables for the admin interface
   const allowedTables = [
-    'restaurants', 'users', 'categories', 'products', 'orders',
-    'reviews', 'addresses', 'promotions', 'loyalty', 'banners',
-    'delivery_configs', 'delivery_fee_tiers', 'menu_items',
-    'notifications', 'static_pages', 'site_config'
+    'users', 
+    'restaurants', 
+    'orders', 
+    'products', 
+    'categories',
+    'reviews',
+    'banners',
+    'promotions',
+    'static_pages',
+    'menu_items',
+    'order_items',
+    'delivery_zones'
   ];
   
-  // Check if the table name is in the allowed list
-  return allowedTables.includes(tableName);
+  // Check if the table is in the allowed list
+  if (!allowedTables.includes(tableName.toLowerCase())) {
+    return false;
+  }
+  
+  // Only allow alphanumeric and underscore characters
+  return /^[a-zA-Z0-9_]+$/.test(tableName);
 }
 
-// Usage instructions:
-// 1. Locate the admin.controller.js file in your backend/src/controllers directory
-// 2. Replace the getTableStructure and getTableRecords functions with the ones above
-// 3. Add the isValidTableName function if it doesn't exist
-// 4. Test by accessing the admin interface and navigating through different tables 
+function isValidFieldName(fieldName) {
+  // Only allow alphanumeric and underscore characters
+  return /^[a-zA-Z0-9_]+$/.test(fieldName);
+}
+
+function isSearchableType(fieldName) {
+  // Exclude common non-searchable fields and JSON fields
+  const nonSearchableFields = ['id', 'password', 'createdAt', 'updatedAt'];
+  
+  if (nonSearchableFields.includes(fieldName) ||
+      fieldName.includes('JSON') ||
+      fieldName.endsWith('Id')) {
+    return false;
+  }
+  
+  return true;
+}

@@ -495,7 +495,7 @@ export default {
           console.error('API Error details:', apiError.response?.status, apiError.response?.data);
           
           // Fix: Construct the fallback URL correctly using the base origin or localhost
-          const baseUrl = window.location.origin || 'http://localhost:3000';
+          const baseUrl = window.location.origin; // Use current origin for frontend URLs
           const fallbackUrl = `${baseUrl}/admin/tables/${props.table}/structure`;
           console.log('Trying fallback URL:', fallbackUrl);
           
@@ -602,7 +602,7 @@ export default {
           console.error('API Error details:', apiError.response?.status, apiError.response?.data);
           
           // Fix: Construct the fallback URL correctly using the base origin or localhost
-          const baseUrl = window.location.origin || 'http://localhost:3000';
+          const baseUrl = window.location.origin; // Use current origin for frontend URLs
           const fallbackUrl = `${baseUrl}/admin/tables/${props.table}`;
           console.log('Trying fallback URL:', fallbackUrl);
           

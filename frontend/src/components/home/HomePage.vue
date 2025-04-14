@@ -70,33 +70,34 @@
         <h2>Restaurants Near You</h2>
         
         <!-- Loading State -->
-        <div v-if="loading" class="loading-state">
-          <v-progress-circular indeterminate color="primary"></v-progress-circular>
-          <p>Loading restaurants...</p>
-        </div>
-        
-        <!-- Error State -->
-        <v-alert
-          v-else-if="error"
-          type="error"
-          title="Error"
-          text="Failed to load restaurants. Please try again."
-          class="mb-4"
-        ></v-alert>
-        
-        <!-- No Results -->
-        <v-alert
-          v-else-if="filteredRestaurants.length === 0"
-          type="info"
-          title="No Results"
-          text="No restaurants found matching your criteria."
-          class="mb-4"
-        ></v-alert>
-        
-        <!-- Restaurant Cards -->
-        <v-row v-else>
+        <div class="restaurant-list-container"> <!-- Added wrapper div -->
+          <div v-if="loading" class="loading-state">
+            <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            <p>Loading restaurants...</p>
+          </div>
+
+          <!-- Error State -->
+          <v-alert
+            v-else-if="error"
+            type="error"
+            title="Error"
+            text="Failed to load restaurants. Please try again."
+            class="mb-4"
+          ></v-alert>
+
+          <!-- No Results -->
+          <v-alert
+            v-else-if="!loading && !error && filteredRestaurants.length === 0" <!-- Adjusted condition for clarity -->
+            type="info"
+            title="No Results"
+            text="No restaurants found matching your criteria."
+            class="mb-4"
+          ></v-alert>
+
+          <!-- Restaurant Cards -->
+          <v-row v-else>
           <v-col
-            v-for="restaurant in filteredRestaurants"
+            v-for="restaurant in paginatedRestaurants" <!-- Use paginatedRestaurants -->
             :key="restaurant.id"
             cols="12" sm="6" md="4" lg="3"
           >
@@ -146,7 +147,8 @@
               </v-card-actions>
             </v-card>
           </v-col>
-        </v-row>
+          </v-row>
+        </div> <!-- End wrapper div -->
         
         <!-- Pagination -->
         <div class="pagination-controls mt-4">
@@ -216,6 +218,36 @@
         </v-carousel>
       </div>
     </section>
+    
+    <!-- Products and Services Section -->
+    <section class="products-services-section">
+      <div class="container">
+        <h2>Products and Services</h2>
+        <v-row>
+          <v-col
+            v-for="item in productsAndServices"
+            :key="item.id"
+            cols="12" sm="6" md="4" lg="3"
+          >
+            <v-card class="product-service-card">
+              <v-img
+                :src="item.image || '/img/product-placeholder.jpg'"
+                height="160"
+                cover
+              ></v-img>
+              <v-card-text>
+                <h3>{{ item.name }}</h3>
+                <p>{{ truncateText(item.description, 60) }}</p>
+                <p>Price: {{ item.price }}</p>
+              </v-card-text>
+              <v-card-actions>
+                <v-btn variant="text" color="primary">View Details</v-btn>
+              </v-card-actions>
+            </v-card>
+          </v-col>
+        </v-row>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -224,9 +256,9 @@ import { ref, onMounted, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 import restaurantService from '@/services/restaurant.service';
-import categoryService from '@/services/category.service';
+// import categoryService from '@/services/category.service'; // Service doesn't exist
 import promotionService from '@/services/promotion.service';
-
+import productService from '@/services/product.service'; // Import product service
 export default {
   name: 'HomePage',
   
@@ -238,6 +270,7 @@ export default {
     const restaurants = ref([]);
     const categories = ref([]);
     const promotions = ref([]);
+    const productsAndServices = ref([]); // Declare products state
     const loading = ref(true);
     const error = ref(null);
     const searchQuery = ref('');
@@ -330,8 +363,10 @@ export default {
     
     const fetchCategories = async () => {
       try {
-        const response = await categoryService.getCategories();
-        categories.value = response.data;
+        // Fetch categories via Vuex store action
+        await store.dispatch('category/fetchCategories');
+        // Assuming the store updates the state which is mapped below (if needed)
+        // If direct access is needed: categories.value = store.getters['category/allCategories'];
       } catch (err) {
         console.error('Error fetching categories:', err);
       }
@@ -343,6 +378,17 @@ export default {
         promotions.value = response.data;
       } catch (err) {
         console.error('Error fetching promotions:', err);
+      }
+    };
+    
+    const fetchProducts = async () => {
+      try {
+        // Assuming a general fetch, adjust params as needed
+        const response = await productService.getProducts({ limit: 8 }); // Fetch some products
+        productsAndServices.value = response.data.items || response.data; // Adjust based on API response structure
+      } catch (err) {
+        console.error('Error fetching products:', err);
+        // Optionally set a specific error state for products
       }
     };
     
@@ -375,13 +421,14 @@ export default {
       await Promise.all([
         fetchRestaurants(),
         fetchCategories(),
-        fetchPromotions()
+        fetchPromotions(),
+        fetchProducts() // Call fetchProducts on mount
       ]);
     });
     
     return {
       restaurants,
-      categories,
+      // categories, // Categories likely accessed via a getter/mapState if needed directly
       promotions,
       loading,
       error,
@@ -395,7 +442,8 @@ export default {
       priceRanges,
       searchRestaurants,
       selectCategory,
-      truncateText
+      truncateText,
+      productsAndServices // Return products for template
     };
   }
 };

@@ -12,7 +12,8 @@ export default {
   props: {
     tableName: {
       type: String,
-      required: true
+      required: false,
+      default: null
     }
   },
   
@@ -210,4 +211,4 @@ export default {
       deleteRecord
     };
   }
-}; 
+};

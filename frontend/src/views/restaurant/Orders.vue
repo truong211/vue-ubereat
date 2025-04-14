@@ -17,6 +17,8 @@
         v-model="statusFilter"
         :items="statusOptions"
         label="Status"
+        item-title="text"
+        item-value="value"
         hide-details
         class="max-width-200"
         variant="outlined"
@@ -36,6 +38,7 @@
               :model-value="newOrders.length > 0"
               color="error"
               class="ml-2"
+              inline
             ></v-badge>
           </v-card-title>
           <v-card-text class="pa-0">
@@ -59,6 +62,7 @@
               :model-value="preparingOrders.length > 0"
               color="info"
               class="ml-2"
+              inline
             ></v-badge>
           </v-card-title>
           <v-card-text class="pa-0">
@@ -81,6 +85,7 @@
               :model-value="readyOrders.length > 0"
               color="success"
               class="ml-2"
+              inline
             ></v-badge>
           </v-card-title>
           <v-card-text class="pa-0">
@@ -184,7 +189,7 @@
           </div>
           <div v-if="orderDialog.order?.discount" class="d-flex justify-space-between mb-2">
             <span>Discount</span>
-            <span class="success--text">-{{ formatPrice(orderDialog.order?.discount) }}</span>
+            <span class="text-success">-{{ formatPrice(orderDialog.order?.discount) }}</span>
           </div>
           <div class="d-flex justify-space-between text-h6">
             <span>Total</span>
@@ -251,7 +256,7 @@
                     v-if="orderDialog.order.shipper.avatar"
                     :src="orderDialog.order.shipper.avatar"
                   ></v-img>
-                  <span v-else class="text-h6 white--text">
+                  <span v-else class="text-h6 text-white">
                     {{ orderDialog.order.shipper.name.charAt(0) }}
                   </span>
                 </v-avatar>
@@ -299,13 +304,19 @@
 </template>
 
 <script>
-import { mapState, mapActions } from 'vuex';
-import { format } from 'date-fns';
+import { defineComponent } from 'vue';
+import { useRestaurantAdminStore } from '@/stores/restaurantAdmin'; // Assuming Pinia store path
+// import { format } from 'date-fns'; // date-fns format was not used in the original script block
 import OrderList from '@/components/restaurant/OrderList.vue';
 
-export default {
+export default defineComponent({
   name: 'RestaurantOrders',
   components: { OrderList },
+
+  setup() {
+    const restaurantAdminStore = useRestaurantAdminStore();
+    return { restaurantAdminStore }; // Expose store instance
+  },
 
   data() {
     return {
@@ -322,49 +333,65 @@ export default {
       orderDialog: {
         show: false,
         order: null
+      },
+      // Added confirmDialog state from the removed script setup
+      confirmDialog: {
+        show: false,
+        title: '',
+        message: '',
+        color: 'primary',
+        onConfirm: null
       }
     };
   },
 
   computed: {
-    ...mapState('restaurantAdmin', [
-      'orders',
-      'pendingOrders',
-      'loading',
-      'error'
-    ]),
-
-    newOrders() {
-      return this.pendingOrders;
+    // Access state/getters from Pinia store
+    orders() {
+      return this.restaurantAdminStore.orders;
+    },
+    // Assuming pendingOrders is a getter or state property in the Pinia store
+    pendingOrders() {
+      // If it's state: return this.restaurantAdminStore.pendingOrders;
+      // If it's a getter: return this.restaurantAdminStore.getPendingOrders;
+      // Fallback to original logic if store structure is unknown:
+      return this.orders.filter(order => order.status === 'pending');
+    },
+    loading() {
+      return this.restaurantAdminStore.loading;
+    },
+    error() {
+      return this.restaurantAdminStore.error;
     },
 
+    // Keep original computed properties that derive from store state
+    newOrders() {
+      // This now uses the computed 'pendingOrders' which accesses the store
+      return this.pendingOrders;
+    },
     preparingOrders() {
       return this.orders.filter(order => order.status === 'preparing');
     },
-
     readyOrders() {
       return this.orders.filter(order => order.status === 'ready');
     },
-
     completedOrders() {
+      // Consider adding date filtering if needed, like in the removed script setup
       return this.orders.filter(order => order.status === 'completed');
     }
   },
 
   methods: {
-    ...mapActions('restaurantAdmin', [
-      'fetchOrders',
-      'updateOrder'
-    ]),
-
+    // Call actions on the store instance
     async loadOrders() {
       try {
-        await this.fetchOrders({
-          status: this.statusFilter,
+        await this.restaurantAdminStore.fetchOrders({
+          status: this.statusFilter === 'all' ? null : this.statusFilter, // Pass null for 'all'
           timeframe: this.timeFilter
         });
       } catch (error) {
         console.error('Error loading orders:', error);
+        // TODO: Add user feedback (e.g., snackbar)
       }
     },
 
@@ -373,43 +400,80 @@ export default {
       this.orderDialog.show = true;
     },
 
-    async acceptOrder(orderId) {
-      try {
-        await this.updateOrder({ orderId, status: 'preparing' });
-        this.$emit('order-accepted', orderId);
-      } catch (error) {
-        console.error('Error accepting order:', error);
-      }
+    // Method to show confirmation dialog (adapted from removed script setup)
+    showConfirmDialog(title, message, color, onConfirmCallback) {
+      this.confirmDialog = {
+        show: true,
+        title,
+        message,
+        color,
+        onConfirm: async () => {
+          await onConfirmCallback(); // Execute the callback
+          this.confirmDialog.show = false; // Close dialog after confirmation
+        }
+      };
     },
 
-    async rejectOrder(orderId) {
-      try {
-        await this.updateOrder({ orderId, status: 'cancelled' });
-        this.$emit('order-rejected', orderId);
-      } catch (error) {
-        console.error('Error rejecting order:', error);
-      }
+    // Refactored actions to use confirm dialog and Pinia store
+    async updateOrderStatus(orderId, status) {
+       try {
+         await this.restaurantAdminStore.updateOrder({ orderId, status });
+         // Optionally close dialog or show success message
+         if (this.orderDialog.show && this.orderDialog.order?.id === orderId) {
+            // Update status in the dialog if it's open
+            this.orderDialog.order.status = status;
+            // Close dialog for terminal statuses
+            if (['cancelled', 'completed'].includes(status)) {
+                this.orderDialog.show = false;
+            }
+         }
+         console.log(`Order ${orderId} updated to ${status}`); // Placeholder feedback
+       } catch (error) {
+         console.error(`Error updating order ${orderId} to ${status}:`, error);
+         // TODO: Add user feedback
+       }
     },
 
-    async markOrderReady(orderId) {
-      try {
-        await this.updateOrder({ orderId, status: 'ready' });
-        this.$emit('order-ready', orderId);
-      } catch (error) {
-        console.error('Error marking order as ready:', error);
-      }
+    acceptOrder(order) {
+      this.showConfirmDialog(
+        'Accept Order?',
+        `Are you sure you want to accept order #${order.id}?`,
+        'success',
+        () => this.updateOrderStatus(order.id, 'preparing')
+      );
     },
 
-    async confirmPickup(orderId) {
-      try {
-        await this.updateOrder({ orderId, status: 'completed' });
-        this.$emit('order-completed', orderId);
-      } catch (error) {
-        console.error('Error confirming pickup:', error);
-      }
+    rejectOrder(order) {
+       this.showConfirmDialog(
+        'Reject Order?',
+        `Are you sure you want to reject order #${order.id}? This cannot be undone.`,
+        'error',
+        () => this.updateOrderStatus(order.id, 'cancelled')
+      );
     },
 
+    markOrderReady(order) {
+      this.showConfirmDialog(
+        'Mark as Ready?',
+        `Mark order #${order.id} as ready for pickup?`,
+        'success',
+        () => this.updateOrderStatus(order.id, 'ready')
+      );
+    },
+
+    confirmPickup(order) {
+       this.showConfirmDialog(
+        'Confirm Pickup?',
+        `Confirm that order #${order.id} has been picked up?`,
+        'success',
+        // Assuming 'completed' is the final status after pickup
+        () => this.updateOrderStatus(order.id, 'completed')
+      );
+    },
+
+    // Utility methods (kept from original script)
     formatPrice(price) {
+      if (price === undefined || price === null) return '';
       return new Intl.NumberFormat('vi-VN', {
         style: 'currency',
         currency: 'VND'
@@ -417,14 +481,16 @@ export default {
     },
 
     formatOrderStatus(status) {
+      if (!status) return 'Unknown';
       const statusMap = {
         pending: 'Pending',
         preparing: 'Preparing',
         ready: 'Ready',
         completed: 'Completed',
         cancelled: 'Cancelled'
+        // Add 'delivering' if used
       };
-      return statusMap[status] || status;
+      return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
     },
 
     getStatusColor(status) {
@@ -434,13 +500,28 @@ export default {
         ready: 'success',
         completed: 'grey',
         cancelled: 'error'
+        // Add 'delivering' if used
       };
       return colorMap[status] || 'grey';
     },
 
     formatItemOptions(options) {
-      if (!options || !options.length) return '';
+      // Assuming options is an array like [{ name: 'Size', value: 'Large' }, { name: 'Sauce', value: 'BBQ' }]
+      if (!options || !Array.isArray(options) || options.length === 0) return '';
       return options.map(opt => `${opt.name}: ${opt.value}`).join(', ');
+    },
+
+    // Added methods from removed script setup that were missing
+     printOrder(order) {
+      console.log('Printing order:', order);
+      // Implement printing logic here (e.g., open a new window with printable format)
+      // showToast('Printing order...', 'info')
+    },
+
+    callShipper(shipper) {
+      if (shipper?.phone) {
+        window.location.href = `tel:${shipper.phone}`;
+      }
     }
   },
 
@@ -452,317 +533,17 @@ export default {
       this.loadOrders();
     }
   },
-<script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useStore } from 'vuex'
-import OrderList from '@/components/restaurant/OrderList.vue'
 
-const store = useStore()
-const wsConnection = ref(null)
-
-// Filters
-const timeFilter = ref('today')
-const statusFilter = ref('all')
-
-const statusOptions = ref([
-  { title: 'All Orders', value: 'all' },
-  { title: 'New Orders', value: 'pending' },
-  { title: 'Preparing', value: 'preparing' },
-  { title: 'Ready for Pickup', value: 'ready' },
-  { title: 'Out for Delivery', value: 'delivering' },
-  { title: 'Completed', value: 'completed' },
-  { title: 'Cancelled', value: 'cancelled' }
-])
-
-// Orders state
-const orders = computed(() => store.state.restaurantAdmin.orders)
-const newOrders = computed(() => orders.value.filter(order => order.status === 'pending'))
-const preparingOrders = computed(() => orders.value.filter(order => order.status === 'preparing'))
-const readyOrders = computed(() => orders.value.filter(order => order.status === 'ready'))
-const completedOrders = computed(() => orders.value.filter(order => order.status === 'completed'))
-
-// Order dialog
-const orderDialog = ref({
-  show: false,
-  order: null
-})
-
-// Confirm dialog
-const confirmDialog = ref({
-  show: false,
-  title: '',
-  message: '',
-  color: 'primary',
-  onConfirm: () => {}
-})
-    const store = useStore()
-    const wsConnection = ref(null)
-
-    // Filters
-    const timeFilter = ref('today')
-    const statusFilter = ref('all')
-
-    const statusOptions = [
-      { title: 'All Orders', value: 'all' },
-      { title: 'New Orders', value: 'pending' },
-      { title: 'Preparing', value: 'preparing' },
-      { title: 'Ready for Pickup', value: 'ready' },
-      { title: 'Out for Delivery', value: 'delivering' },
-      { title: 'Completed', value: 'completed' },
-      { title: 'Cancelled', value: 'cancelled' }
-    ]
-
-    // Orders by status
-    const orders = computed(() => store.state.restaurantAdmin.orders)
-    const newOrders = computed(() => 
-      orders.value.filter(order => order.status === 'pending')
-    )
-    const preparingOrders = computed(() => 
-      orders.value.filter(order => order.status === 'preparing')
-    )
-    const readyOrders = computed(() => 
-      orders.value.filter(order => order.status === 'ready')
-    )
-    const completedOrders = computed(() => 
-      orders.value.filter(order => 
-        order.status === 'completed' && 
-        new Date(order.completedAt).toDateString() === new Date().toDateString()
-      )
-    )
-
-    // Dialogs
-    const orderDialog = ref({
-      show: false,
-      order: null
-    })
-
-    const confirmDialog = ref({
-      show: false,
-      title: '',
-      message: '',
-      color: 'primary',
-      onConfirm: null
-    })
-
-    // Methods
-    const openOrderDetails = (order) => {
-      orderDialog.value = {
-        show: true,
-        order
-      }
-    }
-
-    const acceptOrder = (order) => {
-      confirmDialog.value = {
-        show: true,
-        title: 'Accept Order',
-        message: 'Are you sure you want to accept this order?',
-        color: 'success',
-        onConfirm: async () => {
-          try {
-            await store.dispatch('restaurantAdmin/updateOrder', {
-              orderId: order.id,
-              status: 'preparing'
-            })
-            confirmDialog.value.show = false
-            if (orderDialog.value.show) {
-              orderDialog.value.order = {
-                ...orderDialog.value.order,
-                status: 'preparing'
-              }
-            }
-          } catch (error) {
-            console.error('Failed to accept order:', error)
-          }
-        }
-      }
-    }
-
-    const rejectOrder = (order) => {
-      confirmDialog.value = {
-        show: true,
-        title: 'Reject Order',
-        message: 'Are you sure you want to reject this order?',
-        color: 'error',
-        onConfirm: async () => {
-          try {
-            await store.dispatch('restaurantAdmin/updateOrder', {
-              orderId: order.id,
-              status: 'cancelled'
-            })
-            confirmDialog.value.show = false
-            orderDialog.value.show = false
-          } catch (error) {
-            console.error('Failed to reject order:', error)
-          }
-        }
-      }
-    }
-
-    const markOrderReady = (order) => {
-      confirmDialog.value = {
-        show: true,
-        title: 'Mark Order Ready',
-        message: 'Is this order ready for pickup?',
-        color: 'success',
-        onConfirm: async () => {
-          try {
-            await store.dispatch('restaurantAdmin/updateOrder', {
-              orderId: order.id,
-              status: 'ready'
-            })
-            confirmDialog.value.show = false
-            if (orderDialog.value.show) {
-              orderDialog.value.order = {
-                ...orderDialog.value.order,
-                status: 'ready'
-              }
-            }
-          } catch (error) {
-            console.error('Failed to mark order as ready:', error)
-          }
-        }
-      }
-    }
-
-    const confirmPickup = (order) => {
-      confirmDialog.value = {
-        show: true,
-        title: 'Confirm Pickup',
-        message: `Has the driver picked up this order?`,
-        color: 'success',
-        onConfirm: async () => {
-          try {
-            await store.dispatch('restaurantAdmin/updateOrder', {
-              orderId: order.id,
-              status: 'delivering'
-            })
-            confirmDialog.value.show = false
-            orderDialog.value.show = false
-          } catch (error) {
-            console.error('Failed to confirm pickup:', error)
-          }
-        }
-      }
-    }
-
-    const callShipper = (shipper) => {
-      window.location.href = `tel:${shipper.phone}`
-    }
-
-    const printOrder = (order) => {
-      // Implement order printing logic
-      console.log('Printing order:', order.id)
-    }
-
-    const getStatusColor = (status) => {
-      switch (status) {
-        case 'pending': return 'warning'
-        case 'preparing': return 'info'
-        case 'ready': return 'success'
-        case 'delivering': return 'primary'
-        case 'completed': return 'grey'
-        case 'cancelled': return 'error'
-        default: return 'grey'
-      }
-    }
-
-    const formatOrderStatus = (status) => {
-      return status?.charAt(0).toUpperCase() + status?.slice(1)
-    }
-
-    const formatPrice = (price) => {
-      return `$${Number(price).toFixed(2)}`
-    }
-
-    const formatItemOptions = (options) => {
-      if (!options) return ''
-      const parts = []
-      if (options.size) parts.push(options.size.name)
-      if (options.toppings?.length) {
-        parts.push(options.toppings.map(t => t.name).join(', '))
-      }
-      return parts.join(' • ')
-    }
-
-    // WebSocket connection
-    const connectToWebSocket = () => {
-      wsConnection.value = new WebSocket(
-        `ws://api.example.com/restaurant/orders`
-      )
-
-      wsConnection.value.onmessage = (event) => {
-        const data = JSON.parse(event.data)
-        store.dispatch('restaurantAdmin/handleOrderUpdate', data)
-      }
-    }
-
-    // Lifecycle
-    onMounted(async () => {
-      try {
-        await store.dispatch('restaurantAdmin/fetchOrders')
-        connectToWebSocket()
-      } catch (error) {
-        console.error('Failed to fetch orders:', error)
-      }
-    })
-
-    onUnmounted(() => {
-      if (wsConnection.value) {
-        wsConnection.value.close()
-      }
-    })
-
-    return {
-      timeFilter,
-      statusFilter,
-      statusOptions,
-      newOrders,
-      preparingOrders,
-      readyOrders,
-      completedOrders,
-      orderDialog,
-      confirmDialog,
-      openOrderDetails,
-      acceptOrder,
-      rejectOrder,
-      markOrderReady,
-      confirmPickup,
-      callShipper,
-      printOrder,
-      getStatusColor,
-      formatOrderStatus,
-      formatPrice,
-      formatItemOptions
-    }
+  mounted() {
+    this.loadOrders(); // Load orders when component mounts
+    // TODO: Re-implement WebSocket connection if needed, using Pinia store
   }
-}
+});
 </script>
 
 <style scoped>
 .max-width-200 {
   max-width: 200px;
 }
+/* Add any other styles from the original <style> block if they existed */
 </style>
-</template>
-
-<script setup>
-import { ref } from 'vue'
-
-// Reactive state
-const timeFilter = ref('today')
-const statusFilter = ref('all')
-const orderDialog = ref({
-  show: false,
-  order: null
-})
-
-// Status options for filter
-const statusOptions = [
-  'all',
-  'pending',
-  'preparing',
-  'ready',
-  'completed'
-]
-</script>

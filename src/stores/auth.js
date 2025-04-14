@@ -19,20 +19,20 @@ export const useAuthStore = defineStore('auth', {
     async login(email, password) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/login', { email, password });
-        
+
         // Store token and user data
         this.token = response.data.token;
         this.user = response.data.user;
-        
+
         // Save token to localStorage
         localStorage.setItem('token', this.token);
-        
+
         // Set Authorization header for all future requests
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-        
+
         return response.data;
       } catch (error) {
         this.error = error.response?.data?.message || 'Login failed';
@@ -41,24 +41,24 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async loginWithGoogle(idToken) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/google-login', { idToken });
-        
+
         // Store token and user data
         this.token = response.data.token;
         this.user = response.data.user;
-        
+
         // Save token to localStorage
         localStorage.setItem('token', this.token);
-        
+
         // Set Authorization header for all future requests
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-        
+
         return response.data;
       } catch (error) {
         this.error = error.response?.data?.message || 'Google login failed';
@@ -67,24 +67,24 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async loginWithFacebook(accessToken) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/facebook-login', { accessToken });
-        
+
         // Store token and user data
         this.token = response.data.token;
         this.user = response.data.user;
-        
+
         // Save token to localStorage
         localStorage.setItem('token', this.token);
-        
+
         // Set Authorization header for all future requests
         axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-        
+
         return response.data;
       } catch (error) {
         this.error = error.response?.data?.message || 'Facebook login failed';
@@ -93,26 +93,33 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async register(userData) {
       this.loading = true;
       this.error = null;
-      
+
       try {
+        console.log('Registering user with data:', { ...userData, password: '***' });
         const response = await axios.post('/api/auth/register', userData);
+        console.log('Registration successful:', response.data);
         return response.data;
       } catch (error) {
-        this.error = error.response?.data?.message || 'Registration failed';
-        throw error;
+        console.error('Registration error in store:', error);
+
+        // Set a generic error message
+        this.error = 'Registration failed. Please try again.';
+
+        // Don't throw the error, just return a failure object
+        return { success: false, message: this.error };
       } finally {
         this.loading = false;
       }
     },
-    
+
     async verifyEmail(token) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.get(`/api/auth/verify-email/${token}`);
         return response.data;
@@ -123,11 +130,11 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async resendVerificationEmail(email) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/resend-verification-email', { email });
         return response.data;
@@ -138,41 +145,11 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
-    async verifyPhoneOTP(phone, otp) {
-      this.loading = true;
-      this.error = null;
-      
-      try {
-        const response = await axios.post('/api/auth/verify-phone', { phone, otp });
-        return response.data;
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Phone verification failed';
-        throw error;
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async resendPhoneOTP(phone) {
-      this.loading = true;
-      this.error = null;
-      
-      try {
-        const response = await axios.post('/api/auth/resend-phone-otp', { phone });
-        return response.data;
-      } catch (error) {
-        this.error = error.response?.data?.message || 'Failed to resend OTP';
-        throw error;
-      } finally {
-        this.loading = false;
-      }
-    },
-    
+
     async forgotPassword(email) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/forgot-password', { email });
         return response.data;
@@ -183,11 +160,11 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async resetPassword(token, password) {
       this.loading = true;
       this.error = null;
-      
+
       try {
         const response = await axios.post('/api/auth/reset-password', { token, password });
         return response.data;
@@ -198,10 +175,10 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async logout() {
       this.loading = true;
-      
+
       try {
         // Call the logout endpoint if you want to invalidate tokens on the server
         await axios.post('/api/auth/logout');
@@ -212,22 +189,22 @@ export const useAuthStore = defineStore('auth', {
         // Clear local authentication data
         this.token = null;
         this.user = null;
-        
+
         // Remove token from localStorage
         localStorage.removeItem('token');
-        
+
         // Remove Authorization header
         delete axios.defaults.headers.common['Authorization'];
-        
+
         this.loading = false;
       }
     },
-    
+
     async fetchUserProfile() {
       if (!this.token) return;
-      
+
       this.loading = true;
-      
+
       try {
         const response = await axios.get('/api/users/profile');
         this.user = response.data;
@@ -242,7 +219,7 @@ export const useAuthStore = defineStore('auth', {
         this.loading = false;
       }
     },
-    
+
     async checkAuth() {
       // If we have a token, check if it's valid by fetching the user profile
       if (this.token) {

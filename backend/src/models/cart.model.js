@@ -1,142 +1,153 @@
-const { query, getById, update, remove } = require('../config/database');
-
 /**
- * Cart Model
+ * Cart Model with Sequelize implementation
  * Represents user shopping carts in the system
  */
-class Cart {
-  static tableName = 'cart';
-
-  /**
-   * Find all cart items for a user
-   * @param {Object} where - Conditions for the query
-   * @param {String} orderBy - Optional order by clause
-   * @returns {Promise<Array>} - Array of cart items
-   */
-  static async findAll(where = {}, orderBy = '') {
-    let whereClause = '';
-    const values = [];
-
-    if (Object.keys(where).length > 0) {
-      whereClause = 'WHERE ';
-      const conditions = [];
-      
-      for (const [key, value] of Object.entries(where)) {
-        // Fix ambiguous column names by prefixing with table alias
-        if (key === 'userId') {
-          conditions.push(`c.${key} = ?`);
-        } else {
-          conditions.push(`${key} = ?`);
-        }
-        values.push(value);
+module.exports = (sequelize, DataTypes) => {
+  const Cart = sequelize.define('Cart', {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      unique: true,
+      references: {
+        model: 'users',
+        key: 'id'
       }
-      
-      whereClause += conditions.join(' AND ');
+    },
+    restaurantId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: {
+        model: 'restaurants',
+        key: 'id'
+      },
+      comment: 'Carts are limited to items from a single restaurant'
+    },
+    items: {
+      type: DataTypes.JSON,
+      allowNull: false,
+      defaultValue: [],
+      comment: 'Array of cart items with product details'
+    },
+    totalItems: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    },
+    subtotal: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0.00
+    },
+    deliveryFee: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0.00
+    },
+    tax: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0.00
+    },
+    total: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0.00
+    },
+    discount: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: false,
+      defaultValue: 0.00
+    },
+    couponCode: {
+      type: DataTypes.STRING(30),
+      allowNull: true
+    },
+    notes: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    lastActivity: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
     }
-
-    const orderClause = orderBy ? ` ORDER BY ${orderBy}` : '';
-    
-    const sql = `
-      SELECT c.*, 
-             p.name as product_name, 
-             p.price, 
-             p.discountPrice as discountPrice, 
-             p.image, 
-             p.restaurantId as restaurantId, 
-             r.name as restaurant_name,
-             r.deliveryFee as deliveryFee,
-             r.minOrderAmount as minOrderAmount,
-             r.estimatedDeliveryTime as estimatedDeliveryTime,
-             r.logo,
-             r.rating
-      FROM ${this.tableName} c
-      JOIN products p ON c.productId = p.id
-      JOIN restaurants r ON p.restaurantId = r.id
-      ${whereClause}
-      ${orderClause}
-    `;
-    
-    console.log('Cart SQL Query:', sql);
-    console.log('Cart SQL Values:', values);
-    
-    const results = await query(sql, values);
-    
-    // Parse options JSON for each result
-    return results.map(item => {
-      if (item.options && typeof item.options === 'string') {
-        try {
-          item.options = JSON.parse(item.options);
-        } catch (err) {
-          console.error('Error parsing options JSON:', err);
-          item.options = {};
-        }
+  }, {
+    tableName: 'carts',
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['userId'],
+        name: 'idx_cart_user'
       }
-      return item;
+    ]
+  });
+
+  // Associations
+  Cart.associate = (models) => {
+    Cart.belongsTo(models.User, {
+      foreignKey: 'userId',
+      as: 'user',
+      onDelete: 'CASCADE'
     });
-  }
 
-  /**
-   * Find a cart item by ID
-   * @param {Number} id - Cart item ID
-   * @returns {Promise<Object>} - Cart item
-   */
-  static async findByPk(id) {
-    return await query(`SELECT * FROM ${this.tableName} WHERE id = ?`, [id]);
-  }
+    Cart.belongsTo(models.Restaurant, {
+      foreignKey: 'restaurantId',
+      as: 'restaurant',
+      onDelete: 'SET NULL'
+    });
+  };
 
-  /**
-   * Create a new cart item
-   * @param {Object} data - Cart item data
-   * @returns {Promise<Object>} - Created cart item
-   */
-  static async create(data) {
-    const { userId, productId, quantity, options, notes } = data;
-    
-    // Convert options to JSON string if it's an object
-    const optionsStr = options ? JSON.stringify(options) : null;
-    
-    const sql = `
-      INSERT INTO ${this.tableName} (userId, productId, quantity, options, notes, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-      RETURNING *
-    `;
-    
-    const result = await query(sql, [userId, productId, quantity, optionsStr, notes]);
-    return result[0];
-  }
+  // Update cart totals when items change
+  Cart.beforeCreate = Cart.beforeUpdate = async (cart) => {
+    if (cart.changed('items') && Array.isArray(cart.items)) {
+      // Calculate totalItems
+      cart.totalItems = cart.items.reduce((total, item) => total + (item.quantity || 0), 0);
+      
+      // Calculate subtotal
+      cart.subtotal = cart.items.reduce((total, item) => {
+        const price = parseFloat(item.price || 0);
+        const quantity = parseInt(item.quantity || 0);
+        return total + (price * quantity);
+      }, 0);
+      
+      // Calculate total
+      cart.total = parseFloat(cart.subtotal) + parseFloat(cart.deliveryFee) + parseFloat(cart.tax) - parseFloat(cart.discount);
+      cart.total = Math.max(0, parseFloat(cart.total.toFixed(2)));
+      
+      // Update lastActivity
+      cart.lastActivity = new Date();
+    }
+  };
 
-  /**
-   * Update a cart item
-   * @param {Number} id - Cart item ID
-   * @param {Object} data - Updated cart item data
-   * @returns {Promise<Object>} - Updated cart item
-   */
-  static async update(id, data) {
-    const entries = Object.entries(data);
-    const setClauses = entries.map(([key]) => `${key} = ?`).join(', ');
-    const values = entries.map(([_, value]) => value);
-    
-    values.push(id); // Add the ID for the WHERE clause
-    
-    const sql = `
-      UPDATE ${this.tableName} 
-      SET ${setClauses}, updatedAt = NOW() 
-      WHERE id = ?
-    `;
-    
-    await query(sql, values);
-    return this.findByPk(id);
-  }
+  // Class methods
+  Cart.findAllWithDetails = async function(where = {}, orderBy = []) {
+    return await this.findAll({
+      where,
+      order: orderBy,
+      include: [
+        {
+          model: sequelize.models.Product,
+          as: 'product',
+          include: [
+            {
+              model: sequelize.models.Restaurant,
+              as: 'restaurant',
+              attributes: [
+                'id', 'name', 'logo', 'deliveryFee',
+                'minimumOrderAmount', 'estimatedDeliveryTime', 'averageRating'
+              ]
+            }
+          ]
+        }
+      ]
+    });
+  };
 
-  /**
-   * Delete a cart item
-   * @param {Number} id - Cart item ID
-   * @returns {Promise<Boolean>} - True if deleted
-   */
-  static async destroy(id) {
-    await query(`DELETE FROM ${this.tableName} WHERE id = ?`, [id]);
-    return true;
-  }
-}
-
-module.exports = Cart;
+  return Cart;
+};

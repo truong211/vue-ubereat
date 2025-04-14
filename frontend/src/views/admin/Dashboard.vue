@@ -45,8 +45,8 @@
                   <div class="text-overline text-medium-emphasis">TOTAL ORDERS</div>
                   <div class="text-h4 font-weight-bold">{{ stats.orders?.total || 0 }}</div>
                   <div class="d-flex align-center mt-1">
-                    <v-icon 
-                      :color="(stats.orders?.growth || 0) >= 0 ? 'success' : 'error'" 
+                    <v-icon
+                      :color="(stats.orders?.growth || 0) >= 0 ? 'success' : 'error'"
                       size="small"
                     >
                       {{ (stats.orders?.growth || 0) >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
@@ -72,8 +72,8 @@
                   <div class="text-overline text-medium-emphasis">REVENUE</div>
                   <div class="text-h4 font-weight-bold">${{ formatMoney(stats.revenue?.total || 0) }}</div>
                   <div class="d-flex align-center mt-1">
-                    <v-icon 
-                      :color="(stats.revenue?.growth || 0) >= 0 ? 'success' : 'error'" 
+                    <v-icon
+                      :color="(stats.revenue?.growth || 0) >= 0 ? 'success' : 'error'"
                       size="small"
                     >
                       {{ (stats.revenue?.growth || 0) >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
@@ -99,8 +99,8 @@
                   <div class="text-overline text-medium-emphasis">USERS</div>
                   <div class="text-h4 font-weight-bold">{{ formatNumber(stats.users?.total || 0) }}</div>
                   <div class="d-flex align-center mt-1">
-                    <v-icon 
-                      :color="(stats.users?.growth || 0) >= 0 ? 'success' : 'error'" 
+                    <v-icon
+                      :color="(stats.users?.growth || 0) >= 0 ? 'success' : 'error'"
                       size="small"
                     >
                       {{ (stats.users?.growth || 0) >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
@@ -126,8 +126,8 @@
                   <div class="text-overline text-medium-emphasis">RESTAURANTS</div>
                   <div class="text-h4 font-weight-bold">{{ formatNumber(stats.restaurants?.total || 0) }}</div>
                   <div class="d-flex align-center mt-1">
-                    <v-icon 
-                      :color="(stats.restaurants?.growth || 0) >= 0 ? 'success' : 'error'" 
+                    <v-icon
+                      :color="(stats.restaurants?.growth || 0) >= 0 ? 'success' : 'error'"
                       size="small"
                     >
                       {{ (stats.restaurants?.growth || 0) >= 0 ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
@@ -194,7 +194,7 @@
             </v-card-text>
           </v-card>
         </v-col>
-        
+
             <v-col cols="12" md="6">
               <v-card class="rounded-lg">
                 <v-card-title>User Growth</v-card-title>
@@ -217,8 +217,8 @@
         <!-- Alerts Panel -->
         <v-col cols="12" md="4">
           <v-card v-if="hasAlertsPanel" class="rounded-lg mb-4">
-            <component 
-              :is="alertsPanel" 
+            <component
+              :is="alertsPanel"
               @error="(err) => handleComponentError(err, 'AlertsPanel')"
             />
           </v-card>
@@ -243,47 +243,47 @@
                       <v-icon color="white" size="small">mdi-clock-outline</v-icon>
                     </v-avatar>
                   </template>
-                  
+
                   <div class="d-flex align-center">
                     <v-list-item-title>Pending Approval</v-list-item-title>
                   </div>
-                  
+
                   <template v-slot:append>
                     <v-chip color="warning" text-color="white">{{ restaurantStats.pending || 0 }}</v-chip>
                   </template>
                 </v-list-item>
-                
+
                 <v-divider></v-divider>
-                
+
                 <v-list-item>
                   <template v-slot:prepend>
                     <v-avatar color="success" size="32">
                       <v-icon color="white" size="small">mdi-check-circle</v-icon>
                     </v-avatar>
                   </template>
-                  
+
                   <div class="d-flex align-center">
                     <v-list-item-title>Active Restaurants</v-list-item-title>
                   </div>
-                  
+
                   <template v-slot:append>
                     <v-chip color="success" text-color="white">{{ restaurantStats.active || 0 }}</v-chip>
                   </template>
                 </v-list-item>
-                
+
                 <v-divider></v-divider>
-                
+
                 <v-list-item>
                   <template v-slot:prepend>
                     <v-avatar color="error" size="32">
                       <v-icon color="white" size="small">mdi-alert-circle</v-icon>
                     </v-avatar>
                   </template>
-                  
+
                   <div class="d-flex align-center">
                     <v-list-item-title>Suspended</v-list-item-title>
                   </div>
-                  
+
                   <template v-slot:append>
                     <v-chip color="error" text-color="white">{{ restaurantStats.suspended || 0 }}</v-chip>
                   </template>
@@ -312,7 +312,7 @@
             </v-card-text>
           </v-card>
         </v-col>
-        
+
         <v-col cols="12" md="6">
           <v-card class="rounded-lg">
             <v-card-title>Top Restaurants</v-card-title>
@@ -325,11 +325,11 @@
                         <v-img :src="restaurant.logo" alt="Restaurant logo"></v-img>
                     </v-avatar>
                   </template>
-                    
+
                     <div class="d-flex align-center">
                   <v-list-item-title>{{ restaurant.name }}</v-list-item-title>
                     </div>
-                    
+
                   <template v-slot:append>
                       <div class="text-subtitle-2 font-weight-medium text-success">
                         {{ formatCurrency(restaurant.revenue) }}
@@ -362,9 +362,9 @@
             <v-card-text>
               <v-row>
                 <v-col v-for="table in filteredTables" :key="table ? table.name || 'unknown' : 'unknown'" cols="12" sm="6" md="4" lg="3">
-                  <v-card 
+                  <v-card
                     v-if="table && table.name"
-                    variant="outlined" 
+                    variant="outlined"
                     class="rounded-lg mb-3 pa-2 table-card"
                     @click="navigateToTable(table.name)"
                     style="cursor: pointer;"
@@ -396,10 +396,10 @@
               <v-row>
                 <v-col cols="12" sm="6" md="4">
           <v-btn
-                    @click="viewPendingRestaurants" 
-                    color="warning" 
-                    block 
-                    variant="elevated" 
+                    @click="viewPendingRestaurants"
+                    color="warning"
+                    block
+                    variant="elevated"
                     class="py-6"
                   >
                     <v-icon start>mdi-store-clock</v-icon>
@@ -407,11 +407,11 @@
           </v-btn>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                  <v-btn 
-                    @click="viewRecentOrders" 
-                    color="success" 
-                    block 
-                    variant="elevated" 
+                  <v-btn
+                    @click="viewRecentOrders"
+                    color="success"
+                    block
+                    variant="elevated"
                     class="py-6"
                   >
                     <v-icon start>mdi-receipt</v-icon>
@@ -419,11 +419,11 @@
                   </v-btn>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                  <v-btn 
-                    @click="viewUserManagement" 
-                    color="info" 
-                    block 
-                    variant="elevated" 
+                  <v-btn
+                    @click="viewUserManagement"
+                    color="info"
+                    block
+                    variant="elevated"
                     class="py-6"
                   >
                     <v-icon start>mdi-account-cog</v-icon>
@@ -468,7 +468,7 @@ echarts.use([
 
 export default {
   name: 'AdminDashboard',
-  
+
   components: {
     VChart,
     // Lazy load the alerts panel to avoid errors if it fails to load
@@ -484,11 +484,11 @@ export default {
       }
     })
   },
-  
+
   setup() {
     const router = useRouter()
     const toast = useToast()
-    
+
     // Dashboard state
     const loading = ref(true)
     const hasError = ref(false)
@@ -503,7 +503,7 @@ export default {
       users: { total: 0, growth: 0 },
       restaurants: { total: 0, growth: 0 }
     })
-    
+
     // Dashboard views
     const orderHeaders = ref([
       { title: 'Order ID', key: 'id' },
@@ -513,7 +513,7 @@ export default {
       { title: 'Status', key: 'status' },
       { title: 'Actions', key: 'actions' }
     ])
-    
+
     // Chart options (placeholders)
     const revenueChartOption = computed(() => {
       if (!analyticsData.value.revenueTrend || analyticsData.value.revenueTrend.length === 0) {
@@ -525,23 +525,23 @@ export default {
           series: [{ data: [], type: 'line' }]
         }
       }
-      
+
       return {
         title: { text: 'Revenue Trend' },
         tooltip: { trigger: 'axis' },
-        xAxis: { 
-          type: 'category', 
-          data: analyticsData.value.revenueTrend.map(item => item.date || '') 
+        xAxis: {
+          type: 'category',
+          data: analyticsData.value.revenueTrend.map(item => item.date || '')
         },
         yAxis: { type: 'value' },
-        series: [{ 
-          data: analyticsData.value.revenueTrend.map(item => item.amount || 0), 
+        series: [{
+          data: analyticsData.value.revenueTrend.map(item => item.amount || 0),
           type: 'line',
           smooth: true
         }]
       }
     })
-    
+
     const orderStatusChartOption = computed(() => {
       if (!analyticsData.value.orderStatusCounts || analyticsData.value.orderStatusCounts.length === 0) {
         return {
@@ -550,13 +550,13 @@ export default {
           series: [{ type: 'pie', radius: '70%', data: [] }]
         }
       }
-      
+
       return {
         title: { text: 'Order Status' },
         tooltip: { trigger: 'item' },
-        series: [{ 
-          type: 'pie', 
-          radius: '70%', 
+        series: [{
+          type: 'pie',
+          radius: '70%',
           data: analyticsData.value.orderStatusCounts.map(item => ({
             name: item.status || 'Unknown',
             value: item.count || 0
@@ -564,7 +564,7 @@ export default {
         }]
       }
     })
-    
+
     const userGrowthChartOption = computed(() => {
       if (!analyticsData.value.userGrowth || analyticsData.value.userGrowth.length === 0) {
         return {
@@ -575,23 +575,23 @@ export default {
           series: [{ data: [], type: 'line' }]
         }
       }
-      
+
       return {
         title: { text: 'User Growth' },
         tooltip: { trigger: 'axis' },
-        xAxis: { 
-          type: 'category', 
-          data: analyticsData.value.userGrowth.map(item => item.date || '') 
+        xAxis: {
+          type: 'category',
+          data: analyticsData.value.userGrowth.map(item => item.date || '')
         },
         yAxis: { type: 'value' },
-        series: [{ 
-          data: analyticsData.value.userGrowth.map(item => item.count || 0), 
+        series: [{
+          data: analyticsData.value.userGrowth.map(item => item.count || 0),
           type: 'line',
           smooth: true
         }]
       }
     })
-    
+
     const topCitiesChartOption = computed(() => {
       if (!analyticsData.value.topCities || analyticsData.value.topCities.length === 0) {
         return {
@@ -600,13 +600,13 @@ export default {
           series: [{ type: 'pie', radius: '70%', data: [] }]
         }
       }
-      
+
       return {
         title: { text: 'Top Cities' },
         tooltip: { trigger: 'item' },
-        series: [{ 
-          type: 'pie', 
-          radius: '70%', 
+        series: [{
+          type: 'pie',
+          radius: '70%',
           data: analyticsData.value.topCities.map(item => ({
             name: item.city || 'Unknown',
             value: item.count || 0
@@ -614,21 +614,21 @@ export default {
         }]
       }
     })
-    
+
     // Sample data
     const topRestaurants = ref([
       { name: 'Burger Palace', logo: '/img/restaurants/logo1.png', revenue: 12500 },
       { name: 'Pizza Hut', logo: '/img/restaurants/logo2.png', revenue: 10200 },
       { name: 'Taco Bell', logo: '/img/restaurants/logo3.png', revenue: 9800 }
     ])
-    
+
     const timeframes = ref([
       { title: 'Today', value: 'today' },
       { title: 'This Week', value: 'week' },
       { title: 'This Month', value: 'month' },
       { title: 'This Year', value: 'year' }
     ])
-    
+
     // Database tables
     const tables = ref([
       { name: 'users', icon: 'mdi-account-multiple', description: 'Manage user accounts' },
@@ -672,14 +672,14 @@ export default {
       { name: 'menu_items', icon: 'mdi-silverware-fork-knife', description: 'Menu items' },
       { name: 'order_details', icon: 'mdi-information', description: 'Order details' }
     ])
-    
+
     // Restaurant approval stats
     const restaurantStats = ref({
       pending: 0,
       active: 0,
       suspended: 0
     })
-    
+
     // Filter tables based on search
     const filteredTables = computed(() => {
       // Check if tables value is properly initialized
@@ -687,27 +687,27 @@ export default {
         console.warn('Tables array is not properly initialized');
         return [];
       }
-      
+
       if (!tableSearch.value) {
         return tables.value;
       }
-      
+
       const searchTerm = tableSearch.value.toLowerCase();
       return tables.value.filter(table => {
         if (!table || !table.name) return false;
-        
+
         const nameMatch = table.name.toLowerCase().includes(searchTerm);
         const descMatch = table.description ? table.description.toLowerCase().includes(searchTerm) : false;
-        
+
         return nameMatch || descMatch;
       });
     })
-    
+
     // Format table name for display
     const formatTableName = (tableName) => {
       // Handle undefined or null values
       if (!tableName) return '';
-      
+
       // Convert snake_case or camelCase to Title Case with spaces
       return tableName
         .replace(/_/g, ' ')
@@ -735,7 +735,13 @@ export default {
       try {
         loading.value = true
         hasError.value = false
-        
+
+        // Check if user is authenticated before making API calls
+        const token = localStorage.getItem('token') || localStorage.getItem('accessToken')
+        if (!token) {
+          console.warn('No access token available when loading dashboard data')
+        }
+
         // Load dashboard data with individual try/catch blocks for each API call
         try {
           const statsResponse = await axios.get('/api/admin/dashboard/stats')
@@ -752,7 +758,11 @@ export default {
           }
         } catch (statsError) {
           console.error('Error loading dashboard stats:', statsError)
-          toast.error('Failed to load dashboard statistics')
+          if (statsError.message !== 'No refresh token available') {
+            toast.error('Failed to load dashboard statistics')
+          } else {
+            console.warn('Auth issue when loading dashboard statistics')
+          }
           // Set fallback data for stats
           stats.value = {
             orders: { total: '--', growth: 0 },
@@ -761,9 +771,9 @@ export default {
             restaurants: { total: '--', growth: 0 }
           }
         }
-        
+
         try {
-          const analyticsResponse = await axios.get('/api/admin/analytics', { 
+          const analyticsResponse = await axios.get('/api/admin/analytics', {
             params: { timeframe: timeframe.value }
           })
           analyticsData.value = analyticsResponse.data.data || {
@@ -776,7 +786,12 @@ export default {
           }
         } catch (analyticsError) {
           console.error('Error loading analytics data:', analyticsError)
-          // Don't show toast for this to avoid multiple errors
+          if (analyticsError.message !== 'No refresh token available') {
+            // Only show error toast for non-auth related issues
+            // toast.error('Failed to load analytics data')
+          } else {
+            console.warn('Auth issue when loading analytics data')
+          }
           // Set fallback data for analytics
           analyticsData.value = {
             orderTrend: [],
@@ -787,11 +802,11 @@ export default {
             orderStatusCounts: []
           }
         }
-        
+
         try {
           // Try to load database tables information
           const tablesResponse = await axios.get('/api/admin/tables')
-          
+
           // Validate that we received a proper response with data
           if (tablesResponse.data && Array.isArray(tablesResponse.data)) {
             // Ensure each table has the required properties
@@ -814,12 +829,19 @@ export default {
           }
         } catch (tablesError) {
           console.error('Error loading tables data:', tablesError)
+          if (tablesError.message !== 'No refresh token available') {
+            // toast.error('Failed to load database tables')
+          } else {
+            console.warn('Auth issue when loading database tables')
+          }
           // Keep using the default tables list, no need to update
         }
-        
+
       } catch (error) {
         console.error('Dashboard data error:', error)
-        toast.error('Failed to load some dashboard data')
+        if (error.message !== 'No refresh token available') {
+          toast.error('Failed to load some dashboard data')
+        }
         hasError.value = true
       } finally {
         loading.value = false
@@ -838,7 +860,7 @@ export default {
     const viewUserManagement = () => {
       router.push('/admin/users')
     }
-    
+
     const viewOrder = (order) => {
       router.push(`/admin/orders/${order.id}`)
     }
@@ -846,7 +868,7 @@ export default {
     // Format values
     const formatCurrency = (value) => {
       if (value === null || value === undefined) return '$0.00';
-      
+
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
@@ -858,7 +880,7 @@ export default {
       // Simple formatter that handles string or number
       if (typeof value === 'string' && value === '--') return value;
       if (value === null || value === undefined) return '0.00';
-      
+
       return Number(value || 0).toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
@@ -867,13 +889,13 @@ export default {
 
     const formatNumber = (value) => {
       if (value === null || value === undefined) return '0';
-      
+
       return new Intl.NumberFormat('en-US').format(value)
     }
 
     const formatDate = (date) => {
       if (!date) return '';
-      
+
       return new Date(date).toLocaleString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -885,7 +907,7 @@ export default {
     // Get status color mapping
     const getStatusColor = (status) => {
       if (!status) return 'grey';
-      
+
       const colors = {
         pending: 'warning',
         active: 'success',
@@ -896,10 +918,10 @@ export default {
       }
       return colors[status.toLowerCase()] || 'grey'
     }
-    
+
     const getOrderStatusColor = (status) => {
       if (!status) return 'grey';
-      
+
       const colors = {
         'pending': 'warning',
         'preparing': 'info',
@@ -940,7 +962,7 @@ export default {
         console.error('Invalid table name');
         return;
       }
-      
+
       console.log(`Navigating to table: ${tableName} at path: /admin/tables/${tableName}`);
       router.push(`/admin/tables/${tableName}`);
     }

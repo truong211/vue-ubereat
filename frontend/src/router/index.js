@@ -1,7 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import store from '@/store'
+import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import HomeView from '../views/Home.vue'
 import SearchPage from '../views/SearchPage.vue'
+import Offers from '../views/Offers.vue'
+
+// Import route modules
+import { adminRoutes } from './admin.js'
+import { driverRoutes } from './driver.js'
+import restaurantRoutes from './restaurant.routes.js'
+import paymentRoutes from './payment.routes.js'
 
 // Auth routes
 const Login = () => import('@/views/auth/Login.vue')
@@ -9,401 +17,251 @@ const Register = () => import('@/views/auth/Register.vue')
 const ForgotPassword = () => import('@/views/auth/ForgotPassword.vue')
 const VerifyEmail = () => import('@/views/auth/VerifyEmail.vue')
 const VerifyOTP = () => import('@/views/auth/VerifyOTP.vue')
-const ClearTokens = () => import('@/views/ClearTokens.vue')
 
-// Payment methods route
-const PaymentMethods = () => import('@/views/payment/PaymentMethods.vue')
+// Static pages
+const About = () => import('@/views/static/About.vue')
+const Contact = () => import('@/views/static/Contact.vue')
 
-// Admin routes
-import { adminRoutes } from './admin.js';
+// Main features
+const Restaurants = () => import('@/views/Restaurants.vue')
+const Orders = () => import('@/views/Orders.vue')
+const Cart = () => import('@/views/Cart.vue')
+const Foods = () => import('@/views/Foods.vue')
 
-const routes = [
-  // Auth routes
-  {
-    path: '/auth',
-    component: () => import('@/layouts/AuthLayout.vue'),
-    children: [
-      {
-        path: 'login',
-        name: 'Login',
-        component: Login,
-        meta: { guest: true }
-      },
-      {
-        path: 'register',
-        name: 'Register',
-        component: Register,
-        meta: { guest: true }
-      },
-      {
-        path: 'forgot-password',
-        name: 'ForgotPassword',
-        component: ForgotPassword,
-        meta: { guest: true }
-      },
-      {
-        path: 'verify-email',
-        name: 'VerifyEmail',
-        component: VerifyEmail,
-        meta: { guest: true }
-      },
-      {
-        path: 'verify-otp',
-        name: 'VerifyOTP',
-        component: VerifyOTP,
-        meta: { guest: true }
-      }
-    ]
-  },
-
-  // Direct login and register routes
-  {
-    path: '/login',
-    name: 'DirectLogin',
-    component: Login,
-    meta: { guest: true }
-  },
-  {
-    path: '/register',
-    name: 'DirectRegister',
-    component: Register,
-    meta: { guest: true }
-  },
-
-  // Static pages
-  {
-    path: '/about',
-    name: 'About',
-    component: () => import('@/views/static/About.vue')
-  },
-  {
-    path: '/contact',
-    name: 'Contact',
-    component: () => import('@/views/static/Contact.vue')
-  },
-  {
-    path: '/promotions',
-    name: 'Promotions',
-    component: () => import('@/views/static/Promotions.vue')
-  },
-
-  // Protected routes that require authentication
-  {
-    path: '/profile',
-    component: () => import('@/layouts/MainLayout.vue'),
-    meta: { requiresAuth: true },
-    children: [
-      {
-        path: '',
-        name: 'Profile',
-        component: () => import('@/views/user/Profile.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'notifications',
-        name: 'UserNotifications',
-        component: () => import('@/views/user/UserNotifications.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'settings',
-        name: 'ProfileSettings',
-        component: () => import('@/views/profile/Settings.vue')
-      },
-      {
-        path: 'payment-methods',
-        name: 'PaymentMethods',
-        component: () => import('@/views/payment/PaymentMethods.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'reviews',
-        name: 'UserReviews',
-        component: () => import('@/views/profile/Reviews.vue')
-      },
-      {
-        path: 'favorites',
-        name: 'UserFavorites',
-        component: () => import('@/views/user/Favorites.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'account-settings',
-        name: 'AccountSettings',
-        component: () => import('@/views/user/AccountSettings.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'addresses',
-        name: 'Addresses',
-        component: () => import('@/views/user/Addresses.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'vouchers',
-        name: 'Vouchers',
-        component: () => import('@/views/user/Vouchers.vue'),
-        meta: { requiresAuth: true }
-      }
-    ]
-  },
-
-  // Cart and Order routes
-  {
-    path: '/cart',
-    name: 'Cart',
-    component: () => import('@/views/Cart.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/checkout',
-    name: 'Checkout',
-    component: () => import('@/views/Checkout.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/orders',
-    name: 'Orders',
-    component: () => import('@/views/Orders.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/orders/:id',
-    name: 'OrderDetails',
-    component: () => import('@/views/OrderDetails.vue'),
-    meta: { requiresAuth: true },
-    props: true
-  },
-  {
-    path: '/orders/:id/tracking',
-    name: 'order-tracking',
-    component: () => import('@/components/order/OrderTrackingVi.vue'),
-    meta: {
-      requiresAuth: true,
-      title: 'Theo dõi đơn hàng'
-    }
-  },
-
-  // Restaurant and Review routes
-  {
-    path: '/restaurant/:id',
-    name: 'RestaurantDetail',
-    component: () => import('@/views/RestaurantDetail.vue'),
-    props: true
-  },
-  {
-    path: '/restaurant/:id/reviews',
-    name: 'RestaurantReviews',
-    component: () => import('@/views/restaurant/Reviews.vue'),
-    props: true
-  },
-  {
-    path: '/restaurant/:id/analytics',
-    name: 'RestaurantAnalytics',
-    component: () => import('@/views/restaurant/RestaurantAnalytics.vue'),
-    meta: {
-      requiresAuth: true,
-      roles: ['restaurant', 'admin']
-    }
-  },
-  {
-    path: '/restaurants',
-    name: 'Restaurants',
-    component: () => import('@/views/Restaurants.vue'),
-    props: (route) => ({
-      category: route.query.category,
-      address: route.query.address,
-      sort: route.query.sort
-    })
-  },
-
-  // Product routes
-  {
-    path: '/products',
-    name: 'Products',
-    component: () => import('@/views/Products.vue'),
-    props: (route) => ({
-      category: route.query.category,
-      restaurantId: route.query.restaurantId
-    })
-  },
-  {
-    path: '/products/:productId',
-    name: 'ProductDetail',
-    component: () => import('@/views/ProductDetail.vue'),
-    props: true
-  },
-  {
-    path: '/products/:productId/reviews',
-    name: 'ProductReviews',
-    component: () => import('@/views/product/Reviews.vue'),
-    props: true
-  },
-  {
-    path: '/products/category/:category',
-    name: 'ProductsByCategory',
-    component: () => import('@/views/Products.vue'),
-    props: true
-  },
-
-  // Foods route
-  {
-    path: '/foods',
-    name: 'Foods',
-    component: () => import('@/views/Foods.vue')
-  },
-
-  // Import the admin routes
-  adminRoutes,
-
-  // Other routes...
-  {
-    path: '/',
-    name: 'home',
-    component: HomeView
-  },
-  {
-    path: '/search',
-    name: 'search',
-    component: SearchPage,
-    meta: {
-      title: 'Tìm kiếm nhà hàng'
-    }
-  },
-
-  // Clear tokens utility page
-  {
-    path: '/clear-tokens',
-    name: 'ClearTokens',
-    component: ClearTokens,
-    meta: { guest: true }
-  },
-
-  // Add settings routes after other main routes and before the 404 route
-  {
-    path: '/settings',
-    component: () => import('@/views/settings/Settings.vue'),
-    meta: { requiresAuth: true },
-    children: [
-      {
-        path: '',
-        redirect: { name: 'settings-account' }
-      },
-      {
-        path: 'account',
-        name: 'settings-account',
-        component: () => import('@/views/user/AccountSettings.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'notifications',
-        name: 'settings-notifications',
-        component: () => import('@/views/settings/NotificationSettings.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'security',
-        name: 'settings-security',
-        component: () => import('@/components/user/SecuritySettings.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'payment-methods',
-        name: 'settings-payment-methods',
-        component: () => import('@/views/payment/PaymentMethods.vue'),
-        meta: { requiresAuth: true }
-      },
-      {
-        path: 'addresses',
-        name: 'settings-addresses',
-        component: () => import('@/views/user/Addresses.vue'),
-        meta: { requiresAuth: true }
-      }
-    ]
-  },
-
-  // 404 Not Found
-  {
-    path: '/:pathMatch(.*)*',
-    name: 'NotFound',
-    component: () => import('@/views/NotFound.vue')
-  }
-]
-
+// Create router
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  routes: [
+    {
+      path: '/register',
+      name: 'TopLevelRegister',
+      component: Register,
+      meta: { guest: true }
+    },
+    {
+      path: '/auth',
+      component: () => import('@/layouts/AuthLayout.vue'),
+      children: [
+        {
+          path: 'login',
+          name: 'Login',
+          component: Login,
+          meta: { guest: true }
+        },
+        {
+          path: '/login',
+          name: 'TopLevelLogin', 
+          component: Login,
+          meta: { guest: true }
+        },
+        {
+          path: 'register',
+          name: 'Register',
+          component: Register,
+          meta: { guest: true }
+        },
+        {
+          path: 'forgot-password',
+          name: 'ForgotPassword',
+          component: ForgotPassword,
+          meta: { guest: true }
+        },
+        {
+          path: 'verify-email',
+          name: 'VerifyEmail',
+          component: VerifyEmail,
+          meta: { guest: true }
+        },
+        {
+          path: 'verify-otp',
+          name: 'VerifyOTP',
+          component: VerifyOTP,
+          meta: { guest: true }
+        }
+      ]
+    },
+    {
+      path: '/',
+      component: () => import('@/layouts/MainLayout.vue'),
+      children: [
+        {
+          path: '',
+          name: 'home',
+          component: HomeView
+        },
+        {
+          path: 'search',
+          name: 'search',
+          component: SearchPage
+        },
+        {
+          path: 'restaurants',
+          name: 'restaurants',
+          component: Restaurants
+        },
+        {
+          path: 'foods',
+          name: 'foods',
+          component: Foods
+        },
+        {
+          path: 'orders',
+          name: 'orders',
+          component: Orders,
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'cart',
+          name: 'cart',
+          component: Cart
+        },
+        {
+          path: 'about',
+          name: 'about',
+          component: About
+        },
+        {
+          path: 'contact',
+          name: 'contact',
+          component: Contact
+        },
+        {
+          path: 'partner',
+          name: 'partner',
+          component: () => import('../views/Partner.vue')
+        },
+        {
+          path: 'terms',
+          name: 'terms',
+          component: () => import('@/views/static/Terms.vue')
+        },
+        {
+          path: 'privacy',
+          name: 'privacy',
+          component: () => import('@/views/static/Privacy.vue')
+        },
+        {
+          path: 'cookies',
+          name: 'cookies',
+          component: () => import('@/views/static/Cookies.vue')
+        },
+        {
+          path: 'groceries',
+          name: 'groceries',
+          component: () => import('../views/Groceries.vue')
+        },
+        {
+          path: 'offers',
+          name: 'offers',
+          component: Offers
+        },
+        {
+          path: 'help',
+          name: 'help',
+          component: () => import('../views/Help.vue')
+        },
+        {
+          path: 'order-now',
+          name: 'orderNow',
+          component: () => import('../views/OrderNow.vue')
+        },
+        // User profile and related routes
+        {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('@/views/user/Profile.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'profile/notifications',
+          name: 'UserNotifications',
+          component: () => import('@/views/user/UserNotifications.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'profile/membership',
+          name: 'membership',
+          component: () => import('../views/profile/Membership.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'settings',
+          name: 'Settings',
+          component: () => import('@/views/user/Settings.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'favorites',
+          name: 'Favorites',
+          component: () => import('@/views/user/Favorites.vue'),
+          meta: { requiresAuth: true }
+        }
+      ]
+    },
+    // Include imported route modules
+    adminRoutes,
+    driverRoutes,
+    ...restaurantRoutes,
+    ...paymentRoutes
+  ]
 })
 
-// Navigation guards for authentication
+// Navigation guards
 router.beforeEach(async (to, from, next) => {
-  // Check if route requires authentication
-  if (to.matched.some(record => record.meta.requiresAuth)) {
-    // Check authentication status
-    const isAuthenticated = store.getters['auth/isAuthenticated']
+  const authStore = useAuthStore()
+  const uiStore = useUiStore()
+  
+  // Check if the route requires authentication
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const isGuest = to.matched.some(record => record.meta.guest)
 
-    if (!isAuthenticated) {
-      // If not authenticated, check if we can restore the session
-      const restored = await store.dispatch('auth/checkAuth')
+  // Get authentication status
+  const isAuthenticated = authStore.isAuthenticated
 
-      if (!restored) {
-        // Redirect to login if session can't be restored
-        next({
-          path: '/auth/login',
-          query: { redirect: to.fullPath }
-        })
-        return
-      }
-    }
+  // Handle authentication requirement
+  if (requiresAuth && !isAuthenticated) {
+    next({
+      path: '/auth/login',
+      query: { redirect: to.fullPath }
+    })
+    return
   }
 
-  // Check if route is for guests only (login, register, etc.)
-  if (to.matched.some(record => record.meta.guest)) {
-    const isAuthenticated = store.getters['auth/isAuthenticated']
+  // Handle guest-only routes
+  if (isGuest && isAuthenticated) {
+    const userRole = authStore.userRole
 
-    if (isAuthenticated) {
-      // If already authenticated, redirect to home
+    // Redirect based on role
+    if (userRole === 'admin') {
+      next({ path: '/admin' })
+    } else if (userRole === 'restaurant') {
+      next({ path: '/restaurant/dashboard' })
+    } else {
       next({ path: '/' })
-      return
     }
+    return
   }
 
-  // If role requirements are present, check user role
-  if (to.meta.roles && to.meta.roles.length > 0) {
-    const userRole = store.getters['auth/user']?.role
-
-    if (!to.meta.roles.includes(userRole)) {
-      // If user doesn't have required role, redirect to appropriate page
-      if (userRole === 'admin') {
-        next({ path: '/admin' })
-      } else if (userRole === 'restaurant') {
-        next({ path: '/restaurant-admin' })
-      } else {
-        next({ path: '/' })
-      }
+  // Handle admin routes
+  if (to.path === '/admin' || to.path.startsWith('/admin/')) {
+    if (!isAuthenticated) {
+      next({ 
+        path: '/login', 
+        query: { redirect: to.fullPath } 
+      })
       return
     }
-  }
-
-  next()
-})
-
-// Admin route guard
-router.beforeEach((to, from, next) => {
-  // Check if route requires admin role
-  if (to.matched.some(record => record.meta.requiresAdmin)) {
-    const userRole = store.getters['auth/user']?.role
-
-    if (userRole !== 'admin') {
-      // If not admin, redirect to home with error message
-      store.dispatch('ui/showSnackbar', {
-        message: 'Access denied. Admin privileges required.',
+    
+    if (authStore.userRole !== 'admin') {
+      uiStore.showSnackbar({
+        text: 'Access denied. Admin privileges required.',
         color: 'error'
       })
       next({ path: '/' })
       return
     }
   }
+
   next()
 })
 

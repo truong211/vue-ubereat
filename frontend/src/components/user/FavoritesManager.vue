@@ -181,12 +181,22 @@
 </template>
 
 <script>
-import { mapState, mapGetters, mapActions } from 'vuex';
+import { defineComponent } from 'vue';
+import { useFavoritesStore } from '@/stores/favorites'; // Import Pinia favorites store
+import { useCartStore } from '@/stores/cart';           // Import Pinia cart store
+import { useNotificationStore } from '@/stores/notification'; // Import Pinia notification store
 import { socialSharingService } from '@/services/social-sharing.service';
 
-export default {
+export default defineComponent({ // Use defineComponent
   name: 'FavoritesManager',
   
+  setup() {
+    const favoritesStore = useFavoritesStore();
+    const cartStore = useCartStore();
+    const notificationStore = useNotificationStore();
+    return { favoritesStore, cartStore, notificationStore }; // Expose store instances
+  },
+
   data() {
     return {
       activeTab: 'foods',
@@ -204,12 +214,19 @@ export default {
   },
   
   computed: {
-    ...mapState({
-      favoriteFoods: state => state.favorites.favoriteFoods,
-      favoriteRestaurants: state => state.favorites.favoriteRestaurants,
-      isLoading: state => state.favorites.loading,
-      error: state => state.favorites.error
-    }),
+    // Access state from Pinia favorites store
+    favoriteFoods() {
+      return this.favoritesStore.favoriteFoods;
+    },
+    favoriteRestaurants() {
+      return this.favoritesStore.favoriteRestaurants;
+    },
+    isLoading() {
+      return this.favoritesStore.loading;
+    },
+    error() {
+      return this.favoritesStore.error;
+    },
     
     isCurrentTabEmpty() {
       if (this.activeTab === 'foods') {
@@ -240,13 +257,7 @@ export default {
   },
   
   methods: {
-    ...mapActions({
-      fetchFavoriteFoods: 'favorites/fetchFavoriteFoods',
-      fetchFavoriteRestaurants: 'favorites/fetchFavoriteRestaurants',
-      toggleFavoriteFood: 'favorites/toggleFavoriteFood',
-      toggleFavoriteRestaurant: 'favorites/toggleFavoriteRestaurant',
-      addToCartAction: 'cart/addToCart'
-    }),
+    // Removed mapActions block. Methods will call store actions directly.
     
     formatPrice(price) {
       // Ensure price is a number and has a default value if undefined
@@ -259,8 +270,8 @@ export default {
     },
     
     loadFavorites() {
-      this.fetchFavoriteFoods();
-      this.fetchFavoriteRestaurants();
+      this.favoritesStore.fetchFavoriteFoods(); // Call action on favoritesStore
+      this.favoritesStore.fetchFavoriteRestaurants(); // Call action on favoritesStore
     },
     
     refresh() {
@@ -274,13 +285,13 @@ export default {
     async removeFromFavorites(type, item) {
       try {
         if (type === 'food') {
-          await this.toggleFavoriteFood(item);
+          await this.favoritesStore.toggleFavoriteFood(item); // Call action on favoritesStore
         } else {
-          await this.toggleFavoriteRestaurant(item);
+          await this.favoritesStore.toggleFavoriteRestaurant(item); // Call action on favoritesStore
         }
-        this.$toast.success(this.$t('favorites.removedSuccess'));
+        this.notificationStore.showToast({ message: this.$t('favorites.removedSuccess'), type: 'success' });
       } catch (error) {
-        this.$toast.error(this.$t('favorites.removeError'));
+        this.notificationStore.showToast({ message: this.$t('favorites.removeError'), type: 'error' });
       }
     },
     
@@ -293,12 +304,16 @@ export default {
     },
     
     addToCart(food) {
-      this.addToCartAction({
-        foodId: food.id,
+      // Call action on cartStore
+      this.cartStore.addToCart({
+        productId: food.id, // Assuming Pinia action uses productId
         quantity: 1,
-        restaurantId: food.restaurant.id
+        // Pass other necessary details if needed
+        // name: food.name,
+        // price: food.price,
+        // restaurantId: food.restaurant.id
       });
-      this.$toast.success(this.$t('cart.addedToCart'));
+      this.notificationStore.showToast({ message: this.$t('cart.addedToCart'), type: 'success' });
     },
     
     viewRestaurant(restaurant) {
@@ -319,13 +334,13 @@ export default {
           await socialSharingService.shareRestaurant(platform, this.shareItem);
         }
         this.showShareDialog = false;
-        this.$toast.success(this.$t('social.shareSuccess'));
+        this.notificationStore.showToast({ message: this.$t('social.shareSuccess'), type: 'success' });
       } catch (error) {
-        this.$toast.error(this.$t('social.shareError'));
+        this.notificationStore.showToast({ message: this.$t('social.shareError'), type: 'error' });
       }
     }
   }
-};
+}); // Close defineComponent
 </script>
 
 <style scoped>

@@ -1,8 +1,10 @@
 import { createApp } from 'vue'
+import { createPinia } from 'pinia' // Import Pinia
 import App from '@/App.vue'
 import router from '@/router'
-import store from '@/store'
-
+// import store from '@/store' // Removed Vuex store
+import { useAuthStore } from '@/store/auth' // Import Pinia auth store
+import JwtAuth from '@/services/jwt-auth.js' // Import the JwtAuth service
 // Vuetify
 import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
@@ -22,26 +24,53 @@ import { required, email, min } from 'vee-validate/rules'
 import './style.css'
 
 // Configure Axios
-axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-axios.interceptors.request.use(config => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+axios.defaults.timeout = 10000 // 10 second timeout
 
-axios.interceptors.response.use(
-  response => response,
-  error => {
-    // Handle session expiration
-    if (error.response && error.response.status === 401) {
-      store.dispatch('logout')
-      router.push('/auth/login')
+// Initialize JWT auth service
+const jwtAuth = new JwtAuth();
+
+// Initialize auth service and set up the interceptors internally
+jwtAuth.init();
+
+// Initialize authentication state
+const initializeAuth = async (piniaInstance) => {
+  const authStore = useAuthStore(piniaInstance);
+  const token = localStorage.getItem('accessToken');
+  const refreshToken = localStorage.getItem('refreshToken');
+
+  // Only attempt auto-login if both tokens are present
+  if (token && refreshToken) {
+    console.log('[Auth] Found tokens in localStorage, attempting to initialize auth state...');
+    try {
+      // Set tokens in Pinia store. Axios interceptors (setup in jwtAuth.init) should use these.
+      authStore.setTokens({ accessToken: token, refreshToken });
+
+      // Attempt to load user data using the stored tokens via Pinia action.
+      await authStore.loadUser();
+      console.log('[Auth] User data loaded successfully via Pinia.');
+
+    } catch (error) {
+      console.warn('[Auth] Failed to initialize auth state or load user data:', error);
+      // Clear tokens if initialization or user load fails to prevent inconsistent state
+      authStore.clearTokens();
     }
-    return Promise.reject(error)
+  } else {
+    console.log('[Auth] No valid token pair found in localStorage. Skipping auto-login.');
+    // Ensure state is clear if no tokens are found
+    if (authStore.isAuthenticated || authStore.accessToken || authStore.refreshToken) {
+        console.log('[Auth] Clearing potentially stale auth state.');
+        authStore.clearTokens();
+    }
   }
-)
+};
+
+// Create Pinia instance
+const pinia = createPinia()
+
+// Run initialization (pass pinia instance)
+// Note: This needs to run *after* pinia is used by the app
+// We will call this after app.use(pinia)
 
 // Initialize Vuetify
 const vuetify = createVuetify({
@@ -93,28 +122,34 @@ const app = createApp(App)
 
 // Use plugins
 app.use(router)
-app.use(store)
+// app.use(store) // Removed Vuex store usage
+app.use(pinia) // Use Pinia
 app.use(vuetify)
 
+// Initialize Pinia-based auth *after* Pinia is installed
+initializeAuth(pinia);
+
 // Global error handler
-app.config.errorHandler = (error, vm, info) => {
-  console.error('Global error:', error)
-  store.dispatch('setError', error.message || 'An unexpected error occurred')
-}
+// TODO: Replace with Pinia-based error handling
+// app.config.errorHandler = (error, vm, info) => {
+//   console.error('Global error:', error)
+//   // const errorStore = useErrorStore(pinia); // Example
+//   // errorStore.setError(error.message || 'An unexpected error occurred');
+// }
 
 // Initialize WebSocket connection after auth
-store.dispatch('initWebSocket')
+// TODO: Replace with Pinia-based WebSocket initialization
+// store.dispatch('initWebSocket')
+// const websocketStore = useWebSocketStore(pinia); // Example
+// websocketStore.initWebSocket();
 
-// Load user data if auth token exists
-if (localStorage.getItem('token')) {
-  store.dispatch('loadUser').catch(() => {
-    // Token is invalid, redirect to login
-    router.push('/auth/login')
-  })
-}
+// Removed redundant Vuex-based user loading. initializeAuth handles this with Pinia.
 
 // Load cart data from localStorage
-store.dispatch('loadCart')
+// TODO: Replace with Pinia-based cart loading
+// store.dispatch('loadCart')
+// const cartStore = useCartStore(pinia); // Example
+// cartStore.loadCart();
 
 // Mount app
 app.mount('#app')

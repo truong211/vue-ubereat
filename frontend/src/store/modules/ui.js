@@ -183,13 +183,6 @@ export const actions = {
   },
   
   // Snackbar actions
-  showSnackbar({ commit }, options) {
-    commit('SHOW_SNACKBAR', options)
-  },
-  
-  hideSnackbar({ commit }) {
-    commit('HIDE_SNACKBAR')
-  },
   
   showSnackbar({ commit }, payload) {
     commit('showSnackbar', payload);
@@ -329,3 +322,9 @@ export default {
   actions,
   getters
 };
+
+export function useUiStore() {
+  // Compatibility shim for legacy Vuex module
+  // You may want to refactor this to use Pinia or update imports in consuming files
+  return {};
+}

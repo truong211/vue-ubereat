@@ -1,5 +1,5 @@
 import AdminLayout from '@/layouts/AdminLayout.vue'
-import AdminDashboard from '@/views/admin/Dashboard.vue'
+import AdminDashboard from '@/views/admin/AdminDashboard.vue'
 import AdminRestaurants from '@/views/admin/Restaurants.vue'
 import AdminUsers from '@/views/admin/Users.vue'
 import AdminDrivers from '@/views/admin/Drivers.vue'
@@ -10,36 +10,135 @@ import Analytics from '@/views/admin/Analytics.vue'
 import AdminSettings from '@/views/admin/Settings.vue'
 import ContentManagement from '@/views/admin/ContentManagement.vue'
 import RestaurantVerification from '@/views/admin/RestaurantVerification.vue'
+import RestaurantDetail from '@/views/admin/RestaurantDetail.vue'
 import SystemMonitoring from '@/views/admin/SystemMonitoring.vue'
 import StaffManagement from '@/views/admin/StaffManagement.vue'
 import DeliverySettings from '@/views/admin/DeliverySettings.vue'
 import ActiveDeliveries from '@/views/admin/ActiveDeliveries.vue'
+import SupportManagement from '@/views/admin/SupportManagement.vue'
+import CustomerAccounts from '@/views/admin/CustomerAccounts.vue'
+import SupportTicketDetails from '@/views/admin/SupportTicketDetails.vue'
+import CustomerAccountDetails from '@/views/admin/CustomerAccountDetails.vue'
+// No need to import AdminLogin as we're using unified login
+import store from '@/store'
 
 // Admin route guard
-const adminGuard = (to, from, next) => {
-  const isAdmin = JSON.parse(localStorage.getItem('user'))?.role === 'admin'
-  if (isAdmin) {
-    next()
-  } else {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-  }
-}
+const adminGuard = async (to, from, next) => {
+  // No need to skip check for admin login page as we're using unified login
 
-export const adminRoutes = {
+  try {
+    console.log('adminGuard: Checking authentication state for path', to.path);
+
+    // Get authentication status from store
+    const isAuthenticated = store.getters['auth/isAuthenticated'];
+    const currentUser = store.getters['auth/user'];
+
+    console.log('adminGuard: Initial auth check - authenticated:', isAuthenticated, 'user role:', currentUser?.role, 'user:', currentUser);
+
+    // If already authenticated with admin role, allow access
+    if (isAuthenticated && currentUser && currentUser.role === 'admin') {
+      console.log('adminGuard: User already authenticated as admin, proceeding to', to.path);
+      next();
+      return;
+    } else {
+      console.log('adminGuard: User is not properly authenticated as admin');
+    }
+
+    // Try to restore auth state if not already authenticated
+    try {
+      console.log('adminGuard: Attempting to restore auth state');
+      const authResult = await store.dispatch('auth/checkAuth');
+      console.log('adminGuard: Auth check result:', authResult);
+
+      // Check auth state after checkAuth
+      const currentUser = store.getters['auth/user'];
+      const isAuthenticated = store.getters['auth/isAuthenticated'];
+
+      console.log('adminGuard: After checkAuth - authenticated?', isAuthenticated, 'User role:', currentUser?.role);
+
+      // If we have an authenticated admin user, allow access
+      if (isAuthenticated && currentUser && currentUser.role === 'admin') {
+        console.log('adminGuard: Access granted to admin user after checkAuth');
+        next();
+        return;
+      }
+    } catch (error) {
+      console.error('adminGuard: Error during checkAuth:', error);
+    }
+
+    // If still not authenticated as admin, try to refresh token
+    try {
+      const accessToken = localStorage.getItem('accessToken');
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (accessToken && refreshToken) {
+        console.log('adminGuard: Attempting token refresh');
+        // Attempt to refresh the token
+        await store.dispatch('auth/refreshToken');
+
+        // Load user data after token refresh
+        await store.dispatch('auth/loadUser');
+
+        const updatedUser = store.getters['auth/user'];
+        const isAuthenticated = store.getters['auth/isAuthenticated'];
+
+        console.log('adminGuard: After refresh - authenticated?', isAuthenticated, 'User role:', updatedUser?.role);
+
+        if (isAuthenticated && updatedUser && updatedUser.role === 'admin') {
+          console.log('adminGuard: Access granted after token refresh');
+          next();
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('adminGuard: Token refresh failed:', error.message);
+      if (error.response) {
+        console.error('adminGuard: Server response:', error.response.data);
+      }
+    }
+
+    console.log('adminGuard: Access denied - redirecting to login');
+    // If we get here, redirect to the login page
+    next({
+      path: '/login',
+      query: {
+        redirect: to.fullPath,
+        message: 'Please log in with an admin account'
+      }
+    });
+  } catch (error) {
+    console.error('adminGuard error:', error);
+    // Redirect to the login page
+    next({
+      path: '/login',
+      query: {
+        redirect: to.fullPath,
+        error: 'An error occurred while checking authentication'
+      }
+    });
+  }
+};
+
+
+const adminRoutes = {
   path: '/admin',
   component: AdminLayout,
+  meta: { requiresAuth: true, requiresAdmin: true },
   beforeEnter: adminGuard,
   children: [
     {
       path: '',
-      redirect: '/admin/dashboard'
+      name: 'AdminRoot',
+      redirect: { name: 'AdminDashboard' },
+      meta: { requiresAdmin: true }
     },
     {
       path: 'dashboard',
       name: 'AdminDashboard',
       component: AdminDashboard,
       meta: {
-        title: 'Admin Dashboard'
+        title: 'Admin Dashboard',
+        requiresAdmin: true
       }
     },
     {
@@ -55,7 +154,7 @@ export const adminRoutes = {
       path: 'tables/:tableName/create',
       name: 'TableCreate',
       component: () => import('@/views/admin/TableForm.vue'),
-      props: route => ({ 
+      props: route => ({
         tableName: route.params.tableName,
         isEdit: false,
         id: null
@@ -68,7 +167,7 @@ export const adminRoutes = {
       path: 'tables/:tableName/edit/:id',
       name: 'TableEdit',
       component: () => import('@/views/admin/TableForm.vue'),
-      props: route => ({ 
+      props: route => ({
         tableName: route.params.tableName,
         isEdit: true,
         id: route.params.id
@@ -113,11 +212,29 @@ export const adminRoutes = {
       }
     },
     {
+      path: 'restaurants/:id',
+      name: 'RestaurantDetail',
+      component: RestaurantDetail,
+      props: true,
+      meta: {
+        title: 'Restaurant Details'
+      }
+    },
+    {
       path: 'users',
       name: 'AdminUsers',
       component: AdminUsers,
       meta: {
         title: 'User Management'
+      }
+    },
+    {
+      path: 'users/:id',
+      name: 'AdminUserDetail',
+      component: () => import('@/views/admin/UserDetail.vue'),
+      props: true,
+      meta: {
+        title: 'User Details'
       }
     },
     {
@@ -142,6 +259,14 @@ export const adminRoutes = {
       component: AdminCategories,
       meta: {
         title: 'Category Management'
+      }
+    },
+    {
+      path: 'products',
+      name: 'AdminProducts',
+      component: () => import('@/views/admin/Products.vue'),
+      meta: {
+        title: 'Product Management'
       }
     },
     {
@@ -201,6 +326,40 @@ export const adminRoutes = {
       }
     },
     {
+      path: 'support',
+      name: 'SupportManagement',
+      component: SupportManagement,
+      meta: {
+        title: 'Quản Lý Hỗ Trợ Khách Hàng'
+      }
+    },
+    {
+      path: 'support/tickets/:id',
+      name: 'SupportTicketDetails',
+      component: SupportTicketDetails,
+      props: true,
+      meta: {
+        title: 'Chi Tiết Yêu Cầu Hỗ Trợ'
+      }
+    },
+    {
+      path: 'customer-accounts',
+      name: 'CustomerAccounts',
+      component: CustomerAccounts,
+      meta: {
+        title: 'Quản Lý Tài Khoản Khách Hàng'
+      }
+    },
+    {
+      path: 'customer-accounts/:id',
+      name: 'CustomerAccountDetails',
+      component: CustomerAccountDetails,
+      props: true,
+      meta: {
+        title: 'Chi Tiết Tài Khoản Khách Hàng'
+      }
+    },
+    {
       path: 'system',
       name: 'AdminSystem',
       component: SystemMonitoring,
@@ -210,3 +369,6 @@ export const adminRoutes = {
     }
   ]
 }
+
+// Export only the admin routes
+export { adminRoutes } // <<< MODIFIED

@@ -134,6 +134,283 @@
             ></v-text-field>
           </v-col>
         </v-row>
+
+        <v-divider class="my-4"></v-divider>
+
+        <!-- Product Options Section -->
+        <div>
+          <div class="d-flex align-center mb-2">
+            <h3 class="text-subtitle-1 font-weight-medium">Product Options</h3>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="primary"
+              text
+              small
+              @click="addOptionGroup"
+              class="px-2"
+            >
+              <v-icon left small>mdi-plus</v-icon>
+              Add Option Group
+            </v-btn>
+          </div>
+
+          <v-alert
+            v-if="!formData.optionGroups.length"
+            text
+            type="info"
+            dense
+            class="mb-3"
+          >
+            Add options like size, toppings, extras, etc. Optional items that customers can select.
+          </v-alert>
+
+          <v-expansion-panels
+            v-if="formData.optionGroups.length"
+            multiple
+          >
+            <v-expansion-panel
+              v-for="(group, groupIndex) in formData.optionGroups"
+              :key="`group-${groupIndex}`"
+            >
+              <v-expansion-panel-header>
+                <div class="d-flex align-center">
+                  <span>{{ group.name || 'Unnamed Group' }}</span>
+                  <v-chip
+                    class="ml-2"
+                    x-small
+                    :color="group.required ? 'error' : 'secondary'"
+                    text-color="white"
+                  >
+                    {{ group.required ? 'Required' : 'Optional' }}
+                  </v-chip>
+                  <v-chip
+                    class="ml-2"
+                    x-small
+                    :color="group.multiSelect ? 'primary' : 'grey'"
+                    text-color="white"
+                  >
+                    {{ group.multiSelect ? 'Multi-select' : 'Single choice' }}
+                  </v-chip>
+                </div>
+              </v-expansion-panel-header>
+
+              <v-expansion-panel-content>
+                <v-row>
+                  <v-col cols="12" md="6">
+                    <v-text-field
+                      v-model="group.name"
+                      label="Option Group Name"
+                      placeholder="e.g. Size, Toppings, Extras"
+                      dense
+                      :rules="[v => !!v || 'Name is required']"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" md="6">
+                    <v-select
+                      v-model="group.displayType"
+                      :items="displayTypes"
+                      label="Display Type"
+                      dense
+                    ></v-select>
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-switch
+                      v-model="group.required"
+                      label="Required"
+                      hint="Customer must select an option"
+                      dense
+                    ></v-switch>
+                  </v-col>
+                  <v-col cols="12" sm="6">
+                    <v-switch
+                      v-model="group.multiSelect"
+                      label="Multi-select"
+                      hint="Customer can select multiple options"
+                      dense
+                    ></v-switch>
+                  </v-col>
+                  <v-col cols="12" sm="6" v-if="group.multiSelect">
+                    <v-text-field
+                      v-model.number="group.minSelections"
+                      type="number"
+                      label="Min Selections"
+                      dense
+                      min="0"
+                    ></v-text-field>
+                  </v-col>
+                  <v-col cols="12" sm="6" v-if="group.multiSelect">
+                    <v-text-field
+                      v-model.number="group.maxSelections"
+                      type="number"
+                      label="Max Selections"
+                      dense
+                      min="1"
+                    ></v-text-field>
+                  </v-col>
+                </v-row>
+
+                <div class="d-flex align-center mb-2 mt-4">
+                  <h4 class="text-body-2 font-weight-medium">Options</h4>
+                  <v-spacer></v-spacer>
+                  <v-btn
+                    color="primary"
+                    text
+                    x-small
+                    @click="addOption(groupIndex)"
+                    class="px-2"
+                  >
+                    <v-icon left x-small>mdi-plus</v-icon>
+                    Add Option
+                  </v-btn>
+                </div>
+
+                <v-data-table
+                  :headers="optionHeaders"
+                  :items="group.options"
+                  hide-default-footer
+                  class="elevation-1 mb-4"
+                  dense
+                >
+                  <template v-slot:item.name="{ item, index }">
+                    <v-text-field
+                      v-model="item.name"
+                      dense
+                      hide-details
+                      placeholder="Option name"
+                      class="my-1"
+                      :rules="[v => !!v || 'Name is required']"
+                    ></v-text-field>
+                  </template>
+
+                  <template v-slot:item.price="{ item }">
+                    <v-text-field
+                      v-model.number="item.price"
+                      type="number"
+                      dense
+                      hide-details
+                      class="my-1"
+                      prefix="₫"
+                    ></v-text-field>
+                  </template>
+
+                  <template v-slot:item.default="{ item }">
+                    <v-checkbox
+                      v-model="item.default"
+                      dense
+                      hide-details
+                      class="my-1"
+                      :disabled="group.multiSelect ? false : hasDefaultInGroup(group, item)"
+                    ></v-checkbox>
+                  </template>
+
+                  <template v-slot:item.actions="{ item, index }">
+                    <v-btn
+                      icon
+                      x-small
+                      color="error"
+                      @click="removeOption(groupIndex, index)"
+                    >
+                      <v-icon x-small>mdi-delete</v-icon>
+                    </v-btn>
+                  </template>
+                </v-data-table>
+
+                <div class="d-flex justify-end">
+                  <v-btn
+                    color="error"
+                    text
+                    small
+                    @click="removeOptionGroup(groupIndex)"
+                  >
+                    <v-icon left small>mdi-delete</v-icon>
+                    Remove Group
+                  </v-btn>
+                </div>
+              </v-expansion-panel-content>
+            </v-expansion-panel>
+          </v-expansion-panels>
+        </div>
+
+        <!-- Variants Section (for products with combinations of options) -->
+        <v-divider class="my-4" v-if="showVariantsSection"></v-divider>
+        <div v-if="showVariantsSection">
+          <div class="d-flex align-center mb-2">
+            <h3 class="text-subtitle-1 font-weight-medium">Product Variants</h3>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="primary"
+              text
+              small
+              @click="generateVariants"
+              class="px-2"
+            >
+              <v-icon left small>mdi-refresh</v-icon>
+              Generate Variants
+            </v-btn>
+          </div>
+
+          <v-alert
+            text
+            type="info"
+            dense
+            class="mb-3"
+          >
+            Based on your option groups, you can generate product variants with different prices and inventory.
+          </v-alert>
+
+          <v-data-table
+            v-if="formData.variants.length"
+            :headers="variantHeaders"
+            :items="formData.variants"
+            class="elevation-1"
+            dense
+          >
+            <template v-slot:item.name="{ item }">
+              {{ item.name }}
+            </template>
+
+            <template v-slot:item.price="{ item }">
+              <v-text-field
+                v-model.number="item.price"
+                type="number"
+                dense
+                hide-details
+                class="my-1"
+                prefix="₫"
+              ></v-text-field>
+            </template>
+
+            <template v-slot:item.sku="{ item }">
+              <v-text-field
+                v-model="item.sku"
+                dense
+                hide-details
+                class="my-1"
+                placeholder="SKU"
+              ></v-text-field>
+            </template>
+
+            <template v-slot:item.inventory="{ item }">
+              <v-text-field
+                v-model.number="item.inventory"
+                type="number"
+                dense
+                hide-details
+                class="my-1"
+                min="0"
+              ></v-text-field>
+            </template>
+
+            <template v-slot:item.active="{ item }">
+              <v-checkbox
+                v-model="item.active"
+                dense
+                hide-details
+                class="my-1"
+              ></v-checkbox>
+            </template>
+          </v-data-table>
+        </div>
       </v-card-text>
 
       <v-divider></v-divider>
@@ -192,7 +469,9 @@ export default {
         tags: [],
         dietaryInfo: [],
         status: 'available',
-        preparationTime: 15
+        preparationTime: 15,
+        optionGroups: [],
+        variants: []
       },
       nameRules: [
         v => !!v || 'Name is required',
@@ -243,12 +522,31 @@ export default {
         { text: 'Available', value: 'available' },
         { text: 'Out of Stock', value: 'out_of_stock' },
         { text: 'Hidden', value: 'hidden' }
+      ],
+      displayTypes: [
+        'Dropdown', 'Radio Buttons', 'Checkboxes'
+      ],
+      optionHeaders: [
+        { text: 'Name', value: 'name' },
+        { text: 'Price', value: 'price' },
+        { text: 'Default', value: 'default' },
+        { text: 'Actions', value: 'actions', sortable: false }
+      ],
+      variantHeaders: [
+        { text: 'Name', value: 'name' },
+        { text: 'Price', value: 'price' },
+        { text: 'SKU', value: 'sku' },
+        { text: 'Inventory', value: 'inventory' },
+        { text: 'Active', value: 'active' }
       ]
     }
   },
   computed: {
     currentImages() {
       return this.menuItem.images || []
+    },
+    showVariantsSection() {
+      return this.formData.optionGroups.some(group => group.options.length > 0)
     }
   },
   watch: {
@@ -265,7 +563,9 @@ export default {
             tags: newVal.tags || [],
             dietaryInfo: newVal.dietaryInfo || [],
             status: newVal.status || 'available',
-            preparationTime: newVal.preparationTime || 15
+            preparationTime: newVal.preparationTime || 15,
+            optionGroups: newVal.optionGroups || [],
+            variants: newVal.variants || []
           }
         }
       },
@@ -280,6 +580,58 @@ export default {
       if (files && files.length) {
         this.previewUrls = files.map(file => URL.createObjectURL(file))
       }
+    },
+    addOptionGroup() {
+      this.formData.optionGroups.push({
+        name: '',
+        displayType: 'Dropdown',
+        required: false,
+        multiSelect: false,
+        minSelections: 0,
+        maxSelections: 1,
+        options: []
+      })
+    },
+    removeOptionGroup(index) {
+      this.formData.optionGroups.splice(index, 1)
+    },
+    addOption(groupIndex) {
+      this.formData.optionGroups[groupIndex].options.push({
+        name: '',
+        price: 0,
+        default: false
+      })
+    },
+    removeOption(groupIndex, optionIndex) {
+      this.formData.optionGroups[groupIndex].options.splice(optionIndex, 1)
+    },
+    hasDefaultInGroup(group, item) {
+      return group.options.some(option => option.default && option !== item)
+    },
+    generateVariants() {
+      const variants = []
+      const optionGroups = this.formData.optionGroups.filter(group => group.options.length > 0)
+      const combinations = this.getCombinations(optionGroups.map(group => group.options))
+
+      combinations.forEach(combination => {
+        const name = combination.map(option => option.name).join(' / ')
+        const price = combination.reduce((sum, option) => sum + option.price, this.formData.price || 0)
+        variants.push({
+          name,
+          price,
+          sku: '',
+          inventory: 0,
+          active: true
+        })
+      })
+
+      this.formData.variants = variants
+    },
+    getCombinations(arrays) {
+      if (arrays.length === 0) return [[]]
+      const [first, ...rest] = arrays
+      const combinations = this.getCombinations(rest)
+      return first.flatMap(item => combinations.map(combination => [item, ...combination]))
     },
     async handleSubmit() {
       if (!this.$refs.form.validate()) return

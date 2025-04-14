@@ -48,6 +48,17 @@ const auth: Module<AuthState, RootState> = {
   },
 
   actions: {
+    async initialize({ state, dispatch }) {
+      if (state.accessToken) {
+        jwtAuth.setAuthHeader(state.accessToken)
+        try {
+          await dispatch('loadUser')
+        } catch (error) {
+          console.error('Failed to initialize auth state:', error)
+        }
+      }
+    },
+
     async login({ commit, dispatch }, credentials) {
       try {
         const { accessToken, refreshToken } = await jwtAuth.login(credentials)
@@ -83,13 +94,12 @@ const auth: Module<AuthState, RootState> = {
 
     async logout({ commit }) {
       try {
-        await jwtAuth.logout()
-      } catch (error) {
-        console.error('Logout error:', error)
-      } finally {
+        // Clear tokens from localStorage and state
         commit('CLEAR_TOKENS')
         jwtAuth.setAuthHeader(null)
         await router.push('/login')
+      } catch (error) {
+        console.error('Logout error:', error)
       }
     },
 
@@ -156,8 +166,5 @@ const auth: Module<AuthState, RootState> = {
     refreshToken: (state): string | null => state.refreshToken
   }
 }
-
-// Initialize JWT service with store
-jwtAuth.initialize()
 
 export default auth

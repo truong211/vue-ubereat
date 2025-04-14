@@ -1,154 +1,143 @@
-import { Module } from 'vuex';
-import { RootState } from './index';
-import jwtAuth from '@/services/jwt-auth';
-import axios from 'axios';
+import { defineStore } from 'pinia'
+import jwtAuth from '@/services/jwt-auth'
+import router from '@/router'
+import type { User } from './types'
 
-export interface AuthState {
-  user: any | null;
-  accessToken: string | null;
-  refreshToken: string | null;
-  loading: boolean;
+interface AuthState {
+  accessToken: string | null
+  refreshToken: string | null
+  user: User | null
 }
 
-const auth: Module<AuthState, RootState> = {
-  namespaced: true,
+interface LoginCredentials {
+  email: string
+  password: string
+}
 
-  state: {
-    user: null,
+interface AuthTokens {
+  accessToken: string
+  refreshToken: string
+}
+
+export const useAuthStore = defineStore('auth', {
+  state: (): AuthState => ({
     accessToken: localStorage.getItem('accessToken'),
     refreshToken: localStorage.getItem('refreshToken'),
-    loading: false
-  },
+    user: null
+  }),
 
-  mutations: {
-    SET_USER(state, user) {
-      state.user = user;
+  getters: {
+    isAuthenticated(state: AuthState): boolean {
+      return !!state.accessToken && !!state.user;
     },
-    SET_TOKENS(state, { accessToken, refreshToken }) {
-      state.accessToken = accessToken;
-      state.refreshToken = refreshToken;
-      if (accessToken) {
-        localStorage.setItem('accessToken', accessToken);
-      } else {
-        localStorage.removeItem('accessToken');
-      }
-      if (refreshToken) {
-        localStorage.setItem('refreshToken', refreshToken);
-      } else {
-        localStorage.removeItem('refreshToken');
-      }
-    },
-    SET_LOADING(state, loading: boolean) {
-      state.loading = loading;
-    },
-    CLEAR_AUTH(state) {
-      state.user = null;
-      state.accessToken = null;
-      state.refreshToken = null;
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+    
+    userRole(state: AuthState): string | undefined {
+      return state.user?.role;
     }
   },
 
   actions: {
-    async login({ commit }, credentials) {
-      try {
-        commit('SET_LOADING', true);
-        const { accessToken, refreshToken, user } = await jwtAuth.login(credentials);
-        commit('SET_TOKENS', { accessToken, refreshToken });
-        jwtAuth.setAuthHeader(accessToken);
-        commit('SET_USER', user);
-        return { accessToken, refreshToken, user };
-      } finally {
-        commit('SET_LOADING', false);
+    async initialize() {
+      if (this.accessToken) {
+        jwtAuth.setAuthHeader(this.accessToken)
+        try {
+          await this.loadUser()
+        } catch (error) {
+          console.error('Failed to initialize auth state:', error)
+          this.clearTokens()
+        }
       }
     },
 
-    async requestPasswordReset({ commit }, email: string) {
-      try {
-        commit('SET_LOADING', true);
-        await axios.post('/api/auth/password/request-reset', { email });
-      } finally {
-        commit('SET_LOADING', false);
-      }
-    },
+    async loadUser() {
+      if (!this.accessToken) return;
 
-    async verifyResetToken({ commit }, token: string) {
       try {
-        commit('SET_LOADING', true);
-        await axios.get(`/api/auth/password/verify-token/${token}`);
-      } finally {
-        commit('SET_LOADING', false);
-      }
-    },
-
-    async resetPassword({ commit }, { token, newPassword }: { token: string; newPassword: string }) {
-      try {
-        commit('SET_LOADING', true);
-        await axios.post('/api/auth/password/reset', {
-          token,
-          newPassword
+        const response = await fetch('/api/user/profile', {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`
+          }
         });
-      } finally {
-        commit('SET_LOADING', false);
-      }
-    },
-
-    async loadUser({ commit, state }) {
-      try {
-        if (!state.accessToken) return null;
-        const response = await axios.get('/api/auth/me');
-        const user = response.data;
-        commit('SET_USER', user);
-        return user;
+        
+        if (!response.ok) {
+          throw new Error('Failed to load user profile');
+        }
+        
+        const user = await response.json();
+        this.user = user;
       } catch (error) {
-        console.error('Error loading user:', error);
+        console.error('Failed to load user:', error);
+        this.clearTokens();
         throw error;
       }
     },
 
-    async refreshToken({ commit, state }) {
+    setTokens({ accessToken, refreshToken }: AuthTokens) {
+      this.accessToken = accessToken;
+      this.refreshToken = refreshToken;
+      
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      
+      jwtAuth.setAuthHeader(accessToken);
+    },
+
+    clearTokens() {
+      this.accessToken = null;
+      this.refreshToken = null;
+      this.user = null;
+      
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      jwtAuth.setAuthHeader(null);
+    },
+
+    async login(credentials: LoginCredentials) {
       try {
-        if (!state.refreshToken) {
-          throw new Error('No refresh token available');
-        }
-        const accessToken = await jwtAuth.refresh(state.refreshToken);
-        commit('SET_TOKENS', { 
-          accessToken, 
-          refreshToken: state.refreshToken 
-        });
-        jwtAuth.setAuthHeader(accessToken);
-        return accessToken;
+        const tokens = await jwtAuth.login(credentials)
+        this.setTokens(tokens)
+        await this.loadUser()
+        
+        const redirect = router.currentRoute.value.query.redirect as string
+        await router.push(redirect || '/')
       } catch (error) {
-        commit('CLEAR_AUTH');
-        throw error;
+        this.clearTokens()
+        throw error
       }
     },
 
-    async logout({ commit, state }) {
+    async register(registrationData: any) {
       try {
-        if (state.refreshToken) {
-          await jwtAuth.logout(state.refreshToken);
-        }
-      } finally {
-        commit('CLEAR_AUTH');
-        jwtAuth.setAuthHeader(null);
+        const tokens = await jwtAuth.register(registrationData)
+        this.setTokens(tokens)
+        await this.loadUser()
+        await router.push('/')
+      } catch (error) {
+        this.clearTokens()
+        throw error
+      }
+    },
+
+    async logout() {
+      this.clearTokens()
+      await router.push('/login')
+    },
+
+    async refreshAccessToken() {
+      if (!this.refreshToken) {
+        throw new Error('No refresh token available')
+      }
+
+      try {
+        const newAccessToken = await jwtAuth.refresh(this.refreshToken)
+        this.accessToken = newAccessToken
+        localStorage.setItem('accessToken', newAccessToken)
+        jwtAuth.setAuthHeader(newAccessToken)
+        return newAccessToken
+      } catch (error) {
+        this.clearTokens()
+        throw error
       }
     }
-  },
-
-  getters: {
-    isAuthenticated: (state) => !!state.accessToken,
-    hasRole: (state) => (role: string | string[]) => {
-      if (!state.user) return false;
-      const roles = Array.isArray(role) ? role : [role];
-      return roles.includes(state.user.role);
-    },
-    isAdmin: (state) => state.user?.role === 'admin',
-    isRestaurant: (state) => state.user?.role === 'restaurant',
-    isDriver: (state) => state.user?.role === 'driver',
-    isCustomer: (state) => state.user?.role === 'customer'
   }
-};
-
-export default auth;
+})

@@ -7,7 +7,7 @@ import { useStore } from 'vuex';
  * Handles browser push notifications using the Web Push API
  */
 
-class PushNotificationService {
+export class PushNotificationService {
   constructor() {
     this.publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     this.supported = 'Notification' in window && 'serviceWorker' in navigator;
