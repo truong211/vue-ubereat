@@ -26,32 +26,38 @@ if (import.meta.env.VITE_USE_FIREBASE === 'true') {
     .catch(error => console.warn('Failed to initialize Firebase:', error));
 }
 
-// If we need to set a baseURL for axios, we'll make sure it points to the correct port
-// Note: This is now commented out as we're using the Vite proxy instead
-// axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// Configure axios for API requests
+axios.defaults.baseURL = '/api' // Use Vite proxy
+axios.defaults.headers.common['Content-Type'] = 'application/json'
 
-// Add interceptor to log requests for debugging
+// Add request interceptor to normalize URLs and log requests
 axios.interceptors.request.use(config => {
-  console.log(`Request: ${config.method.toUpperCase()} ${config.url}`);
+  // Normalize URL to prevent duplicate /api prefixes
+  if (config.url.startsWith('/api/')) {
+    config.url = config.url.replace(/^\/api/, '');
+  }
+  
+  // Log the request
+  console.log(`[Axios Request] ${config.method.toUpperCase()} ${config.url}`);
   return config;
 });
 
 // Add response interceptor for debugging
 axios.interceptors.response.use(
   response => {
-    console.log(`Response: ${response.status} from ${response.config.url}`);
+    console.log(`[Axios Response] ${response.status} from ${response.config.url}`);
     return response;
   },
   error => {
-    console.error(`API Error: ${error.response?.status || 'Network Error'} - ${error.message}`);
+    console.error(`[Axios Error] ${error.response?.status || 'Network Error'} - ${error.message}`);
     if (error.response) {
-      console.error('Response data:', error.response.data);
+      console.error('[Axios Error Response]:', error.response.data);
       
       // Handle 401 errors specifically
       if (error.response.status === 401) {
         // Check if the error is related to invalid token
         const errorMessage = error.response.data.message?.toLowerCase() || '';
-        console.log('Auth error details:', errorMessage);
+        console.log('[Axios Auth Error]:', errorMessage);
         
         if (errorMessage.includes('invalid token') || 
             errorMessage.includes('invalid signature') || 
@@ -59,7 +65,6 @@ axios.interceptors.response.use(
             errorMessage.includes('authentication failed') ||
             errorMessage.includes('not logged in')) {
           console.warn('Authentication token issue detected, redirecting to token clear page');
-          console.warn('This is likely due to a change in the server JWT secret key');
           
           // Clear all authentication data
           clearAuthStorage();
@@ -165,9 +170,7 @@ const initNotificationSystem = async () => {
 // Create and mount app
 const app = createApp(App)
 
-// Provide the store instance to all components
-app.provide('store', store)
-
+// Configure plugins
 app.use(Toast, {
   position: 'top-right',
   timeout: 3000,
@@ -183,7 +186,10 @@ app.use(Toast, {
   rtl: false
 })
 
+// Initialize store first
 app.use(store)
+
+// Then other plugins
 app.use(router)
 app.use(vuetify)
 app.use(i18n)
@@ -195,13 +201,10 @@ if (store.state.auth?.user) {
   // Only initialize admin WebSocket for admin users
   if (store.state.auth.user.role === 'admin') {
     console.log('Initializing admin WebSocket connection for admin user');
-    
-    // Wrap the WebSocket initialization in a try/catch to prevent fatal errors
     try {
       store.dispatch('admin/initWebSocket');
     } catch (error) {
       console.warn('Failed to initialize admin WebSocket:', error);
-      // Continue app execution even if admin WebSocket fails
     }
   } else {
     console.log('Skipping admin WebSocket initialization - not an admin user');

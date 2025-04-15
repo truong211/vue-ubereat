@@ -1,45 +1,48 @@
 'use strict';
 
-// No need for Sequelize anymore
-const fs = require('fs');
-const path = require('path');
-const basename = path.basename(__filename);
+// Create a unified model interface
 const db = {};
 
-// Import models directly
-db.Article = require('./article');
-db.Restaurant = require('../src/models/restaurant.model');
-db.User = require('../src/models/user.model');
-db.Category = require('../src/models/category.model');
-db.Product = require('../src/models/product.model');
-db.Order = require('../src/models/order.model');
-db.OrderDetail = require('../src/models/orderDetail.model');
-db.Review = require('../src/models/review.model');
-db.ReviewVote = require('../src/models/reviewVote.model');
-db.ReviewReport = require('../src/models/reviewReport.model');
-db.PaymentHistory = require('../src/models/paymentHistory.model');
-db.UserPromotion = require('../src/models/userPromotion.model');
-db.Promotion = require('../src/models/promotion.model');
-db.ProductPromotion = require('../src/models/productPromotion.model');
-db.Banner = require('../src/models/banner.model');
-db.StaticPage = require('../src/models/staticPage.model');
-db.SiteConfig = require('../src/models/siteConfig.model');
-db.FAQ = require('../src/models/faq.model');
-db.NotificationTracking = require('../src/models/notificationTracking.model');
-db.StaffPermission = require('../src/models/staffPermission.model');
-db.DeliveryConfig = require('../src/models/deliveryConfig.model');
-// Add other models as they're converted to use direct SQL
-// db.Notification = require('./notification');
-// db.ReviewResponse = require('./reviewResponse');
+// Import Sequelize models from src/models
+const User = require('../src/models/user.model');
+const Restaurant = require('../src/models/restaurant.model');
+const Order = require('../src/models/order.model');
+const Product = require('../src/models/product.model');
+const Category = require('../src/models/category.model');
+const Review = require('../src/models/review.model');
+const SiteConfig = require('../src/models/siteConfig.model');
+const Banner = require('../src/models/banner.model');
+const DeliveryConfig = require('../src/models/deliveryConfig.model');
+const DeliveryFeeTier = require('../src/models/deliveryFeeTier.model');
+const Cart = require('../src/models/cart.model');
+const Address = require('../src/models/address.model');
+const Promotion = require('../src/models/promotion.model');
+const StaticPage = require('../src/models/staticPage.model');
+const Notification = require('../src/models/notification.model');
+const OrderItem = require('../src/models/orderItem.model');
+const NotificationPreference = require('../src/models/notificationPreference.model');
 
-// Note: As you convert more models from Sequelize to SQL,
-// uncomment the lines above and add them to this file.
+// Export models directly, ensuring they use the same name as in src/models/index.js
+db.User = User;
+db.Restaurant = Restaurant;
+db.Order = Order;
+db.Product = Product;
+db.Category = Category;
+db.Review = Review;
+db.SiteConfig = SiteConfig;
+db.Banner = Banner;
+db.DeliveryConfig = DeliveryConfig;
+db.DeliveryFeeTier = DeliveryFeeTier;
+db.Cart = Cart;
+db.Address = Address;
+db.Promotion = Promotion;
+db.StaticPage = StaticPage;
+db.Notification = Notification;
+db.OrderItem = OrderItem;
+db.NotificationPreference = NotificationPreference;
 
-// Add database connections and utilities
-const { pool, query, authenticate, paymentConfig } = require('../src/config/database');
-db.pool = pool;
-db.query = query;
-db.authenticate = authenticate;
-db.paymentConfig = paymentConfig;
+// Add database connection
+const sequelize = require('../src/config/database');
+db.sequelize = sequelize;
 
 module.exports = db;

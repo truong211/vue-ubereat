@@ -123,86 +123,38 @@ export default {
     
     const fetchNearbyRestaurants = async () => {
       if (!props.userLocation) {
-        loading.value = false
-        error.value = null
-        restaurants.value = []
-        return
+        loading.value = false;
+        error.value = null;
+        restaurants.value = [];
+        return;
       }
       
-      loading.value = true
-      error.value = null
+      loading.value = true;
+      error.value = null;
       
       try {
         console.log('Fetching nearby restaurants with:', {
           lat: props.userLocation.lat,
           lng: props.userLocation.lng,
-          maxDistance: props.maxDistance || 5,
-          maxResults: props.maxResults || 8
+          radius: props.maxDistance || 5,
+          limit: props.maxResults || 8
         });
         
-        const response = await restaurantAPI.getNearbyRestaurants(
-          props.userLocation.lat,
-          props.userLocation.lng,
-          props.maxDistance || 5,
-          props.maxResults || 8
-        )
+        const { restaurants: nearbyRestaurants } = await restaurantAPI.getNearbyRestaurants({
+          lat: props.userLocation.lat,
+          lng: props.userLocation.lng,
+          radius: props.maxDistance || 5,
+          limit: props.maxResults || 8
+        });
         
-        console.log('API Response:', response);
+        restaurants.value = nearbyRestaurants || [];
         
-        // Reset restaurants to empty array initially
-        restaurants.value = []
-        
-        // Handle response based on its format - Try all known response formats
-        if (response && response.data) {
-          // Format 1: {data: [...restaurants]}
-          if (Array.isArray(response.data)) {
-            restaurants.value = response.data
-          } 
-          // Format 2: {data: {data: {restaurants: [...]}}}
-          else if (response.data.data && response.data.data.restaurants) {
-            restaurants.value = response.data.data.restaurants
-          } 
-          // Format 3: {data: {restaurants: [...]}}
-          else if (response.data.restaurants) {
-            restaurants.value = response.data.restaurants
-          } 
-          // Format 4: {data: {data: [...]}}
-          else if (response.data.data && Array.isArray(response.data.data)) {
-            restaurants.value = response.data.data
-          } 
-          // Format 5: Direct data property with status field
-          else if (response.data.status === 'success') {
-            if (response.data.data && response.data.data.restaurants) {
-              restaurants.value = response.data.data.restaurants
-            } else if (Array.isArray(response.data.data)) {
-              restaurants.value = response.data.data
-            }
-          } else {
-            console.warn('Unexpected response format:', response.data)
-          }
-        }
-        
-        // Log the extracted restaurants data for debugging
-        console.log('Extracted restaurants:', restaurants.value)
-        
-        // Make sure restaurants is always an array
-        if (!Array.isArray(restaurants.value)) {
-          console.warn('Restaurants data is not an array, resetting to empty array')
-          restaurants.value = []
-        }
-      } catch (err) {
-        console.error('Error fetching nearby restaurants:', err)
-        const errorMessage = err?.response?.data?.message || 
-                          err?.response?.message || 
-                          err?.message || 
-                          'Could not load nearby restaurants';
-        error.value = errorMessage;
+      } catch (error) {
+        console.error('Error fetching nearby restaurants:', error);
+        error.value = error;
         restaurants.value = [];
-        
-        // Show a toast with the error message
-        toast.error(`Failed to load nearby restaurants: ${errorMessage}`);
       } finally {
-        loading.value = false
+        loading.value = false;
       }
     }
     

@@ -1004,10 +1004,15 @@ exports.deleteBanner = async (req, res) => {
 // Get static pages
 exports.getPages = async (req, res) => {
   try {
-    // Simplified pages response
+    // Use the StaticPage model to get all pages
+    const { StaticPage } = require('../models');
+    const pages = await StaticPage.findAll({
+      order: [['title', 'ASC']]
+    });
+
     return res.json({
       status: 'success',
-      data: []
+      data: pages
     });
   } catch (error) {
     console.error('Error getting pages:', error);
@@ -1021,10 +1026,22 @@ exports.getPages = async (req, res) => {
 // Create static page
 exports.createPage = async (req, res) => {
   try {
-    // Simplified response
+    const { StaticPage } = require('../models');
+    const { title, slug, content, published } = req.body;
+    
+    // Create the page in the database
+    const page = await StaticPage.create({
+      title,
+      slug,
+      content,
+      published: published !== undefined ? published : false
+    });
+
     return res.status(201).json({
       status: 'success',
-      message: 'Page created'
+      data: {
+        page
+      }
     });
   } catch (error) {
     console.error('Error creating page:', error);
@@ -1039,11 +1056,35 @@ exports.createPage = async (req, res) => {
 exports.updatePage = async (req, res) => {
   try {
     const { id } = req.params;
+    const { StaticPage } = require('../models');
+    const { title, slug, content, published } = req.body;
     
-    // Simplified response
+    // First check if page exists
+    const existingPage = await StaticPage.findByPk(id);
+    
+    if (!existingPage) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Page not found'
+      });
+    }
+    
+    // Update the page
+    await existingPage.update({
+      title: title || existingPage.title,
+      slug: slug || existingPage.slug,
+      content: content || existingPage.content,
+      published: published !== undefined ? published : existingPage.published
+    });
+    
+    // Get the updated page
+    const updatedPage = await StaticPage.findByPk(id);
+    
     return res.json({
       status: 'success',
-      message: 'Page updated'
+      data: {
+        page: updatedPage
+      }
     });
   } catch (error) {
     console.error('Error updating page:', error);
@@ -1058,11 +1099,24 @@ exports.updatePage = async (req, res) => {
 exports.deletePage = async (req, res) => {
   try {
     const { id } = req.params;
+    const { StaticPage } = require('../models');
     
-    // Simplified response
-    return res.json({
+    // First check if page exists
+    const existingPage = await StaticPage.findByPk(id);
+    
+    if (!existingPage) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Page not found'
+      });
+    }
+    
+    // Delete the page
+    await existingPage.destroy();
+    
+    return res.status(200).json({
       status: 'success',
-      message: 'Page deleted'
+      message: 'Page deleted successfully'
     });
   } catch (error) {
     console.error('Error deleting page:', error);

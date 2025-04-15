@@ -5,11 +5,16 @@
     <!-- Main content -->
     <v-main>
       <main-layout>
-        <router-view v-slot="{ Component }">
-          <transition name="fade" mode="out-in">
-            <component :is="Component" />
-          </transition>
-        </router-view>
+        <Suspense>
+          <template #default>
+            <router-view></router-view>
+          </template>
+          <template #fallback>
+            <div class="d-flex justify-center align-center" style="height: 100vh">
+              <v-progress-circular indeterminate color="primary"></v-progress-circular>
+            </div>
+          </template>
+        </Suspense>
 
         <!-- Toast Notifications -->
         <v-snackbar
@@ -54,16 +59,17 @@
 </template>
 
 <script>
-import MainLayout from '@/components/layout/MainLayout.vue';
+import { defineComponent, computed, onMounted } from 'vue';
+import MainLayout from '@/layouts/MainLayout.vue';
 import OrderChatDialog from '@/components/order/OrderChatDialog.vue';
 import NotificationCenter from '@/components/notifications/NotificationCenter.vue'
 import NotificationToast from '@/components/notifications/NotificationToast.vue'
 import SupportChat from '@/components/support/SupportChat.vue'
-import { computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useToast } from '@/composables/useToast';
+import { useRouter } from 'vue-router';
 
-export default {
+export default defineComponent({
   name: 'App',
 
   components: {
@@ -76,6 +82,7 @@ export default {
 
   setup() {
     const store = useStore();
+    const router = useRouter();
 
     // Get toast state from our composable
     const { state: toastState } = useToast();
@@ -91,18 +98,22 @@ export default {
       store.dispatch('chat/closeChatDialog');
     };
 
-    // Initialize notifications system
+    // Initialize notifications system with error handling
     onMounted(async () => {
-      await store.dispatch('notifications/init')
-    })
+      try {
+        await store.dispatch('notifications/init');
+      } catch (error) {
+        console.warn('Failed to initialize notifications:', error);
+      }
+    });
 
     // Computed properties for toast notifications
     const showNotification = computed({
       get: () => store.state.notifications.showNotification,
       set: (value) => store.commit('notifications/SET_SHOW_NOTIFICATION', value)
-    })
+    });
 
-    const currentNotification = computed(() => store.state.notifications.currentNotification)
+    const currentNotification = computed(() => store.state.notifications.currentNotification);
 
     return {
       toast: toastState,
@@ -115,7 +126,7 @@ export default {
       currentNotification
     };
   }
-};
+});
 </script>
 
 <style>

@@ -36,7 +36,11 @@ export default {
             const response = await axios.post('/api/auth/refresh-token', { refreshToken });
             const { token: newToken, refreshToken: newRefreshToken } = response.data;
 
-            this.setTokens(newToken, newRefreshToken);
+            if (!newToken) {
+              throw new Error('No access token received');
+            }
+
+            this.setTokens(newToken, newRefreshToken || refreshToken);
             axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
 

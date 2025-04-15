@@ -1,4 +1,4 @@
-const User = require('../../models/user');
+const { User } = require('../models');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { OAuth2Client } = require('google-auth-library');
@@ -141,7 +141,7 @@ exports.login = async (req, res) => {
     console.log('Login attempt for:', req.body.email);
     const { email, password } = req.body;
     
-    // Find user with email using the correct model
+    // Find user with email using the Sequelize model
     const user = await User.findByEmail(email);
     
     if (!user) {
@@ -151,8 +151,8 @@ exports.login = async (req, res) => {
     
     console.log('User found:', user.id, user.email);
     
-    // Verify password directly with bcrypt
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    // Use the comparePassword method from the User model instance
+    const isPasswordValid = await user.comparePassword(password);
     
     console.log('Password valid:', isPasswordValid);
     
@@ -237,7 +237,7 @@ exports.googleLogin = async (req, res) => {
     
     const { email, name, picture } = ticket.getPayload();
     
-    // Find or create user with the correct model
+    // Find or create user with the Sequelize model
     let user = await User.findByEmail(email);
     
     if (!user) {
@@ -251,7 +251,7 @@ exports.googleLogin = async (req, res) => {
         username = username + randomChars;
       }
       
-      // Create new user for Google login
+      // Create new user for Google login using Sequelize model
       user = await User.create({
         fullName: name,
         email,
@@ -263,16 +263,13 @@ exports.googleLogin = async (req, res) => {
         role: 'customer'
       });
     } else {
-      // Update existing user's Google info
-      await User.update(
-        {
-          socialProvider: 'google',
-          socialId: email,
-          isEmailVerified: true,
-          lastLogin: new Date()
-        },
-        { where: { id: user.id } }
-      );
+      // Update existing user's Google info using Sequelize model
+      await user.update({
+        socialProvider: 'google',
+        socialId: email,
+        isEmailVerified: true,
+        lastLogin: new Date()
+      });
     }
     
     // Generate access token with both id and userId fields

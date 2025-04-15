@@ -429,7 +429,11 @@ const actions = {
         refreshToken: state.refreshToken
       });
       
-      const { accessToken, refreshToken } = response.data;
+      const { token: accessToken, refreshToken } = response.data;
+      
+      if (!accessToken) {
+        throw new Error('No access token received');
+      }
       
       commit('SET_TOKENS', { accessToken, refreshToken });
       
@@ -488,9 +492,7 @@ const actions = {
   // Logout
   async logout({ commit }) {
     try {
-      if (state.accessToken) {
-        await axios.post('/api/auth/logout');
-      }
+      await axios.post('/api/auth/logout');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
@@ -499,6 +501,10 @@ const actions = {
       
       // Clear axios header
       delete axios.defaults.headers.common['Authorization'];
+      
+      // Clear local storage
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('refresh_token');
     }
   }
 };

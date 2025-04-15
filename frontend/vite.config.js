@@ -9,12 +9,23 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => {
-          // Handle duplicate /api prefixes
-          return path.replace(/^\/api\/api(.*)/, '/api$1');
+          // Remove /api prefix since the backend already has it
+          return path.replace(/^\/api/, '');
+        },
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.log('[Vite Proxy Error]', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('[Vite Proxy Request]', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('[Vite Proxy Response]', proxyRes.statusCode, req.url);
+          });
         }
       }
     },

@@ -228,9 +228,35 @@ export const restaurantService = {
    * @returns {Promise} Promise with nearby restaurant data
    */
   async getNearbyRestaurants(params = {}) {
-    const response = await api.get('/restaurants/nearby', { 
-      params
-    });
-    return response.data;
+    const {
+      lat,
+      lng,
+      radius = 5,
+      limit = 10
+    } = params;
+
+    try {
+      const response = await axios.get(`${API_ENDPOINT}/nearby`, {
+        params: {
+          lat,
+          lng,
+          radius,
+          limit
+        }
+      });
+
+      if (!response.data) {
+        return { restaurants: [] };
+      }
+
+      if (response.data.status === 'success' && response.data.data?.restaurants) {
+        return { restaurants: response.data.data.restaurants };
+      }
+
+      return { restaurants: [] };
+    } catch (error) {
+      console.error('Error fetching nearby restaurants:', error);
+      throw error;
+    }
   }
 };

@@ -91,16 +91,16 @@
           >
             <template v-slot:item.status="{ item }">
               <v-chip
-                :color="item.status === 'published' ? 'success' : 'warning'"
+                :color="item.published ? 'success' : 'warning'"
                 size="small"
                 class="text-capitalize"
               >
-                {{ item.status }}
+                {{ item.published ? 'Published' : 'Draft' }}
               </v-chip>
             </template>
 
             <template v-slot:item.lastUpdated="{ item }">
-              {{ formatDate(item.lastUpdated) }}
+              {{ formatDate(item.updatedAt) }}
             </template>
 
             <template v-slot:item.actions="{ item }">
@@ -174,11 +174,15 @@
               <v-row>
                 <v-col cols="12" sm="6">
                   <v-select
-                    v-model="editingContent.status"
+                    v-model="editingContent.published"
                     label="Status"
-                    :items="['draft', 'published']"
-                    variant="outlined"
-                    class="mb-4"
+                    :items="[
+                      { title: 'Draft', value: false },
+                      { title: 'Published', value: true }
+                    ]"
+                    item-title="title"
+                    item-value="value"
+                    required
                   ></v-select>
                 </v-col>
                 
@@ -211,7 +215,7 @@
                       persistent-hint
                     ></v-textarea>
                   </v-expansion-panel-text>
-                </v-expansion-panel>
+                </v-expansion-panels>
               </v-expansion-panels>
             </v-form>
           </v-card-text>
@@ -310,8 +314,8 @@ export default {
 
     const headers = [
       { title: 'Title', key: 'title', sortable: true },
-      { title: 'Status', key: 'status', sortable: true, width: '120px' },
-      { title: 'Last Updated', key: 'lastUpdated', sortable: true, width: '150px' },
+      { title: 'Status', key: 'published', sortable: true, width: '120px' },
+      { title: 'Last Updated', key: 'updatedAt', sortable: true, width: '150px' },
       { title: 'Actions', key: 'actions', sortable: false, align: 'end', width: '100px' }
     ];
 
@@ -338,10 +342,7 @@ export default {
         title: '',
         slug: '',
         content: '',
-        status: 'draft',
-        metaTitle: '',
-        metaDescription: '',
-        isPinned: false
+        published: false
       };
     };
 

@@ -4,6 +4,8 @@ const STATIC_ASSETS = [
   '/index.html',
   '/offline.html',
   '/manifest.json',
+  '/img/icons/icon-192x192.png',
+  '/img/icons/icon-512x512.png',
   '/img/icons/notification-icon.png',
   '/img/icons/badge-icon.png'
 ];
@@ -193,8 +195,42 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   );
 });
 
-// Offline page handling
+// Offline page and asset handling
 self.addEventListener('fetch', (event) => {
+  // Special handling for icon files
+  if (event.request.url.includes('/img/icons/')) {
+    event.respondWith(
+      caches.match(event.request)
+        .then((response) => {
+          // Return cached version if available
+          if (response) {
+            return response;
+          }
+          
+          // Otherwise fetch and cache
+          return fetch(event.request)
+            .then((response) => {
+              // Check if we received a valid response
+              if (!response || response.status !== 200 || response.type !== 'basic') {
+                return response;
+              }
+
+              // Clone the response as it can only be used once
+              const responseToCache = response.clone();
+
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(event.request, responseToCache);
+                });
+
+              return response;
+            });
+        })
+    );
+    return;
+  }
+
+  // Default fetch handling for other requests
   event.respondWith(
     fetch(event.request)
       .catch(() => {
@@ -203,20 +239,11 @@ self.addEventListener('fetch', (event) => {
             if (response) {
               return response;
             }
-            
-            // Show offline page for navigation requests
+            // Return offline page for navigation requests
             if (event.request.mode === 'navigate') {
               return caches.match('/offline.html');
             }
-            
-            // Return error response for other requests
-            return new Response(
-              JSON.stringify({ error: 'Network error' }),
-              { 
-                status: 503,
-                headers: { 'Content-Type': 'application/json' }
-              }
-            );
+            return null;
           });
       })
   );

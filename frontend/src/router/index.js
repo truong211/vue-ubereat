@@ -18,6 +18,13 @@ const PaymentMethods = () => import('@/views/payment/PaymentMethods.vue')
 import { adminRoutes } from './admin.js';
 
 const routes = [
+  // Root route
+  {
+    path: '/',
+    name: 'Home',
+    component: HomeView
+  },
+
   // Auth routes
   {
     path: '/auth',
@@ -257,11 +264,6 @@ const routes = [
   adminRoutes,
 
   // Other routes...
-  {
-    path: '/',
-    name: 'home',
-    component: HomeView
-  },
   {
     path: '/search',
     name: 'search',

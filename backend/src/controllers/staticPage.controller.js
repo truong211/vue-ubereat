@@ -1,5 +1,5 @@
 const { validationResult } = require('express-validator');
-const db = require('../config/database');
+const { StaticPage } = require('../models');
 const { AppError } = require('../utils/errors');
 
 /**
@@ -9,9 +9,9 @@ const { AppError } = require('../utils/errors');
  */
 exports.getAllPages = async (req, res, next) => {
   try {
-    const pages = await db.query(
-      'SELECT * FROM static_pages ORDER BY title ASC'
-    );
+    const pages = await StaticPage.findAll({
+      order: [['title', 'ASC']]
+    });
 
     res.status(200).json({
       status: 'success',
@@ -32,10 +32,12 @@ exports.getAllPages = async (req, res, next) => {
 exports.getPageBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
-    const [page] = await db.query(
-      'SELECT * FROM static_pages WHERE slug = ? AND published = TRUE',
-      [slug]
-    );
+    const page = await StaticPage.findOne({
+      where: {
+        slug,
+        published: true
+      }
+    });
 
     if (!page) {
       return next(new AppError('Page not found', 404));
@@ -65,15 +67,12 @@ exports.createPage = async (req, res, next) => {
     }
 
     const { title, slug, content, published } = req.body;
-    const result = await db.query(
-      'INSERT INTO static_pages (title, slug, content, published, createdAt, updatedAt) VALUES (?, ?, ?, ?, NOW(), NOW())',
-      [title, slug, content, published || false]
-    );
-
-    const [page] = await db.query(
-      'SELECT * FROM static_pages WHERE id = ?',
-      [result.insertId]
-    );
+    const page = await StaticPage.create({
+      title,
+      slug,
+      content,
+      published: published || false
+    });
 
     res.status(201).json({
       status: 'success',
@@ -102,32 +101,22 @@ exports.updatePage = async (req, res, next) => {
     const { title, slug, content, published } = req.body;
 
     // First check if page exists
-    const [existingPage] = await db.query(
-      'SELECT * FROM static_pages WHERE id = ?',
-      [id]
-    );
+    const existingPage = await StaticPage.findByPk(id);
 
     if (!existingPage) {
       return next(new AppError('Page not found', 404));
     }
 
     // Update the page
-    await db.query(
-      'UPDATE static_pages SET title = ?, slug = ?, content = ?, published = ?, updatedAt = NOW() WHERE id = ?',
-      [
-        title || existingPage.title,
-        slug || existingPage.slug,
-        content || existingPage.content,
-        published !== undefined ? published : existingPage.published,
-        id
-      ]
-    );
+    await existingPage.update({
+      title: title || existingPage.title,
+      slug: slug || existingPage.slug,
+      content: content || existingPage.content,
+      published: published !== undefined ? published : existingPage.published
+    });
 
     // Get updated page
-    const [updatedPage] = await db.query(
-      'SELECT * FROM static_pages WHERE id = ?',
-      [id]
-    );
+    const updatedPage = await StaticPage.findByPk(id);
 
     res.status(200).json({
       status: 'success',
@@ -150,20 +139,14 @@ exports.deletePage = async (req, res, next) => {
     const { id } = req.params;
     
     // First check if page exists
-    const [existingPage] = await db.query(
-      'SELECT * FROM static_pages WHERE id = ?',
-      [id]
-    );
+    const existingPage = await StaticPage.findByPk(id);
     
     if (!existingPage) {
       return next(new AppError('Page not found', 404));
     }
 
     // Delete the page
-    await db.query(
-      'DELETE FROM static_pages WHERE id = ?',
-      [id]
-    );
+    await existingPage.destroy();
 
     res.status(204).json({
       status: 'success',

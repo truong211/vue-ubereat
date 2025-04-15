@@ -1,9 +1,9 @@
 const { Model, DataTypes } = require('sequelize');
 const sequelize = require('../config/database');
 
-class Notification extends Model {
+class NotificationSubscription extends Model {
   static associate(models) {
-    Notification.belongsTo(models.User, {
+    NotificationSubscription.belongsTo(models.User, {
       foreignKey: 'user_id',
       as: 'user',
       onDelete: 'CASCADE'
@@ -11,7 +11,7 @@ class Notification extends Model {
   }
 }
 
-Notification.init({
+NotificationSubscription.init({
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -19,49 +19,40 @@ Notification.init({
   },
   user_id: {
     type: DataTypes.INTEGER,
-    allowNull: true, // Allow null for system-wide notifications
-    field: 'user_id',
+    allowNull: false,
     references: {
       model: 'users',
       key: 'id'
-    }
+    },
+    onDelete: 'CASCADE',
+    field: 'user_id'
   },
-  type: {
-    type: DataTypes.STRING(50),
+  endpoint: {
+    type: DataTypes.STRING(255),
     allowNull: false,
-    defaultValue: 'general'
+    comment: 'Subscription endpoint URL'
   },
-  title: {
-    type: DataTypes.STRING,
-    allowNull: false
-  },
-  message: {
+  subscription: {
     type: DataTypes.TEXT,
-    allowNull: false
+    allowNull: false,
+    comment: 'Stringified web push subscription data'
   },
-  data: {
-    type: DataTypes.JSON,
-    allowNull: true
+  user_agent: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'User agent of the browser that created the subscription',
+    field: 'user_agent'
   },
-  is_system_wide: {
+  active: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'is_system_wide'
+    defaultValue: true,
+    comment: 'Whether the subscription is currently active'
   },
-  is_read: {
-    type: DataTypes.BOOLEAN,
-    defaultValue: false,
-    field: 'is_read'
-  },
-  read_at: {
+  last_used: {
     type: DataTypes.DATE,
     allowNull: true,
-    field: 'read_at'
-  },
-  valid_until: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    field: 'valid_until'
+    comment: 'Last time this subscription was used to send a notification',
+    field: 'last_used'
   },
   created_at: {
     type: DataTypes.DATE,
@@ -76,12 +67,12 @@ Notification.init({
   }
 }, {
   sequelize,
-  modelName: 'Notification',
-  tableName: 'notifications',
+  modelName: 'NotificationSubscription',
+  tableName: 'notification_subscriptions',
   timestamps: true,
   underscored: true,
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 });
 
-module.exports = Notification;
+module.exports = NotificationSubscription; 

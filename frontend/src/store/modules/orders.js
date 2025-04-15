@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { apiClient } from '../../services/api.service';
+import { apiClient } from '@/services/api.service';
 
 const state = {
   orders: [],

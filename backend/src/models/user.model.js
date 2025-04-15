@@ -1,190 +1,193 @@
+const { Model, DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
-const db = require('../config/database');
+const sequelize = require('../config/database');
 
-/**
- * User model with direct SQL implementation
- */
-const User = {
-  tableName: 'users',
-  
-  findByPk: async (id) => {
-    try {
-      // Check if id is undefined or null, return null early
-      if (id === undefined || id === null) {
-        return null;
-      }
-      
-      const results = await db.query('SELECT * FROM users WHERE id = ?', [id]);
-      return results[0];
-    } catch (error) {
-      console.error('Error in User.findByPk:', error);
-      throw error;
-    }
-  },
-  
-  findOne: async (where) => {
-    try {
-      const whereClause = Object.entries(where)
-        .map(([key, value]) => `${key} = ?`)
-        .join(' AND ');
-      const values = Object.values(where);
-      
-      const results = await db.query(`SELECT * FROM users WHERE ${whereClause} LIMIT 1`, values);
-      return results[0];
-    } catch (error) {
-      console.error('Error in User.findOne:', error);
-      throw error;
-    }
-  },
-  
-  findAll: async (options = {}) => {
-    try {
-      let sql = 'SELECT * FROM users';
-      const values = [];
-      
-      if (options.where) {
-        const whereClause = Object.entries(options.where)
-          .map(([key, value]) => `${key} = ?`)
-          .join(' AND ');
-        sql += ` WHERE ${whereClause}`;
-        values.push(...Object.values(options.where));
-      }
-      
-      if (options.order) {
-        sql += ` ORDER BY ${options.order}`;
-      }
-      
-      if (options.limit) {
-        sql += ` LIMIT ${parseInt(options.limit)}`;
-      }
-      
-      if (options.offset) {
-        sql += ` OFFSET ${parseInt(options.offset)}`;
-      }
-      
-      return await db.query(sql, values);
-    } catch (error) {
-      console.error('Error in User.findAll:', error);
-      throw error;
-    }
-  },
-  
-  create: async (data) => {
-    try {
-      // Handle password hashing
-      const processedData = { ...data };
-      if (processedData.password) {
-        const salt = await bcrypt.genSalt(10);
-        processedData.password = await bcrypt.hash(processedData.password, salt);
-      }
-      
-      // Handle JSON fields
-      ['preferences', 'savedAddresses'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
-        }
-      });
-      
-      const columns = Object.keys(processedData).join(', ');
-      const placeholders = Object.keys(processedData).map(() => '?').join(', ');
-      const values = Object.values(processedData);
-      
-      const result = await db.query(
-        `INSERT INTO users (${columns}) VALUES (${placeholders})`, 
-        values
-      );
-      
-      return { id: result.insertId, ...data };
-    } catch (error) {
-      console.error('Error in User.create:', error);
-      throw error;
-    }
-  },
-  
-  update: async (id, data) => {
-    try {
-      // Handle password hashing
-      const processedData = { ...data };
-      if (processedData.password) {
-        const salt = await bcrypt.genSalt(10);
-        processedData.password = await bcrypt.hash(processedData.password, salt);
-      }
-      
-      // Handle JSON fields
-      ['preferences', 'savedAddresses'].forEach(field => {
-        if (processedData[field] && typeof processedData[field] === 'object') {
-          processedData[field] = JSON.stringify(processedData[field]);
-        }
-      });
-      
-      const setClauses = Object.keys(processedData)
-        .map(key => `${key} = ?`)
-        .join(', ');
-      const values = [...Object.values(processedData), id];
-      
-      const result = await db.query(
-        `UPDATE users SET ${setClauses} WHERE id = ?`,
-        values
-      );
-      
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in User.update:', error);
-      throw error;
-    }
-  },
-  
-  destroy: async (id) => {
-    try {
-      const result = await db.query('DELETE FROM users WHERE id = ?', [id]);
-      return result.affectedRows > 0;
-    } catch (error) {
-      console.error('Error in User.destroy:', error);
-      throw error;
-    }
-  },
-  
-  count: async (where = {}) => {
-    try {
-      let sql = 'SELECT COUNT(*) as count FROM users';
-      const values = [];
-      
-      if (Object.keys(where).length > 0) {
-        const whereClause = Object.entries(where)
-          .map(([key, value]) => `${key} = ?`)
-          .join(' AND ');
-        sql += ` WHERE ${whereClause}`;
-        values.push(...Object.values(where));
-      }
-      
-      const results = await db.query(sql, values);
-      return results[0].count;
-    } catch (error) {
-      console.error('Error in User.count:', error);
-      throw error;
-    }
-  },
-  
-  // Special method to verify password
-  comparePassword: async (plainPassword, hashedPassword) => {
-    return await bcrypt.compare(plainPassword, hashedPassword);
-  },
-  
-  // Utility functions
-  validatePassword: async (user, password) => {
-    return await bcrypt.compare(password, user.password);
-  },
-  
-  passwordChangedAfter: (user, timestamp) => {
-    if (user.passwordChangedAt) {
+class User extends Model {
+  async comparePassword(plainPassword) {
+    return await bcrypt.compare(plainPassword, this.password);
+  }
+
+  passwordChangedAfter(timestamp) {
+    if (this.passwordChangedAt) {
       const changedTimestamp = parseInt(
-        new Date(user.passwordChangedAt).getTime() / 1000,
+        new Date(this.passwordChangedAt).getTime() / 1000,
         10
       );
       return timestamp < changedTimestamp;
     }
     return false;
   }
-};
+  
+  // Static method to update login timestamp
+  static async updateLoginTimestamp(userId) {
+    try {
+      return await this.update(
+        { lastLogin: new Date() },
+        { where: { id: userId } }
+      );
+    } catch (error) {
+      console.error('Error updating login timestamp:', error);
+      return false;
+    }
+  }
+  
+  // Static method to find user by email
+  static async findByEmail(email) {
+    try {
+      return await this.findOne({
+        where: { email }
+      });
+    } catch (error) {
+      console.error('Error finding user by email:', error);
+      return null;
+    }
+  }
+}
+
+User.init({
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  username: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    unique: true
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  password: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  fullName: {
+    type: DataTypes.STRING(100),
+    allowNull: false
+  },
+  phone: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  role: {
+    type: DataTypes.ENUM('admin', 'customer', 'restaurant', 'driver'),
+    defaultValue: 'customer'
+  },
+  profileImage: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  },
+  lastLogin: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  isEmailVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  isPhoneVerified: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  emailVerificationOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  emailVerificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  phoneVerificationOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  phoneVerificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  resetPasswordOtp: {
+    type: DataTypes.STRING(10),
+    allowNull: true
+  },
+  resetPasswordExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  socialProvider: {
+    type: DataTypes.ENUM('local', 'google', 'facebook', 'apple'),
+    defaultValue: 'local'
+  },
+  socialId: {
+    type: DataTypes.STRING(100),
+    allowNull: true
+  },
+  socialToken: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  verificationToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  verificationExpires: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  resetPasswordToken: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  preferredLanguage: {
+    type: DataTypes.STRING(10),
+    defaultValue: 'vi'
+  },
+  notificationPreferences: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    field: 'notification_preferences'
+  },
+  favoriteRestaurants: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  favoriteDishes: {
+    type: DataTypes.JSON,
+    allowNull: true
+  }
+}, {
+  sequelize,
+  modelName: 'User',
+  tableName: 'users',
+  timestamps: true
+});
+
+// Hash password before saving
+User.beforeCreate(async (user) => {
+  if (user.password) {
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(user.password, salt);
+  }
+});
+
+User.beforeUpdate(async (user) => {
+  if (user.changed('password')) {
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(user.password, salt);
+  }
+});
 
 module.exports = User;

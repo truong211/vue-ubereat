@@ -198,90 +198,90 @@ db.authenticate()
     // Create missing tables if they don't exist
     const createMissingTables = async () => {
       try {
+        // Import models
+        const User = require('./models/user.model');
+        const Notification = require('./models/notification.model');
+        const NotificationPreference = require('./models/notificationPreference.model');
+        
+        // Force-sync only specific models that might be causing issues
+        await NotificationPreference.sync({ alter: true });
+        console.log('NotificationPreference table synced');
+        
+        // Create notifications table first
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
+            type VARCHAR(50) NOT NULL DEFAULT 'general',
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            data JSON,
+            is_system_wide BOOLEAN DEFAULT FALSE,
+            is_read BOOLEAN DEFAULT FALSE,
+            read_at DATETIME,
+            valid_until DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('Checked/created notifications table');
+
+        // Create notification_subscriptions table
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS notification_subscriptions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            endpoint VARCHAR(255) NOT NULL,
+            subscription TEXT NOT NULL,
+            user_agent VARCHAR(255),
+            active BOOLEAN DEFAULT TRUE,
+            last_used DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('Checked/created notification_subscriptions table');
+
         // Check and create user_favorites table
         await db.query(`
           CREATE TABLE IF NOT EXISTS user_favorites (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            userId INT NOT NULL,
-            itemId INT NOT NULL,
+            user_id INT NOT NULL,
+            item_id INT NOT NULL,
             type ENUM('food', 'restaurant', 'category') NOT NULL,
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE KEY favorite_user_item_type (userId, itemId, type)
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            UNIQUE KEY favorite_user_item_type (user_id, item_id, type)
           )
         `);
         console.log('Checked/created user_favorites table');
+
+        // Create promotion_redemptions table
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS promotion_redemptions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            promotion_id INT NOT NULL,
+            user_id INT NOT NULL,
+            order_id INT,
+            amount DECIMAL(10,2),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        `);
+        console.log('Checked/created promotion_redemptions table');
         
-        // Update notifications table to include isSystemWide and validUntil fields
-        try {
-          // First check if the columns exist using separate try-catch blocks for each column
-          let hasSystemWideColumn = false;
-          let hasValidUntilColumn = false;
-          
-          try {
-            const [columnsResult] = await db.query(`
-              SHOW COLUMNS FROM notifications LIKE 'isSystemWide'
-            `);
-            hasSystemWideColumn = columnsResult.length > 0;
-          } catch (err) {
-            console.error('Error checking for isSystemWide column:', err);
-          }
-          
-          try {
-            const [validUntilResult] = await db.query(`
-              SHOW COLUMNS FROM notifications LIKE 'validUntil'
-            `);
-            hasValidUntilColumn = validUntilResult.length > 0;
-          } catch (err) {
-            console.error('Error checking for validUntil column:', err);
-          }
-          
-          // Add each column separately to handle errors individually
-          if (!hasSystemWideColumn) {
-            try {
-              await db.query('ALTER TABLE notifications ADD COLUMN isSystemWide BOOLEAN DEFAULT FALSE');
-              console.log('Added isSystemWide column to notifications table');
-            } catch (err) {
-              if (err.code === 'ER_DUP_FIELDNAME') {
-                console.log('isSystemWide column already exists');
-              } else {
-                console.error('Error adding isSystemWide column:', err);
-              }
-            }
-          }
-          
-          if (!hasValidUntilColumn) {
-            try {
-              await db.query('ALTER TABLE notifications ADD COLUMN validUntil DATETIME');
-              console.log('Added validUntil column to notifications table');
-            } catch (err) {
-              if (err.code === 'ER_DUP_FIELDNAME') {
-                console.log('validUntil column already exists');
-              } else {
-                console.error('Error adding validUntil column:', err);
-              }
-            }
-          }
-          
-          // Modify userId column always
-          try {
-            await db.query('ALTER TABLE notifications MODIFY COLUMN userId INT NULL');
-            console.log('Modified userId column in notifications table');
-          } catch (err) {
-            console.error('Error modifying userId column:', err);
-          }
-          
-          console.log('Updated notifications table schema');
-        } catch (err) {
-          console.error('Error updating notifications table:', err);
-        }
-      } catch (err) {
-        console.error('Error creating missing tables:', err);
+        console.log('All tables created successfully');
+      } catch (error) {
+        console.error('Error creating missing tables:', error);
       }
     };
     
-    // Run the table creation
     createMissingTables();
     
     // No need for synchronization since we're using the SQL file directly

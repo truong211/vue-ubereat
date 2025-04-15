@@ -313,43 +313,26 @@ const actions = {
 
   // Fetch notifications from API
   async fetchNotifications({ commit, state }) {
-    commit('SET_LOADING', true);
-    
     try {
-      const response = await axios.get(`${API_URL}/api/notifications`, {
-        params: {
-          page: state.pagination.page,
-          limit: state.pagination.limit
-        }
+      commit('SET_LOADING', true);
+      const { page, limit } = state.pagination;
+      const response = await axios.get(`${API_URL}/notifications`, {
+        params: { page, limit }
       });
       
-      if (response.data && response.data.data) {
-        const { notifications, totalPages, currentPage, totalCount } = response.data.data;
-        
-        commit('SET_NOTIFICATIONS', notifications || []);
-        commit('SET_PAGINATION', {
-          page: currentPage || 1,
-          limit: state.pagination.limit,
-          totalPages: totalPages || 1,
-          totalCount: totalCount || 0
-        });
-        
-        return response.data.data;
-      }
+      commit('SET_NOTIFICATIONS', response.data.notifications);
+      commit('SET_PAGINATION', {
+        page: response.data.currentPage,
+        limit: response.data.limit,
+        totalPages: response.data.totalPages,
+        totalCount: response.data.total
+      });
       
-      return { notifications: [], totalPages: 0, totalCount: 0 };
+      return response.data;
     } catch (error) {
       console.error('Error fetching notifications:', error);
-      // Set empty notifications and reset pagination on error
-      commit('SET_NOTIFICATIONS', []);
-      commit('SET_PAGINATION', {
-        page: 1,
-        limit: state.pagination.limit,
-        totalPages: 0,
-        totalCount: 0
-      });
-      
-      return { notifications: [], totalPages: 0, totalCount: 0 };
+      commit('SET_ERROR', error.message);
+      throw error;
     } finally {
       commit('SET_LOADING', false);
     }
@@ -368,7 +351,7 @@ const actions = {
   // Mark notification as read
   async markAsRead({ commit }, notificationId) {
     try {
-      await axios.patch(`${API_URL}/api/notifications/read`, {
+      await axios.patch(`${API_URL}/notifications/read`, {
         notificationIds: [notificationId]
       });
       commit('MARK_AS_READ', notificationId);
@@ -380,7 +363,7 @@ const actions = {
   // Mark all notifications as read
   async markAllAsRead({ commit }) {
     try {
-      await axios.patch(`${API_URL}/api/notifications/read-all`);
+      await axios.patch(`${API_URL}/notifications/read-all`);
       commit('MARK_ALL_AS_READ');
     } catch (error) {
       console.error('Failed to mark all notifications as read:', error);
@@ -414,7 +397,7 @@ const actions = {
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       
-      const response = await axios.get(`${API_URL}/api/notifications/preferences`);
+      const response = await axios.get(`${API_URL}/notifications/preferences`);
       
       // Make sure we have a preferences object with default values in case anything is missing
       const preferences = response.data.data || {};
@@ -441,7 +424,7 @@ const actions = {
   // Update notification preferences in the backend
   async updateNotificationPreferences({ commit }, preferences) {
     try {
-      const response = await axios.put(`${API_URL}/api/notifications/preferences`, preferences);
+      const response = await axios.put(`${API_URL}/notifications/preferences`, preferences);
       commit('UPDATE_PREFERENCES', preferences);
       return response.data;
     } catch (error) {
@@ -499,40 +482,19 @@ const actions = {
   // Load user's notification preferences
   async loadPreferences({ commit }) {
     try {
-      // Get user notification preferences from API
-      const response = await axios.get(`${API_URL}/api/notifications/preferences`);
-      
-      if (response.data) {
-        // Update state with preferences from API
-        commit('UPDATE_PREFERENCES', response.data);
-      }
-      
+      const response = await axios.get(`${API_URL}/notifications/preferences`);
+      commit('UPDATE_PREFERENCES', response.data);
       return response.data;
     } catch (error) {
       console.error('Error loading notification preferences:', error);
-      
-      // Default preferences in case of error
-      const defaultPreferences = {
-        push: false,
-        email: true,
-        sms: false,
-        enabledTypes: [
-          'order_status',
-          'driver_location',
-          'chat',
-          'system'
-        ]
-      };
-      
-      commit('UPDATE_PREFERENCES', defaultPreferences);
-      return defaultPreferences;
+      throw error;
     }
   },
 
   // Update notification preferences
   async updatePreferences({ commit }, preferences) {
     try {
-      const response = await axios.put(`${API_URL}/api/notifications/preferences`, preferences);
+      const response = await axios.put(`${API_URL}/notifications/preferences`, preferences);
       
       if (response.data && response.data.data) {
         commit('UPDATE_PREFERENCES', response.data.data);
@@ -591,7 +553,7 @@ const actions = {
   // Delete a notification
   async deleteNotification({ commit, state }, notificationId) {
     try {
-      await axios.delete(`${API_URL}/api/notifications/${notificationId}`);
+      await axios.delete(`${API_URL}/notifications/${notificationId}`);
       
       // Remove from local state
       const updatedNotifications = state.notifications.filter(n => n.id !== notificationId);
@@ -613,7 +575,7 @@ const actions = {
         return { ...state.preferences };
       }
       
-      const response = await axios.get(`${API_URL}/notifications/settings`);
+      const response = await axios.get('/notifications/settings');
       const settings = response.data.data || response.data;
       
       commit('UPDATE_PREFERENCES', settings);
@@ -632,7 +594,7 @@ const actions = {
   async updateSettings({ commit }, settings) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.put(`${API_URL}/notifications/settings`, settings);
+      const response = await axios.put('/notifications/settings', settings);
       const updatedSettings = response.data.data || response.data;
       
       commit('UPDATE_PREFERENCES', updatedSettings);

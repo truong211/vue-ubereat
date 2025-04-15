@@ -1,16 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const notifications = require('../controllers/notification.controller');
-const { isAdmin } = require('../middleware/auth.middleware');
+const { isAdmin, authMiddleware } = require('../middleware/auth.middleware');
 const { body } = require('express-validator');
 
 // Subscription management routes
-router.post('/subscribe', notifications.subscribe);
-router.post('/unsubscribe', notifications.unsubscribe);
+router.post('/subscribe', authMiddleware, notifications.subscribe);
+router.post('/unsubscribe', authMiddleware, notifications.unsubscribe);
 
 // Preference management routes
-router.get('/preferences', notifications.getPreferences);
+router.get('/preferences', authMiddleware, notifications.getPreferences);
 router.put('/preferences', [
+  authMiddleware,
   body('orderUpdates').optional().isBoolean(),
   body('promotions').optional().isBoolean(),
   body('driverLocation').optional().isBoolean(),
@@ -21,21 +22,22 @@ router.put('/preferences', [
 ], notifications.updatePreferences);
 
 // Notification management routes
-router.get('/', notifications.getUserNotifications);
-router.get('/unread/count', notifications.getUnreadCount);
-router.get('/counts', notifications.getNotificationCounts);
-router.patch('/read', notifications.markAsRead);
-router.patch('/read-all', notifications.markAllAsRead);
-router.delete('/:id', notifications.delete);
+router.get('/', authMiddleware, notifications.getUserNotifications);
+router.get('/unread/count', authMiddleware, notifications.getUnreadCount);
+router.get('/counts', authMiddleware, notifications.getNotificationCounts);
+router.patch('/read', authMiddleware, notifications.markAsRead);
+router.patch('/read-all', authMiddleware, notifications.markAllAsRead);
+router.delete('/:id', authMiddleware, notifications.delete);
 
 // Tracking routes
 router.post('/:notificationId/track-delivery', [
+  authMiddleware,
   body('status').isIn(['sent', 'delivered', 'failed', 'clicked']).withMessage('Invalid status'),
   body('deviceInfo').optional().isObject(),
   body('errorDetails').optional().isString()
 ], notifications.trackDelivery);
 
-router.post('/:notificationId/track-click', notifications.trackClick);
+router.post('/:notificationId/track-click', authMiddleware, notifications.trackClick);
 
 // Analytics routes
 router.get('/delivery-stats', [isAdmin], notifications.getDeliveryStats);
