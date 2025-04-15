@@ -82,6 +82,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import axiosInstance from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import PersonalInfo from '@/components/profile/sections/PersonalInfo.vue'
 import OrderHistory from '@/components/profile/sections/OrderHistory.vue'
@@ -106,14 +107,27 @@ export default {
       phone: ''
     })
     
+    const fetchUserProfile = async () => {
+      try {
+        const response = await authStore.fetchUser();
+        if (response.success && response.user) {
+          return response.user;
+        }
+        throw new Error('Invalid profile data received');
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        throw error;
+      }
+    };
+
     const loadProfile = async () => {
       try {
-        const userData = await authStore.fetchUser()
+        const userData = await fetchUserProfile()
         profile.value = {
-          name: userData.name || `${userData.firstName} ${userData.lastName}`.trim(),
-          email: userData.email,
-          avatar: userData.avatar,
-          phone: userData.phone
+          name: userData.fullName || userData.name || 'No name provided',
+          email: userData.email || '',
+          avatar: userData.profileImage || '',
+          phone: userData.phone || ''
         }
       } catch (error) {
         console.error('Error loading profile:', error)

@@ -20,6 +20,17 @@
     "personalizedRecommendations": {
       "title": "Recommended for You",
       "viewAll": "View All Recommendations"
+    },
+    "howItWorks": {
+      "title": "How It Works"
+    },
+    "categories": {
+      "title": "Food Categories",
+      "viewAll": "View All Categories"
+    },
+    "promotions": {
+      "title": "Special Promotions",
+      "useCode": "Use Code"
     }
   },
   "groceries": {
@@ -40,7 +51,8 @@
   },
   "common": {
     "min": "min",
-    "km": "km"
+    "km": "km",
+    "search": "Search"
   },
   "notifications": {
     "push": {

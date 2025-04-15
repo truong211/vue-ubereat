@@ -5,21 +5,64 @@ const config = require('../src/config');
 const { verifyPassword } = require('../src/utils/password.util');
 
 // Get current user
-exports.getCurrentUser = async (req, res) => {
+/**
+ * Get current user profile
+ * @route GET /api/auth/me 
+ * @access Private
+ */
+exports.getMe = async (req, res) => {
   try {
-    const userId = req.userId; // From JWT token
+    const userId = req.user.id;
     const user = await User.findByPk(userId, {
-      attributes: { exclude: ['password'] } // Exclude password from response
+      attributes: [
+        'id', 
+        'email', 
+        'fullName',
+        'phone',
+        'address',
+        'role',
+        'status',
+        'profileImage',
+        'createdAt',
+        'updatedAt',
+        'isEmailVerified',
+        'lastLogin'
+      ]
     });
-
+    
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
 
-    res.json(user);
+    // Format the response data
+    const userData = {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName || '',
+      phone: user.phone || '',
+      address: user.address || '',
+      role: user.role || 'customer',
+      status: user.status || 'active',
+      profileImage: user.profileImage || null,
+      isEmailVerified: Boolean(user.isEmailVerified),
+      lastLogin: user.lastLogin,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt
+    };
+
+    res.json({
+      success: true,
+      user: userData
+    });
   } catch (error) {
-    console.error('Error fetching current user:', error);
-    res.status(500).json({ message: 'Server error while fetching user data' });
+    console.error('Error in getMe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user profile'
+    });
   }
 };
 

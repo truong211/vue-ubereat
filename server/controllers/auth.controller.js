@@ -567,18 +567,36 @@ exports.refreshToken = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const userId = req.user.id;
-    
-    // Find user
-    const user = await User.findById(userId)
-      .select('-password -verificationCode -resetPasswordToken -resetPasswordExpires');
+    const user = await User.findByPk(userId);
     
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
     }
-    
-    res.status(200).json({ user });
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        fullName: user.fullName || user.name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        address: user.address || '',
+        role: user.role || 'customer',
+        status: user.status || 'active',
+        profileImage: user.profileImage || null,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      }
+    });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error in getMe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching user profile'
+    });
   }
 };
 

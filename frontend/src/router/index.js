@@ -189,12 +189,28 @@ const router = createRouter({
           name: 'Settings',
           component: () => import('@/views/user/Settings.vue'),
           meta: { requiresAuth: true }
-        },
-        {
+        },        {
           path: 'favorites',
           name: 'Favorites',
           component: () => import('@/views/user/Favorites.vue'),
           meta: { requiresAuth: true }
+        },
+        {
+          path: 'profile/edit',
+          name: 'ProfileEdit',
+          component: () => import('@/views/user/Profile.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'promotions',
+          name: 'UserPromotions',
+          component: () => import('@/views/user/UserPromotions.vue'),
+          meta: { requiresAuth: true }
+        },
+        {
+          path: 'category/:categoryName',
+          name: 'Category',
+          component: () => import('@/views/Restaurants.vue')
         }
       ]
     },

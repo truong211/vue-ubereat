@@ -515,13 +515,15 @@ async function handleGetCurrentLocation() {
   }
 }
 
-watch(searchQuery, () => {
-  showSuggestions.value = searchQuery.value.length >= 2
-})
+watch(() => searchQuery?.value, (newVal) => {
+  showSuggestions.value = Boolean(newVal && newVal.length >= 2)
+}, { immediate: true })
 
-watch(locationQuery, () => {
-  showLocationSuggestions.value = locationQuery.value.length >= 3
-})
+watch(() => locationQuery.value, (newVal) => {
+  if (newVal !== undefined) {
+    showLocationSuggestions.value = newVal.length >= 3
+  }
+}, { immediate: true })
 
 // Open location dialog
 function openLocationDialog() {

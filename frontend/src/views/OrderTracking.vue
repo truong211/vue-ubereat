@@ -192,7 +192,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useOrderStore } from '@/store/order'
+import { useOrdersStore } from '@/store/modules/orders'
 import { useNotificationStore } from '@/store/notification'
 import { formatCurrency } from '@/utils/format'
 import LiveMap from '@/components/LiveMap.vue'
@@ -203,7 +203,7 @@ const route = useRoute()
 const router = useRouter()
 
 // Stores
-const orderStore = useOrderStore()
+const orderStore = useOrdersStore()
 const notificationStore = useNotificationStore()
 
 // Data

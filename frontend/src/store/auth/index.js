@@ -1,18 +1,19 @@
-import axios from 'axios';
+import axiosInstance from '@/config/axios';
 import { useStorage } from '@vueuse/core';
 import socialAuth from '@/services/social-auth';
 import otpAuth from '@/services/otp-auth';
+import { useRouter } from 'vue-router';
 
 const state = {
   user: null,
-  accessToken: useStorage('access_token', null),
-  refreshToken: useStorage('refresh_token', null),
-  isAuthenticated: false,
+  accessToken: localStorage.getItem('access_token') || null,
+  refreshToken: localStorage.getItem('refresh_token') || null,
+  isAuthenticated: !!localStorage.getItem('access_token'),
   otpVerified: false,
   registrationData: null,
   verificationStep: 1, // 1: Registration form, 2: OTP verification, 3: Success
   loading: false,
-  preferredAuthMethod: useStorage('preferred_auth_method', 'password'),
+  preferredAuthMethod: localStorage.getItem('preferred_auth_method') || 'password',
   availableAuthMethods: {
     password: true,
     otp: true,
@@ -29,6 +30,13 @@ const mutations = {
   SET_TOKENS(state, { accessToken, refreshToken }) {
     state.accessToken = accessToken;
     state.refreshToken = refreshToken;
+    if (accessToken) {
+      localStorage.setItem('access_token', accessToken);
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+    }
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+    }
   },
   SET_OTP_VERIFIED(state, verified) {
     state.otpVerified = verified;
@@ -122,7 +130,7 @@ const actions = {
       }
       
       // OTPs verified, now register the user
-      const response = await axios.post('/api/auth/register', {
+      const response = await axiosInstance.post('/api/auth/register', {
         ...state.registrationData,
         verified: true
       });
@@ -136,7 +144,7 @@ const actions = {
       commit('SET_VERIFICATION_STEP', 3);
       
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       
       commit('SET_LOADING', false);
       return response.data;
@@ -150,7 +158,7 @@ const actions = {
   async requestPasswordReset({ commit }, { email }) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/forgot-password', { email });
+      const response = await axiosInstance.post('/api/auth/forgot-password', { email });
       commit('SET_LOADING', false);
       return response.data;
     } catch (error) {
@@ -163,7 +171,7 @@ const actions = {
   async resetPassword({ commit }, { token, newPassword }) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/reset-password', { 
+      const response = await axiosInstance.post('/api/auth/reset-password', { 
         token, 
         newPassword 
       });
@@ -179,7 +187,7 @@ const actions = {
   async requestPasswordResetOTP({ commit }, { email, phone }) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/password/request-otp', { 
+      const response = await axiosInstance.post('/api/auth/password/request-otp', { 
         email, 
         phone 
       });
@@ -195,7 +203,7 @@ const actions = {
   async resetPasswordWithOTP({ commit }, { verificationId, otp, newPassword }) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/password/reset-with-otp', {
+      const response = await axiosInstance.post('/api/auth/password/reset-with-otp', {
         verificationId,
         otp,
         newPassword
@@ -211,7 +219,7 @@ const actions = {
   // Standard registration (original method, still used but extended)
   async register({ commit, dispatch }, userData) {
     try {
-      const response = await axios.post('/api/auth/register', userData);
+      const response = await axiosInstance.post('/api/auth/register', userData);
       // After registration, we'll need OTP verification
       commit('SET_USER', response.data.user);
       return response.data;
@@ -223,7 +231,7 @@ const actions = {
   // Verify OTP directly
   async verifyOTP({ commit }, { email, otp, type }) {
     try {
-      const response = await axios.post('/api/auth/verify-otp', { email, otp, type });
+      const response = await axiosInstance.post('/api/auth/verify-otp', { email, otp, type });
       commit('SET_OTP_VERIFIED', true);
       return response.data;
     } catch (error) {
@@ -282,26 +290,26 @@ const actions = {
   },
 
   // Password login
-  async login({ commit }, credentials) {
+  async login({ commit, dispatch }, credentials) {
     commit('SET_LOADING', true);
     try {
-      const response = await axios.post('/api/auth/login', credentials);
+      const response = await axiosInstance.post('/api/auth/login', credentials);
       const { user, accessToken, refreshToken } = response.data;
       
       commit('SET_USER', user);
       commit('SET_TOKENS', { accessToken, refreshToken });
-      
-      // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-      
-      // Store preferred auth method
       commit('SET_PREFERRED_AUTH_METHOD', 'password');
       
-      commit('SET_LOADING', false);
+      // Setup interceptors after successful login
+      dispatch('setupAxiosInterceptors');
+      
       return response.data;
     } catch (error) {
-      commit('SET_LOADING', false);
+      // Clear any existing auth state on login failure
+      await dispatch('logout');
       throw error;
+    } finally {
+      commit('SET_LOADING', false);
     }
   },
 
@@ -311,14 +319,14 @@ const actions = {
     try {
       // Since we're not seeing a specific OTP login endpoint in the backend,
       // assume it might be handled by the main login endpoint with an OTP parameter
-      const response = await axios.post('/api/auth/login', { email, phone, otp, method: 'otp' });
+      const response = await axiosInstance.post('/api/auth/login', { email, phone, otp, method: 'otp' });
       const { user, accessToken, refreshToken } = response.data;
       
       commit('SET_USER', user);
       commit('SET_TOKENS', { accessToken, refreshToken });
       
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       
       // Store preferred auth method
       commit('SET_PREFERRED_AUTH_METHOD', 'otp');
@@ -364,7 +372,7 @@ const actions = {
       commit('SET_TOKENS', { accessToken, refreshToken });
       
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       
       // Store preferred auth method
       commit('SET_PREFERRED_AUTH_METHOD', provider);
@@ -388,7 +396,7 @@ const actions = {
       commit('SET_TOKENS', { accessToken, refreshToken });
       
       // Set axios default header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
       
       // Store preferred auth method
       commit('SET_PREFERRED_AUTH_METHOD', provider);
@@ -421,21 +429,19 @@ const actions = {
   // Refresh authentication token
   async refreshToken({ commit, state }) {
     try {
-      if (!state.refreshToken) {
+      const refreshToken = state.refreshToken || localStorage.getItem('refresh_token');
+      if (!refreshToken) {
         throw new Error('No refresh token available');
       }
-      
-      const response = await axios.post('/api/auth/refresh-token', {
-        refreshToken: state.refreshToken
+
+      const response = await axiosInstance.post('/api/auth/refresh-token', { refreshToken });
+      const { accessToken, newRefreshToken } = response.data;
+
+      commit('SET_TOKENS', { 
+        accessToken, 
+        refreshToken: newRefreshToken || refreshToken 
       });
-      
-      const { accessToken, refreshToken } = response.data;
-      
-      commit('SET_TOKENS', { accessToken, refreshToken });
-      
-      // Update axios header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
-      
+
       return accessToken;
     } catch (error) {
       commit('CLEAR_AUTH');
@@ -446,10 +452,11 @@ const actions = {
   // Setup axios interceptors for automatic token refresh
   setupAxiosInterceptors({ state, dispatch }) {
     // Add request interceptor
-    axios.interceptors.request.use(
+    axiosInstance.interceptors.request.use(
       config => {
-        if (state.accessToken) {
-          config.headers['Authorization'] = `Bearer ${state.accessToken}`;
+        const token = localStorage.getItem('access_token') || state.accessToken;
+        if (token) {
+          config.headers['Authorization'] = `Bearer ${token}`;
         }
         return config;
       },
@@ -457,24 +464,30 @@ const actions = {
     );
     
     // Add response interceptor
-    axios.interceptors.response.use(
+    axiosInstance.interceptors.response.use(
       response => response,
       async error => {
         const originalRequest = error.config;
         
-        // If error is 401 and not a retry and we have a refresh token
-        if (error.response?.status === 401 && !originalRequest._retry && state.refreshToken) {
+        // If the error is a 401 and it's not from a token refresh attempt
+        if (error.response?.status === 401 && 
+            !originalRequest._retry && 
+            !originalRequest.url?.includes('/auth/refresh-token')) {
+          
           originalRequest._retry = true;
           
           try {
             // Try to refresh the token
             const newToken = await dispatch('refreshToken');
             
-            // Update the failed request
+            // Update the failed request with new token
             originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-            return axios(originalRequest);
+            
+            // Retry the original request
+            return axiosInstance(originalRequest);
           } catch (refreshError) {
-            // If refresh fails, logout
+            // If refresh fails, log out the user
+            console.error('Token refresh failed:', refreshError);
             await dispatch('logout');
             throw refreshError;
           }
@@ -488,17 +501,14 @@ const actions = {
   // Logout
   async logout({ commit }) {
     try {
-      if (state.accessToken) {
-        await axios.post('/api/auth/logout');
-      }
+      await axiosInstance.post('/api/auth/logout');
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      // Clear authentication state
       commit('CLEAR_AUTH');
-      
-      // Clear axios header
-      delete axios.defaults.headers.common['Authorization'];
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      delete axiosInstance.defaults.headers.common['Authorization'];
     }
   }
 };

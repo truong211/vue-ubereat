@@ -1,63 +1,62 @@
-const { hashPassword, verifyPassword } = require('../src/utils/password.util');
-const bcrypt = require('bcryptjs');
+const { Model } = require('sequelize');
 
 module.exports = (sequelize, DataTypes) => {
-  const User = sequelize.define('User', {
+  class User extends Model {
+    static associate(models) {
+      User.hasMany(models.Order, { foreignKey: 'userId' });
+      User.hasMany(models.Review, { foreignKey: 'userId' });
+      User.hasMany(models.Address, { foreignKey: 'userId' });
+      User.hasMany(models.Loyalty, { foreignKey: 'userId' });
+      User.belongsToMany(models.Restaurant, { 
+        through: 'Favorites',
+        foreignKey: 'userId',
+        as: 'favoriteRestaurants'
+      });
+    }
+  }
+
+  User.init({
     id: {
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: true
     },
     username: {
-      type: DataTypes.STRING(50),
-      allowNull: false,
-      validate: {
-        notEmpty: true
-      }
+      type: DataTypes.STRING,
+      allowNull: true,
+      unique: true
     },
     email: {
       type: DataTypes.STRING,
-      unique: true,
       allowNull: false,
+      unique: true,
       validate: {
         isEmail: true
       }
     },
     password: {
-      type: DataTypes.STRING(72), // Increase length to safely store bcrypt hash (60-72 chars)
-      allowNull: false,
-      validate: {
-        notEmpty: true,
-        len: [8, 100] // Validate original password length before hashing
-      }
+      type: DataTypes.STRING,
+      allowNull: true // Null for social login users
     },
     fullName: {
       type: DataTypes.STRING,
-      allowNull: true
+      allowNull: false
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: true
-    },
-    address: {
-      type: DataTypes.STRING,
-      allowNull: true
+      allowNull: true,
+      unique: true,
+      validate: {
+        is: /^\+?[\d\s-]{10,15}$/
+      }
     },
     role: {
-      type: DataTypes.ENUM('customer', 'admin', 'restaurant_owner', 'delivery_driver'),
+      type: DataTypes.ENUM('customer', 'restaurant', 'driver', 'admin'),
       defaultValue: 'customer'
     },
-    profileImage: {
-      type: DataTypes.STRING,
-      allowNull: true
-    },
-    isActive: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    lastLogin: {
-      type: DataTypes.DATE,
-      allowNull: true
+    status: {
+      type: DataTypes.ENUM('active', 'inactive', 'suspended'),
+      defaultValue: 'active'
     },
     isEmailVerified: {
       type: DataTypes.BOOLEAN,
@@ -67,10 +66,17 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
-    verificationData: {
-      type: DataTypes.JSON,
-      allowNull: true,
-      comment: 'Stores all verification related data including OTPs and expiry times'
+    profileImage: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    address: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    dateOfBirth: {
+      type: DataTypes.DATEONLY,
+      allowNull: true
     },
     socialProvider: {
       type: DataTypes.STRING,
@@ -81,104 +87,81 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true
     },
     socialToken: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    verificationToken: {
       type: DataTypes.STRING,
       allowNull: true
     },
-    // Combined verification and reset tokens into verificationData above
-    preferredLanguage: {
+    resetPasswordToken: {
       type: DataTypes.STRING,
-      defaultValue: 'en'
+      allowNull: true
+    },
+    emailVerificationOtp: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    phoneVerificationOtp: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    resetPasswordOtp: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    otpExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    lastLogin: {
+      type: DataTypes.DATE,
+      allowNull: true
     },
     preferences: {
       type: DataTypes.JSON,
       allowNull: true,
-      comment: 'Stores user preferences including notifications and favorites'
+      defaultValue: {}
     }
   }, {
-    timestamps: true
+    sequelize,
+    modelName: 'User',
+    tableName: 'users',
+    timestamps: true,
+    indexes: [
+      {
+        unique: true,
+        fields: ['email']
+      },
+      {
+        unique: true,
+        fields: ['phone'],
+        where: {
+          phone: { [sequelize.Op.ne]: null }
+        }
+      },
+      {
+        unique: true,
+        fields: ['username'],
+        where: {
+          username: { [sequelize.Op.ne]: null }
+        }
+      },
+      {
+        fields: ['socialProvider', 'socialId']
+      }
+    ]
   });
 
-  User.associate = function(models) {
-    User.hasMany(models.Order, {
-      foreignKey: 'userId',
-      as: 'orders'
-    });
-
-    User.hasMany(models.Review, {
-      foreignKey: 'userId',
-      as: 'reviews'
-    });
-
-    // Add any other associations here
-  };
-
-  // Hook to hash password before creating a user - now using our utility
-  User.beforeCreate(async (user, options) => {
-    if (user.password) {
-      console.log('--- DEBUG: Password Hashing in Model Hook ---');
-      console.log('Original Password Length:', user.password.length);
-
-      // IMPORTANT: Convert to string WITHOUT trimming
-      const passwordToHash = String(user.password);
-
-      // Use the new password utility for consistent hashing
-      user.password = await hashPassword(passwordToHash);
-
-      console.log('Generated Hash Length:', user.password.length);
-    }
-  });
-
-  // Hook to hash password before updating - now using our utility
-  User.beforeUpdate(async (user, options) => {
-    if (user.changed('password')) {
-      console.log('--- DEBUG: Password Hashing on Update ---');
-      console.log('Original Password Length:', user.password.length);
-
-      // IMPORTANT: Convert to string WITHOUT trimming
-      const passwordToHash = String(user.password);
-
-      // Use the new password utility for consistent hashing
-      user.password = await hashPassword(passwordToHash);
-
-      console.log('Generated Hash Length:', user.password.length);
-    }
-  });
-
-  // Static method for password validation - now using our utility
-  User.correctPassword = async (candidatePassword, userPassword) => {
-    console.log('--- DEBUG: Password Validation on Login ---');
-
-    // Input validation with detailed logging
-    if (!userPassword || !candidatePassword) {
-      console.log('Missing password input:', {
-        hasUserPassword: !!userPassword,
-        hasCandidatePassword: !!candidatePassword
-      });
-      return false;
-    }
-
-    // IMPORTANT: Convert to string WITHOUT trimming
-    const passwordToVerify = String(candidatePassword);
-
-    console.log('Login Password Length:', passwordToVerify.length);
-    console.log('Stored Password Hash Length:', userPassword.length);
-
-    // Use direct bcrypt compare for consistency
-    const result = await bcrypt.compare(passwordToVerify, userPassword);
-
-    console.log('Password validation result:', result);
-    return result;
-  };
-
-  // Instance method for password validation that uses the static method
-  User.prototype.validatePassword = async function(candidatePassword) {
-    return User.correctPassword(candidatePassword, this.password);
-  };
-
-  // Find user by email - convenience method
-  User.findByEmail = async function(email) {
-    return this.findOne({ where: { email } });
-
+  // Instance method to safely return user data without sensitive information
+  User.prototype.toSafeObject = function() {
+    const { 
+      password, socialToken, verificationToken, resetPasswordToken,
+      emailVerificationOtp, phoneVerificationOtp, resetPasswordOtp,
+      ...safeUser 
+    } = this.toJSON();
+    
+    return safeUser;
   };
 
   return User;

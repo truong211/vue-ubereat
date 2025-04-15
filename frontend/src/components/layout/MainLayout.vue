@@ -1,271 +1,12 @@
 <template>
-  <v-app>
-    <!-- Content only - No header -->
-    <v-main>
-      <!-- Slot for page content -->
-      <slot></slot>
-    </v-main>
-  </v-app>
-              <v-icon>mdi-cart</v-icon>
-            </v-badge>
-          </v-btn>
-
-          <!-- User Menu -->
-          <div v-if="isLoggedIn">
-            <v-menu
-              v-model="userMenu"
-              :close-on-content-click="false"
-              location="bottom end"
-              min-width="200"
-            >
-              <template v-slot:activator="{ props }">
-                <v-btn
-                  v-bind="props"
-                  variant="text"
-                  class="ml-2"
-                >
-                  <v-avatar size="32" class="mr-2">
-                    <v-img
-                      :src="userAvatar || '/images/default-avatar.png'"
-                      alt="User Avatar"
-                    ></v-img>
-                  </v-avatar>
-                  <span class="d-none d-lg-inline">{{ userName }}</span>
-                  <v-icon end>mdi-chevron-down</v-icon>
-                </v-btn>
-              </template>
-
-              <v-card>
-                <v-list>
-                  <v-list-item
-                    v-if="isLoggedIn"
-                    :prepend-avatar="userAvatar || '/images/default-avatar.png'"
-                    :title="userName"
-                    :subtitle="userName !== userEmail ? userEmail : undefined"
-                  ></v-list-item>
-
-                  <v-divider></v-divider>
-
-                  <!-- Admin Panel Link for admin users (in dropdown) -->
-                  <v-list-item
-                    v-if="isAdmin"
-                    to="/admin"
-                    prepend-icon="mdi-shield-account"
-                    title="Admin Panel"
-                    @click="userMenu = false"
-                  ></v-list-item>
-
-                  <v-list-item
-                    v-for="item in userMenuItems"
-                    :key="item.title"
-                    :to="item.to"
-                    :prepend-icon="item.icon"
-                    :title="item.title"
-                    @click="userMenu = false"
-                  ></v-list-item>
-
-                  <v-divider></v-divider>
-
-                  <v-list-item
-                    prepend-icon="mdi-account-edit"
-                    title="Update Profile Info"
-                    @click="updateUserProfile"
-                  ></v-list-item>
-
-                  <v-list-item
-                    prepend-icon="mdi-logout"
-                    title="Logout"
-                    @click="logout"
-                  ></v-list-item>
-                </v-list>
-              </v-card>
-            </v-menu>
-          </div>
-
-          <!-- Login/Register Buttons -->
-          <div v-else class="d-flex">
-            <v-btn
-              to="/login"
-              variant="text"
-              class="mr-2"
-            >
-              Login
-            </v-btn>
-            <v-btn
-              to="/register"
-              color="primary"
-            >
-              Register
-            </v-btn>
-          </div>
-        </div>
-
-        <!-- Mobile Navigation Button and Mobile Notification Center -->
-        <div class="d-flex d-md-none align-center">
-          <!-- Mobile Notification Center -->
-          <notification-center v-if="isLoggedIn" class="mr-2"></notification-center>
-
-          <!-- Mobile Profile Button - Moved before cart button -->
-          <v-btn
-            v-if="isLoggedIn"
-            to="/profile"
-            color="primary"
-            variant="tonal"
-            class="mr-2"
-            density="comfortable"
-            prepend-icon="mdi-account"
-          >
-            <span class="d-inline">{{ userName }}</span>
-          </v-btn>
-
-          <!-- Mobile Cart Button -->
-          <v-btn
-            to="/cart"
-            icon
-            variant="text"
-            class="mr-2"
-          >
-            <v-badge
-              :content="cartItemCount"
-              :model-value="cartItemCount > 0"
-              color="primary"
-            >
-              <v-icon>mdi-cart</v-icon>
-            </v-badge>
-          </v-btn>
-
-          <!-- Mobile Menu Button -->
-          <v-btn
-            icon
-            variant="text"
-            @click="drawer = !drawer"
-          >
-            <v-icon>mdi-menu</v-icon>
-          </v-btn>
-        </div>
-      </v-container>
-    </v-app-bar>
-
-    <!-- Mobile Navigation Drawer -->
-    <v-navigation-drawer
-      v-model="drawer"
-      temporary
-      location="right"
-    >
-      <v-list>
-        <v-list-item
-          v-if="isLoggedIn"
-          :prepend-avatar="userAvatar || '/images/default-avatar.png'"
-          :title="userName"
-          :subtitle="userName !== userEmail ? userEmail : undefined"
-        ></v-list-item>
-
-        <v-divider v-if="isLoggedIn" class="mb-2"></v-divider>
-
-        <v-list-item
-          v-for="item in navigationItems"
-          :key="item.title"
-          :to="item.to"
-          :title="item.title"
-          @click="drawer = false"
-        ></v-list-item>
-
-        <!-- Admin Button in mobile menu (only for admin users) -->
-        <v-list-item
-          v-if="isAdmin"
-          to="/admin"
-          prepend-icon="mdi-shield-account"
-          title="Admin Panel"
-          @click="drawer = false"
-        ></v-list-item>
-
-        <v-divider class="my-2"></v-divider>
-
-        <v-list-item
-          v-if="isLoggedIn"
-          v-for="item in userMenuItems"
-          :key="item.title"
-          :to="item.to"
-          :prepend-icon="item.icon"
-          :title="item.title"
-          @click="drawer = false"
-        ></v-list-item>
-
-        <template v-if="isLoggedIn">
-          <v-divider class="my-2"></v-divider>
-          <v-list-item
-            prepend-icon="mdi-account-edit"
-            title="Update Profile Info"
-            @click="updateUserProfile"
-          ></v-list-item>
-          <v-list-item
-            prepend-icon="mdi-logout"
-            title="Logout"
-            @click="logout"
-          ></v-list-item>
-        </template>
-
-        <template v-else>
-          <v-list-item
-            to="/login"
-            title="Login"
-            prepend-icon="mdi-login"
-            @click="drawer = false"
-          ></v-list-item>
-          <v-list-item
-            to="/register"
-            title="Register"
-            prepend-icon="mdi-account-plus"
-            @click="drawer = false"
-          ></v-list-item>
-        </template>
-
-        <v-divider class="my-2"></v-divider>
-
-        <!-- Notifications (Mobile) -->
-        <v-list-item
-          v-if="isLoggedIn"
-          to="/profile/notifications"
-          title="Notifications"
-          prepend-icon="mdi-bell-outline"
-          @click="drawer = false"
-        >
-          <template v-slot:append>
-            <v-badge
-              :content="unreadNotificationCount"
-              :model-value="unreadNotificationCount > 0"
-              color="error"
-            ></v-badge>
-          </template>
-        </v-list-item>
-
-        <v-list-item
-          to="/cart"
-          title="Cart"
-          prepend-icon="mdi-cart"
-          @click="drawer = false"
-        >
-          <template v-slot:append>
-            <v-badge
-              :content="cartItemCount"
-              :model-value="cartItemCount > 0"
-              color="primary"
-            ></v-badge>
-          </template>
-        </v-list-item>
-      </v-list>
-    </v-navigation-drawer>
-
+  <div class="main-layout d-flex flex-column min-vh-100">
     <!-- Main Content -->
-    <v-main>
+    <v-main class="flex-grow-1">
       <slot></slot>
     </v-main>
 
     <!-- Footer -->
-    <v-footer
-      class="bg-primary text-white"
-      app
-    >
+    <v-footer class="bg-primary text-white pa-0">
       <v-container>
         <v-row>
           <!-- Company Info -->
@@ -396,34 +137,16 @@
         </div>
       </v-container>
     </v-footer>
-  </v-app>
+  </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
-import { useCartStore } from '@/stores/cart';
-import { useNotificationStore } from '@/stores/notifications.js';
-import NotificationCenter from '@/components/notifications/NotificationCenter.vue';
+import { ref } from 'vue';
 
 export default {
   name: 'MainLayout',
 
-  components: {
-    NotificationCenter
-  },
-
   setup() {
-    const router = useRouter();
-    const authStore = useAuthStore();
-    const cartStore = useCartStore();
-    const notificationStore = useNotificationStore();
-
-    const userMenu = ref(false);
-    const drawer = ref(false);
-    const staticPages = ref([]);
-
     // Social links
     const socialLinks = [
       { icon: 'mdi-facebook', url: '#' },
@@ -444,12 +167,12 @@ export default {
 
     // Footer categories
     const footerCategories = [
-      { title: 'Vietnamese', to: '/restaurants?category=vietnamese' },
-      { title: 'Japanese', to: '/restaurants?category=japanese' },
-      { title: 'Italian', to: '/restaurants?category=italian' },
-      { title: 'American', to: '/restaurants?category=american' },
-      { title: 'Thai', to: '/restaurants?category=thai' },
-      { title: 'Indian', to: '/restaurants?category=indian' }
+      { title: 'Vietnamese', to: { path: '/restaurants', query: { category: 'vietnamese' } } },
+      { title: 'Japanese', to: { path: '/restaurants', query: { category: 'japanese' } } },
+      { title: 'Italian', to: { path: '/restaurants', query: { category: 'italian' } } },
+      { title: 'American', to: { path: '/restaurants', query: { category: 'american' } } },
+      { title: 'Thai', to: { path: '/restaurants', query: { category: 'thai' } } },
+      { title: 'Indian', to: { path: '/restaurants', query: { category: 'indian' } } }
     ];
 
     // Legal links
@@ -459,95 +182,32 @@ export default {
       { title: 'Cookie Policy', to: '/cookies' }
     ];
 
-    // Auth computed properties
-    const isLoggedIn = computed(() => authStore.isLoggedIn);
-    const isAdmin = computed(() => authStore.userRole === 'admin');
-    const userName = computed(() => authStore.currentUser?.fullName || 'User');
-    const userEmail = computed(() => authStore.currentUser?.email || '');
-    const userAvatar = computed(() => authStore.currentUser?.avatar || null);
-
-    // Cart computed property
-    const cartItemCount = computed(() => cartStore.itemCount);
-
-    // Navigation items
-    const navigationItems = [
-      { title: 'Home', to: '/' },
-      { title: 'Restaurants', to: '/restaurants' },
-      { title: 'About', to: '/about' }
-    ];
-
-    // User menu items
-    const userMenuItems = [
-      { title: 'My Profile', to: '/profile', icon: 'mdi-account' },
-      { title: 'My Orders', to: '/orders', icon: 'mdi-package' },
-      { title: 'Favorites', to: '/favorites', icon: 'mdi-heart' },
-      { title: 'Settings', to: '/settings', icon: 'mdi-cog' }
-    ];
-
-    // Methods
-    const logout = async () => {
-      try {
-        await authStore.logout();
-        userMenu.value = false;
-        drawer.value = false;
-        router.push('/login');
-      } catch (error) {
-        console.error('Logout error:', error);
-      }
-    };
-
-    const updateUserProfile = () => {
-      userMenu.value = false;
-      drawer.value = false;
-      router.push('/profile/edit');
-    };
-
-    // Initialize
-    onMounted(async () => {
-      if (isLoggedIn.value) {
-        await notificationStore.initPushNotifications();
-      }
-    });
-
-    // Watch for auth state changes
-    watch(isLoggedIn, (newValue) => {
-      if (!newValue) {
-        userMenu.value = false;
-        drawer.value = false;
-      }
-    });
-
-    watch(authStore.currentUser, (newUser) => {
-      if (newUser) {
-        notificationStore.initPushNotifications();
-      }
-    });
-
     return {
-      userMenu,
-      drawer,
-      staticPages,
-      isLoggedIn,
-      isAdmin,
-      userName,
-      userEmail,
-      userAvatar,
-      cartItemCount,
-      navigationItems,
-      userMenuItems,
-      logout,
-      updateUserProfile,
       socialLinks,
       quickLinks,
       footerCategories,
-      legalLinks,
-      unreadNotificationCount: notificationStore.unreadCount
+      legalLinks
     };
   }
 };
 </script>
 
 <style scoped>
+.main-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.v-main {
+  flex: 1 0 auto;
+}
+
+.v-footer {
+  flex-shrink: 0;
+  width: 100%;
+}
+
 .v-list-item--density-compact {
   min-height: 32px;
 }

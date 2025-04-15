@@ -426,7 +426,7 @@
 
 <script>
 import { defineComponent } from 'vue';
-import { useOrdersStore } from '@/stores/orders'; // Import Pinia orders store
+import { useOrdersStore } from '@/store/modules/orders';
 import { format, parseISO } from 'date-fns';
 
 export default defineComponent({ // Use defineComponent

@@ -8,40 +8,42 @@ module.exports = (sequelize, DataTypes) => {
         return;
       }
 
-      const { User, Restaurant, OrderItem, Review } = models;
-
-      if (User) {
-        this.belongsTo(User, {
+      // User associations
+      if (models.User) {
+        this.belongsTo(models.User, {
           foreignKey: 'userId',
           as: 'customer',
           onDelete: 'NO ACTION'
         });
 
-        this.belongsTo(User, {
+        this.belongsTo(models.User, {
           foreignKey: 'driverId',
           as: 'driver',
           onDelete: 'SET NULL'
         });
       }
 
-      if (Restaurant) {
-        this.belongsTo(Restaurant, {
+      // Restaurant association
+      if (models.Restaurant) {
+        this.belongsTo(models.Restaurant, {
           foreignKey: 'restaurantId',
           as: 'restaurant',
           onDelete: 'NO ACTION'
         });
       }
 
-      if (OrderItem) {
-        this.hasMany(OrderItem, {
+      // OrderItem association
+      if (models.OrderItem) {
+        this.hasMany(models.OrderItem, {
           foreignKey: 'orderId',
-          as: 'items',
+          as: 'orderItems',
           onDelete: 'CASCADE'
         });
       }
 
-      if (Review) {
-        this.hasOne(Review, {
+      // Review association
+      if (models.Review) {
+        this.hasOne(models.Review, {
           foreignKey: 'orderId',
           as: 'review',
           onDelete: 'SET NULL'
@@ -91,11 +93,13 @@ module.exports = (sequelize, DataTypes) => {
     },
     subtotal: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false
+      allowNull: false,
+      defaultValue: 0
     },
     tax: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false
+      allowNull: false,
+      defaultValue: 0
     },
     deliveryFee: {
       type: DataTypes.DECIMAL(10, 2),
@@ -114,7 +118,8 @@ module.exports = (sequelize, DataTypes) => {
     },
     total: {
       type: DataTypes.DECIMAL(10, 2),
-      allowNull: false
+      allowNull: false,
+      defaultValue: 0
     },
     paymentMethod: {
       type: DataTypes.ENUM('credit_card', 'debit_card', 'paypal', 'cash', 'stripe', 'momo', 'vnpay'),

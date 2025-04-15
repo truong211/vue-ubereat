@@ -645,7 +645,7 @@ import { format, addHours, addDays, addMinutes, isAfter, parse } from 'date-fns'
 import { useCartStore } from '@/stores/cart';
 import { useAuthStore } from '@/stores/auth';
 import { useUserStore } from '@/stores/user';
-import { useNotificationStore } from '@/stores/notification';
+import { useNotificationStore } from '@/stores/notifications';
 // Removed addressService import
 
 export default defineComponent({ // Use defineComponent

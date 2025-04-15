@@ -9,8 +9,6 @@
         </transition>
       </router-view>
     </v-main>
-
-    <app-footer />
   </v-app>
 </template>
 
@@ -20,14 +18,12 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notifications.js'
 import AppHeader from '@/components/layout/AppHeader.vue'
-import AppFooter from '@/components/layout/AppFooter.vue'
 
 export default {
   name: 'MainLayout',
   
   components: {
-    AppHeader,
-    AppFooter
+    AppHeader
   },
   
   setup() {

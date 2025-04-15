@@ -1,13 +1,10 @@
 <template>
   <v-app>
-    <!-- Main Layout wraps the router view -->
-    <main-layout>
-      <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-    </main-layout>
+    <router-view v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
 
     <!-- Global components outside the main layout flow -->
 
@@ -52,12 +49,10 @@
 </template>
 
 <script>
-import MainLayout from '@/components/layout/MainLayout.vue';
 import OrderChatDialog from '@/components/order/OrderChatDialog.vue';
-import NotificationCenter from '@/components/notifications/NotificationCenter.vue' // Kept as it wasn't explicitly asked to be removed
+import NotificationCenter from '@/components/notifications/NotificationCenter.vue'
 import NotificationToast from '@/components/notifications/NotificationToast.vue'
 import SupportChat from '@/components/support/SupportChat.vue'
-// Removed AppHeader and AppFooter imports
 import { computed, onMounted } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { useChatStore } from '@/stores/chat.js';
@@ -67,12 +62,10 @@ export default {
   name: 'App',
 
   components: {
-    MainLayout,
     OrderChatDialog,
-    NotificationCenter, // Kept as it wasn't explicitly asked to be removed
+    NotificationCenter,
     NotificationToast,
     SupportChat,
-    // Removed AppHeader and AppFooter components
   },
 
   setup() {

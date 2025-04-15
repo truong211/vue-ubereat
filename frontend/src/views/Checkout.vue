@@ -411,7 +411,7 @@ import { defineComponent } from 'vue';
 import { useCartStore } from '@/stores/cart';
 import { useAuthStore } from '@/stores/auth';
 import { useUserStore } from '@/stores/user';
-import { useOrderStore } from '@/stores/order';
+import { useOrdersStore } from '@/store/modules/orders';
 import { usePaymentStore } from '@/stores/payment';
 import { useNotificationStore } from '@/stores/notification';
 import PaymentSelector from '@/components/payment/PaymentSelector.vue';
@@ -430,7 +430,7 @@ export default defineComponent({ // Use defineComponent
     const cartStore = useCartStore();
     const authStore = useAuthStore();
     const userStore = useUserStore();
-    const orderStore = useOrderStore();
+    const orderStore = useOrdersStore();
     const paymentStore = usePaymentStore();
     const notificationStore = useNotificationStore();
 

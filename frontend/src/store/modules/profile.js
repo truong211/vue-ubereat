@@ -61,7 +61,17 @@ export default {
   mutations: {
     // Profile mutations
     SET_PROFILE(state, profile) {
-      state.profile = profile
+      // Ensure we always have a valid profile object with default values
+      state.profile = {
+        id: profile?.id || null,
+        fullName: profile?.fullName || '',
+        email: profile?.email || '',
+        phone: profile?.phone || '',
+        address: profile?.address || '',
+        role: profile?.role || 'customer',
+        status: profile?.status || 'active',
+        ...profile
+      }
     },
     
     UPDATE_PROFILE(state, profileData) {
@@ -225,10 +235,16 @@ export default {
       
       try {
         const response = await axios.get('/api/user/profile')
+        if (!response.data) {
+          throw new Error('No profile data received')
+        }
         commit('SET_PROFILE', response.data)
         return response.data
       } catch (error) {
+        console.error('Profile fetch error:', error)
         commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch profile')
+        // Set an empty profile with default values rather than null
+        commit('SET_PROFILE', {})
         throw error
       } finally {
         commit('SET_LOADING', { key: 'profile', isLoading: false })
