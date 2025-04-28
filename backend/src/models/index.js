@@ -23,6 +23,20 @@ if (config.use_env_variable) {
   );
 }
 
+// Import custom models directly
+const User = require('./user');
+const Restaurant = require('./restaurant');
+const DriverStatus = require('./driverStatus.model');
+const DriverLocation = require('./driverLocation.model');
+const Vehicle = require('./vehicle.model');
+
+// Add models to db object
+db.User = User;
+db.Restaurant = Restaurant;
+db.DriverStatus = DriverStatus;
+db.DriverLocation = DriverLocation;
+db.Vehicle = Vehicle;
+
 // Test database connection
 async function initializeDatabase() {
   try {
@@ -37,13 +51,17 @@ async function initializeDatabase() {
         file !== basename &&
         file.slice(-3) === '.js' &&
         file.indexOf('.test.js') === -1 &&
-        file !== 'associations.js'  // Exclude associations.js from model loading
+        file !== 'associations.js' && // Exclude associations.js from model loading
+        file !== 'user.js' && // Skip files we've manually included
+        file !== 'restaurant.js' &&
+        file !== 'driverStatus.model.js' &&
+        file !== 'driverLocation.model.js' &&
+        file !== 'vehicle.model.js'
       );
     });
-console.log(`[Database] Loading ${modelFiles.length} model files...`);
-console.log('[Database] Model files to load:', modelFiles);
-console.log('[Database] Current working directory:', __dirname);
-
+    console.log(`[Database] Loading ${modelFiles.length} model files...`);
+    console.log('[Database] Model files to load:', modelFiles);
+    console.log('[Database] Current working directory:', __dirname);
 
     for (const file of modelFiles) {
       try {
@@ -68,6 +86,34 @@ console.log('[Database] Current working directory:', __dirname);
       }
     }
 
+    // Define driver-related associations
+    User.hasOne(DriverStatus, {
+      foreignKey: 'driverId',
+      as: 'driverStatus'
+    });
+    DriverStatus.belongsTo(User, {
+      foreignKey: 'driverId',
+      as: 'driver'
+    });
+
+    User.hasOne(DriverLocation, {
+      foreignKey: 'driverId',
+      as: 'location'
+    });
+    DriverLocation.belongsTo(User, {
+      foreignKey: 'driverId',
+      as: 'driver'
+    });
+
+    User.hasOne(Vehicle, {
+      foreignKey: 'driverId',
+      as: 'vehicle'
+    });
+    Vehicle.belongsTo(User, {
+      foreignKey: 'driverId',
+      as: 'driver'
+    });
+
     // Set up model associations
     console.log('Setting up model associations...');
     // First set up Sequelize associations
@@ -83,7 +129,7 @@ console.log('[Database] Current working directory:', __dirname);
 
     // Sync database
     console.log('[Database] Synchronizing database schema...');
-    await sequelize.sync({ alter: false });  // Change to false to prevent automatic table alterations
+    await sequelize.sync({ alter: true });  // Set to true for development to automatically update tables with new models
     console.log('[Database] Database synchronized successfully');
     console.log('[Database] Initialized models:', Object.keys(db).filter(key =>
       typeof db[key] === 'function' && db[key].prototype && db[key].prototype.constructor.name !== 'Sequelize'

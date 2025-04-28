@@ -40,7 +40,7 @@ const transporter = nodemailer.createTransport({
 
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone, role } = req.body;
     
     // Validate inputs
     if (!email || !password) {
@@ -70,6 +70,13 @@ exports.register = async (req, res) => {
     console.log('Generated Hash Length:', hashedPassword.length);
     console.log('Generated Hash:', hashedPassword);
 
+    // Validate role
+    const validRoles = ['customer', 'restaurant', 'admin', 'driver'];
+    const userRole = validRoles.includes(role) ? role : 'customer';
+    
+    // For restaurant and admin roles, set them as pending for admin approval
+    const isActive = userRole === 'customer' || userRole === 'driver';
+
     // Create user with the hashed password
     const user = await User.create({
       fullName: name,
@@ -77,8 +84,30 @@ exports.register = async (req, res) => {
       phone,
       username,
       password: hashedPassword,
-      isEmailVerified: true, // For development
-      role: 'customer'
+      isEmailVerified: false, // Set to false and require verification
+      role: userRole,
+      isActive: isActive
+    });
+
+    // Send verification email
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    await User.update(
+      { verificationToken, verificationExpires: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+      { where: { id: user.id } }
+    );
+    
+    const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
+    
+    // Send email with verification link
+    await transporter.sendMail({
+      to: email,
+      subject: 'Verify your email address',
+      html: `
+        <h1>Welcome to our Food Delivery App!</h1>
+        <p>Please verify your email address by clicking the link below:</p>
+        <a href="${verificationUrl}">Verify Email</a>
+        <p>The link will expire in 24 hours.</p>
+      `
     });
 
     // Generate tokens
@@ -96,7 +125,9 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful',
+      message: userRole === 'restaurant' || userRole === 'admin' 
+        ? 'Registration successful. Your account is pending approval.' 
+        : 'Registration successful. Please verify your email.',
       token,
       refreshToken,
       user: {
@@ -104,7 +135,9 @@ exports.register = async (req, res) => {
         name: user.fullName,
         email: user.email,
         phone: user.phone,
-        role: user.role
+        role: user.role,
+        isActive: user.isActive,
+        isEmailVerified: user.isEmailVerified
       }
     });
   } catch (error) {
@@ -277,4 +310,154 @@ exports.googleLogin = async (req, res) => {
   }
 };
 
-// Remaining functions are unchanged
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    // Find user with this verification token
+    const user = await User.findOne({
+      where: {
+        verificationToken: token,
+        verificationExpires: { [db.Sequelize.Op.gt]: new Date() } // Token not expired
+      }
+    });
+    
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired verification token'
+      });
+    }
+    
+    // Update user as verified
+    await User.update(
+      {
+        isEmailVerified: true,
+        verificationToken: null,
+        verificationExpires: null
+      },
+      { where: { id: user.id } }
+    );
+    
+    // If user is a restaurant or admin, they still need approval
+    let message = 'Email verified successfully. You can now log in.';
+    if (user.role === 'restaurant' || user.role === 'admin') {
+      message = 'Email verified successfully. Your account is pending approval from an administrator.';
+    } else if (!user.isActive) {
+      // Activate customer and driver accounts automatically after email verification
+      await User.update({ isActive: true }, { where: { id: user.id } });
+    }
+    
+    res.status(200).json({
+      success: true,
+      message
+    });
+  } catch (error) {
+    console.error('Email verification error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Email verification failed'
+    });
+  }
+};
+
+exports.requestPasswordReset = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Find user by email
+    const user = await User.findByEmail(email);
+    if (!user) {
+      // For security reasons, don't reveal if the email exists
+      return res.status(200).json({
+        success: true,
+        message: 'If your email is registered with us, you will receive password reset instructions.'
+      });
+    }
+    
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetTokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    
+    // Update user with reset token
+    await User.update(
+      {
+        resetPasswordToken: resetToken,
+        resetPasswordExpires: resetTokenExpiry
+      },
+      { where: { id: user.id } }
+    );
+    
+    // Create reset URL
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    
+    // Send reset email
+    await transporter.sendMail({
+      to: email,
+      subject: 'Password Reset Request',
+      html: `
+        <h1>Password Reset Request</h1>
+        <p>You requested a password reset. Click the link below to reset your password:</p>
+        <a href="${resetUrl}">Reset Password</a>
+        <p>This link will expire in 1 hour.</p>
+        <p>If you didn't request this, please ignore this email.</p>
+      `
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Password reset instructions have been sent to your email.'
+    });
+  } catch (error) {
+    console.error('Password reset request error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process password reset request.'
+    });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    
+    // Find user with valid reset token
+    const user = await User.findOne({
+      where: {
+        resetPasswordToken: token,
+        resetPasswordExpires: { [db.Sequelize.Op.gt]: new Date() }
+      }
+    });
+    
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token.'
+      });
+    }
+    
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+    
+    // Update user with new password and clear reset token
+    await User.update(
+      {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null
+      },
+      { where: { id: user.id } }
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful. You can now log in with your new password.'
+    });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password.'
+    });
+  }
+};

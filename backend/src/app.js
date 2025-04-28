@@ -93,7 +93,9 @@ async function initializeApp() {
       product: require('./routes/product.routes'),
       page: require('./routes/page.routes'),
       notification: require('./routes/notification.routes'),
-      favorites: require('./routes/favorites.routes')
+      favorites: require('./routes/favorites.routes'),
+      driver: require('./routes/driver.routes'), // Add driver routes
+      payment: require('./routes/payment.routes') // Add payment routes if they exist
     };
 
     // Register API routes in specific order
@@ -108,6 +110,8 @@ async function initializeApp() {
     app.use('/api/orders', routes.order);
     app.use('/api/groceries', routes.grocery);
     app.use('/api/favorites', routes.favorites);
+    app.use('/api/drivers', routes.driver); // Register driver routes
+    app.use('/api/payments', routes.payment); // Register payment routes if they exist
 
     // Error handling middleware
     app.use((err, req, res, next) => {
