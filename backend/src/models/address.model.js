@@ -1,140 +1,132 @@
-const { DataTypes } = require('sequelize');
+const db = require('../config/database');
 
-module.exports = (sequelize, DataTypes) => {
-  const Address = sequelize.define('Address', {
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true
-    },
-    user_id: { // Renamed from userId
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: 'users', // Use table name string
-        key: 'id'
-      }
-    },
-    name: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    address_line_1: { // Renamed from addressLine1
-      type: DataTypes.STRING(255),
-      allowNull: false
-    },
-    address_line_2: { // Renamed from addressLine2
-      type: DataTypes.STRING(255),
-      allowNull: true
-    },
-    city: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    district: {
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    ward: {
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    state: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    postal_code: { // Renamed from postalCode
-      type: DataTypes.STRING(20),
-      allowNull: false
-    },
-    country: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      defaultValue: 'Vietnam'
-    },
-    phone: {
-      type: DataTypes.STRING(15),
-      allowNull: true
-    },
-    is_default: { // Renamed from isDefault
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    },
-    type: {
-      type: DataTypes.ENUM('home', 'work', 'other'),
-      defaultValue: 'home'
-    },
-    instructions: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    latitude: {
-      type: DataTypes.DECIMAL(10, 8),
-      allowNull: true
-    },
-    longitude: {
-      type: DataTypes.DECIMAL(11, 8),
-      allowNull: true
-    },
-    place_id: { // Renamed from placeId
-      type: DataTypes.STRING(100),
-      allowNull: true,
-      comment: 'Google Maps or other map provider place ID'
-    },
-    formatted_address: { // Renamed from formattedAddress
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      comment: 'Fully formatted address from map provider'
-    },
-    has_elevator: { // Renamed from hasElevator
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    floor: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    apartment_number: { // Renamed from apartmentNumber
-      type: DataTypes.STRING(20),
-      allowNull: true
-    },
-    delivery_notes: { // Renamed from deliveryNotes
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Additional notes for delivery, e.g., doorbell not working'
-    },
-    contact_name: { // Renamed from contactName
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    contact_phone: { // Renamed from contactPhone
-      type: DataTypes.STRING(15),
-      allowNull: true
+/**
+ * Address model using direct SQL implementation.
+ * Provides basic CRUD and utility methods similar to User and Order models.
+ */
+const Address = {
+  tableName: 'addresses',
+
+  // Retrieve a single address by its primary key
+  findByPk: async (id) => {
+    if (id === undefined || id === null) return null;
+    try {
+      const results = await db.query('SELECT * FROM addresses WHERE id = ? LIMIT 1', [id]);
+      return results[0] || null;
+    } catch (error) {
+      console.error('Error in Address.findByPk:', error);
+      throw error;
     }
-    // created_at, updated_at handled by timestamps + underscored
-  }, {
-    timestamps: true,
-    underscored: true, // Added underscored
-    tableName: 'addresses', // Table name is already correct
-    indexes: [
-      {
-        fields: ['user_id'], // Updated field name
-        name: 'idx_address_user'
-      },
-      {
-        fields: ['latitude', 'longitude'],
-        name: 'idx_address_location'
+  },
+
+  // Retrieve a single address matching the provided where clause
+  findOne: async (where = {}) => {
+    try {
+      const whereKeys = Object.keys(where);
+      if (whereKeys.length === 0) return null;
+
+      const whereClause = whereKeys.map((key) => `${key} = ?`).join(' AND ');
+      const values = Object.values(where);
+
+      const results = await db.query(`SELECT * FROM addresses WHERE ${whereClause} LIMIT 1`, values);
+      return results[0] || null;
+    } catch (error) {
+      console.error('Error in Address.findOne:', error);
+      throw error;
+    }
+  },
+
+  // Retrieve multiple addresses with optional filters, ordering, pagination
+  findAll: async (options = {}) => {
+    try {
+      let sql = 'SELECT * FROM addresses';
+      const values = [];
+
+      if (options.where && Object.keys(options.where).length > 0) {
+        const whereClause = Object.entries(options.where)
+          .map(([key, _]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(options.where));
       }
-    ]
-  });
 
-  // Define associations using the associate method pattern
-  Address.associate = function(models) {
-    Address.belongsTo(models.user, { 
-      foreignKey: 'user_id', 
-      as: 'user' 
-    });
-  };
+      if (options.order) sql += ` ORDER BY ${options.order}`;
+      if (options.limit) sql += ` LIMIT ${parseInt(options.limit, 10)}`;
+      if (options.offset) sql += ` OFFSET ${parseInt(options.offset, 10)}`;
 
-  return Address;
+      return await db.query(sql, values);
+    } catch (error) {
+      console.error('Error in Address.findAll:', error);
+      throw error;
+    }
+  },
+
+  // Create a new address record
+  create: async (data) => {
+    try {
+      const columns = Object.keys(data).join(', ');
+      const placeholders = Object.keys(data).map(() => '?').join(', ');
+      const values = Object.values(data);
+
+      const result = await db.query(
+        `INSERT INTO addresses (${columns}) VALUES (${placeholders})`,
+        values
+      );
+      return { id: result.insertId, ...data };
+    } catch (error) {
+      console.error('Error in Address.create:', error);
+      throw error;
+    }
+  },
+
+  // Update an existing address by ID
+  update: async (id, data) => {
+    try {
+      const setClause = Object.keys(data)
+        .map((key) => `${key} = ?`)
+        .join(', ');
+      const values = [...Object.values(data), id];
+
+      const result = await db.query(`UPDATE addresses SET ${setClause} WHERE id = ?`, values);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Address.update:', error);
+      throw error;
+    }
+  },
+
+  // Delete an address by ID
+  destroy: async (id) => {
+    try {
+      const result = await db.query('DELETE FROM addresses WHERE id = ?', [id]);
+      return result.affectedRows > 0;
+    } catch (error) {
+      console.error('Error in Address.destroy:', error);
+      throw error;
+    }
+  },
+
+  // Count addresses with optional where clause
+  count: async (where = {}) => {
+    try {
+      let sql = 'SELECT COUNT(*) AS count FROM addresses';
+      const values = [];
+
+      if (Object.keys(where).length > 0) {
+        const whereClause = Object.entries(where)
+          .map(([key, _]) => `${key} = ?`)
+          .join(' AND ');
+        sql += ` WHERE ${whereClause}`;
+        values.push(...Object.values(where));
+      }
+
+      const results = await db.query(sql, values);
+      return results[0].count;
+    } catch (error) {
+      console.error('Error in Address.count:', error);
+      throw error;
+    }
+  },
 };
+
+module.exports = Address;
