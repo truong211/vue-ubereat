@@ -86,43 +86,41 @@ exports.register = async (req, res) => {
         phone,
         username, // Use the generated valid username
         password, // Our model handles password hashing now
-        // Mark email as verified for development convenience
-        isEmailVerified: true,
-        isPhoneVerified: phone ? false : true,
+        isEmailVerified: false, // Will be verified via OTP
+        isPhoneVerified: false,
         role: 'customer'
       });
-      
-      // Generate token
-      const token = jwt.sign(
-        { userId: user.id, role: user.role },
-        JWT_SECRET,
-        { expiresIn: '7d' }
+
+      // 1) Generate email OTP & expiry (24h)
+      const otp = generateOTP();
+      const otpExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      // 2) Persist OTP to user record
+      await User.update(
+        {
+          emailVerificationOtp: otp,
+          emailVerificationExpires: otpExpiry
+        },
+        { where: { id: user.id } }
       );
-      
-      // Generate refresh token
-      const refreshToken = jwt.sign(
-        { userId: user.id, role: user.role },
-        JWT_REFRESH_SECRET,
-        { expiresIn: '30d' }
-      );
-      
-      // Return user info and tokens for immediate login
-      res.status(201).json({ 
+
+      // 3) Send verification email with OTP
+      try {
+        await sendVerificationEmailWithOTP(user.email, otp, user.fullName);
+      } catch (mailErr) {
+        console.error('Error sending verification email:', mailErr);
+        // Note: do not fail registration if email fails; client can request resend
+      }
+
+      // 4) Respond with success & userId so client can verify OTP
+      res.status(201).json({
         success: true,
-        message: 'Registration successful! You can now login with your account.',
-        token,
-        refreshToken,
-        user: {
-          id: user.id,
-          name: user.fullName,
-          email: user.email,
-          phone: user.phone,
-          role: user.role
-        }
+        message: 'Registration successful! Please verify your email using the OTP sent.',
+        userId: user.id
       });
     } catch (createError) {
       console.error('User creation error:', createError);
-      return res.status(500).json({ 
+      return res.status(500).json({
         success: false,
         message: 'Error creating user account. Please try again.'
       });
@@ -477,17 +475,19 @@ exports.resendEmailOTP = async (req, res) => {
       return res.status(400).json({ message: 'Email already verified' });
     }
     
-    // Generate new verification token
-    const verificationToken = jwt.sign(
-      { userId: user.id },
-      JWT_EMAIL_SECRET,
-      { expiresIn: '24h' }
-    );
+    // Generate new OTP
+    const otp = generateOTP();
     
-    // Send verification email
-    await sendVerificationEmail(user.email, verificationToken, user.fullName);
+    // Update user with new OTP
+    user.emailVerificationOtp = otp;
+    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     
-    res.status(200).json({ message: 'Verification email sent' });
+    await user.save();
+    
+    // Send verification email with OTP
+    await sendVerificationEmailWithOTP(user.email, otp, user.fullName);
+    
+    res.status(200).json({ message: 'OTP sent to your email' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -978,39 +978,6 @@ exports.verifyEmailOTP = async (req, res) => {
     await user.save();
     
     res.status(200).json({ message: 'Email verified successfully' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-exports.resendEmailOTP = async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    // Find user
-    const user = await User.findOne({ email });
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    if (user.isEmailVerified) {
-      return res.status(400).json({ message: 'Email already verified' });
-    }
-    
-    // Generate new OTP
-    const otp = generateOTP();
-    
-    // Update user with new OTP
-    user.emailVerificationOtp = otp;
-    user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    
-    await user.save();
-    
-    // Send verification email with OTP
-    await sendVerificationEmailWithOTP(user.email, otp, user.fullName);
-    
-    res.status(200).json({ message: 'OTP sent to your email' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
