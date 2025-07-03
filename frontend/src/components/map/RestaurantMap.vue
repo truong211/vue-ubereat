@@ -47,9 +47,15 @@
               </div>
               <div class="text-caption mt-1">
                 <v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>
-                <span>{{ selectedRestaurant.deliveryTime }} phút</span>
+                <span v-if="routeInfo">{{ routeInfo.durationText }}</span>
+                <span v-else>{{ selectedRestaurant.deliveryTime }} phút</span>
                 <v-icon size="x-small" class="ml-2 mr-1">mdi-map-marker</v-icon>
                 <span>{{ formatDistance(selectedRestaurant.distance) }}</span>
+              </div>
+              <!-- optional distance from Directions instead of spherical calc -->
+              <div v-if="routeInfo && routeInfo.distanceText" class="text-caption mt-1">
+                <v-icon size="x-small" class="mr-1">mdi-road-variant</v-icon>
+                <span>{{ routeInfo.distanceText }}</span>
               </div>
             </div>
           </div>
@@ -63,6 +69,22 @@
               Xem chi tiết
             </v-btn>
           </div>
+          <!-- Turn-by-turn panel -->
+          <v-expansion-panels v-if="routeInfo && routeInfo.steps && routeInfo.steps.length" density="compact" class="mt-2">
+            <v-expansion-panel>
+              <v-expansion-panel-title>Hướng dẫn chi tiết</v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <v-list density="compact">
+                  <v-list-item v-for="(step, idx) in routeInfo.steps" :key="idx" class="px-1">
+                    <v-list-item-content>
+                      <div v-html="step.instructions"></div>
+                      <small class="text-grey">{{ (step.distance/1000).toFixed(1) }} km • {{ Math.round(step.duration/60) }} phút</small>
+                    </v-list-item-content>
+                  </v-list-item>
+                </v-list>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
         </v-card>
       </div>
 
@@ -155,6 +177,7 @@ import { useRouter } from 'vue-router';
 import { loadGoogleMapsApi } from '@/services/googleMapsLoader';
 import { useGeolocation } from '@/composables/useGeolocation';
 import { fetchNearbyRestaurants } from '@/services/restaurantService';
+import mapService from '@/services/map.service.js';
 
 // Props
 const props = defineProps({
@@ -216,6 +239,10 @@ const nearbyRestaurants = ref([...props.restaurants]);
 // Geolocation composable
 const { getCurrentPosition } = useGeolocation();
 
+// Route info & polyline
+const routeInfo = ref(null);
+const routePath = ref(null);
+
 // Format distance
 const formatDistance = (distance) => {
   return `${distance.toFixed(1)} km`;
@@ -269,7 +296,7 @@ const initMap = async () => {
     addUserMarker();
     
     // Add restaurant markers
-    addRestaurantMarkers();
+    await addRestaurantMarkers();
     
     // Create heatmap layer
     createHeatmap();
@@ -339,7 +366,7 @@ const addUserMarker = () => {
 };
 
 // Add restaurant markers
-const addRestaurantMarkers = () => {
+const addRestaurantMarkers = async () => {
   if (!mapInstance.value) return;
   
   // Clear existing markers
@@ -378,6 +405,19 @@ const addRestaurantMarkers = () => {
     marker.addListener('click', () => {
       selectedRestaurant.value = restaurant;
       emit('restaurant-selected', restaurant);
+
+      // Fetch directions and draw route
+      nextTick(async () => {
+        try {
+          await mapService.initialize();
+          const route = await mapService.getRoute(userLocation.value, restaurant);
+          routeInfo.value = route;
+          drawRoutePath(route.points);
+        } catch (err) {
+          console.error('Failed to load route', err);
+          routeInfo.value = null;
+        }
+      });
     });
     
     // Add delivery radius circle if option is enabled
@@ -573,6 +613,28 @@ const getMapStyles = () => {
   ];
 };
 
+// Draw the selected route polyline on the map
+const drawRoutePath = (points) => {
+  if (!mapInstance.value || !points || !points.length) return;
+
+  // Clear existing route
+  if (routePath.value) {
+    routePath.value.setMap(null);
+    routePath.value = null;
+  }
+
+  const gPoints = points.map(p => new google.maps.LatLng(p.lat, p.lng));
+  routePath.value = new google.maps.Polyline({
+    path: gPoints,
+    geodesic: true,
+    strokeColor: '#4285F4',
+    strokeOpacity: 0.9,
+    strokeWeight: 5
+  });
+
+  routePath.value.setMap(mapInstance.value);
+};
+
 // Watch for changes
 watch(() => props.restaurants, () => {
   // When restaurants change, redraw markers
@@ -593,6 +655,15 @@ watch(() => props.userLocation, () => {
 watch(mapMode, () => {
   // When map mode changes, update display
   updateMapMode();
+});
+
+// Watch for restaurant deselection to clear route
+watch(selectedRestaurant, (newVal, oldVal) => {
+  if (!newVal && routePath.value) {
+    routePath.value.setMap(null);
+    routePath.value = null;
+    routeInfo.value = null;
+  }
 });
 
 // Initialize map on mount
