@@ -146,6 +146,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/banners', bannerRoutes);
 app.use('/api/addresses', authMiddleware, addressRoutes);
+app.use('/api/v1/addresses', authMiddleware, addressRoutes);
 app.use('/api/v1/profile', profileRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/review-responses', reviewResponseRoutes);

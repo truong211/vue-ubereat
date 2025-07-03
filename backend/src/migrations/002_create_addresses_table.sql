@@ -1,0 +1,35 @@
+-- 002_create_addresses_table.sql
+-- Create `addresses` table for user shipping addresses
+
+CREATE TABLE IF NOT EXISTS addresses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  addressLine1 VARCHAR(255) NOT NULL,
+  addressLine2 VARCHAR(255),
+  city VARCHAR(100) NOT NULL,
+  district VARCHAR(100),
+  ward VARCHAR(100),
+  state VARCHAR(100) NOT NULL,
+  postalCode VARCHAR(20) NOT NULL,
+  country VARCHAR(100) NOT NULL DEFAULT 'Vietnam',
+  phone VARCHAR(15),
+  isDefault BOOLEAN DEFAULT FALSE,
+  type ENUM('home', 'work', 'other') DEFAULT 'home',
+  instructions TEXT,
+  latitude DECIMAL(10, 8),
+  longitude DECIMAL(11, 8),
+  placeId VARCHAR(100),
+  formattedAddress VARCHAR(255),
+  hasElevator BOOLEAN DEFAULT TRUE,
+  floor INT,
+  apartmentNumber VARCHAR(20),
+  deliveryNotes TEXT,
+  contactName VARCHAR(100),
+  contactPhone VARCHAR(15),
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_address_user (userId),
+  INDEX idx_address_location (latitude, longitude)
+) ENGINE=InnoDB;
