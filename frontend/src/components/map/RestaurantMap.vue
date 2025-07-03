@@ -153,6 +153,8 @@
 import { ref, onMounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { loadGoogleMapsApi } from '@/services/googleMapsLoader';
+import { useGeolocation } from '@/composables/useGeolocation';
+import { fetchNearbyRestaurants } from '@/services/restaurantService';
 
 // Props
 const props = defineProps({
@@ -205,6 +207,15 @@ const displayRadius = ref(5);
 const showDeliveryRadii = ref(true);
 const clusterMarkers = ref(true);
 
+// Reactive user location (initial prop or geolocation result)
+const userLocation = ref({ ...props.userLocation });
+
+// Restaurants actually displayed on map
+const nearbyRestaurants = ref([...props.restaurants]);
+
+// Geolocation composable
+const { getCurrentPosition } = useGeolocation();
+
 // Format distance
 const formatDistance = (distance) => {
   return `${distance.toFixed(1)} km`;
@@ -220,9 +231,28 @@ const initMap = async () => {
       await loadGoogleMapsApi();
     }
     
+    // Try to obtain current user position if permission is granted
+    try {
+      const pos = await getCurrentPosition();
+      userLocation.value = pos;
+    } catch (e) {
+      // ignore – fallback to provided prop
+    }
+    
+    // Fetch nearby restaurants from backend (or mock)
+    try {
+      nearbyRestaurants.value = await fetchNearbyRestaurants({
+        lat: userLocation.value.lat,
+        lng: userLocation.value.lng,
+        radiusKm: displayRadius.value
+      });
+    } catch (e) {
+      console.warn('Could not fetch restaurants:', e);
+    }
+    
     // Create map instance
     const mapOptions = {
-      center: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+      center: { lat: userLocation.value.lat, lng: userLocation.value.lng },
       zoom: props.initialZoom,
       mapTypeControl: false,
       streetViewControl: false,
@@ -279,7 +309,7 @@ const addUserMarker = () => {
   
   // Create user marker
   userMarker.value = new google.maps.Marker({
-    position: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+    position: { lat: userLocation.value.lat, lng: userLocation.value.lng },
     map: mapInstance.value,
     icon: {
       path: google.maps.SymbolPath.CIRCLE,
@@ -301,7 +331,7 @@ const addUserMarker = () => {
     fillColor: '#4285F4',
     fillOpacity: 0.1,
     map: mapInstance.value,
-    center: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+    center: { lat: userLocation.value.lat, lng: userLocation.value.lng },
     radius: displayRadius.value * 1000 // Convert to meters
   });
   
@@ -318,8 +348,23 @@ const addRestaurantMarkers = () => {
   // Create markers array
   const markersArray = [];
   
-  // Add marker for each restaurant
-  props.restaurants.forEach(restaurant => {
+  // Reference point for distance calculations
+  const userLatLng = new google.maps.LatLng(userLocation.value.lat, userLocation.value.lng);
+  
+  // Add marker for each restaurant within radius
+  nearbyRestaurants.value.forEach(restaurant => {
+    // Filter by radius
+    const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(
+      userLatLng,
+      new google.maps.LatLng(restaurant.lat, restaurant.lng)
+    );
+    
+    // Skip restaurants outside selected radius
+    if (distanceMeters > displayRadius.value * 1000) return;
+    
+    // Persist the computed distance (km) for UI use
+    restaurant.distance = distanceMeters / 1000;
+    
     const marker = new google.maps.Marker({
       position: { lat: restaurant.lat, lng: restaurant.lng },
       title: restaurant.name,
@@ -354,6 +399,11 @@ const addRestaurantMarkers = () => {
     markersArray.push(marker);
   });
   
+  // Lazily load MarkerClusterer library if needed
+  if (clusterMarkers.value && !window.MarkerClusterer) {
+    await loadMarkerClusterer();
+  }
+  
   // Add markers to map
   if (clusterMarkers.value && window.MarkerClusterer) {
     // If clustering is enabled and the library is available
@@ -371,12 +421,30 @@ const addRestaurantMarkers = () => {
   markers.value = markersArray;
 };
 
+// Helper to load MarkerClusterer library on demand
+const loadMarkerClusterer = () => {
+  return new Promise((resolve, reject) => {
+    if (window.MarkerClusterer) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/markerclusterer.js';
+    script.async = true;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
+
 // Create heatmap layer
 const createHeatmap = () => {
   if (!mapInstance.value || !window.google.maps.visualization) return;
   
   // Create heatmap data points
-  const heatmapData = props.restaurants.map(restaurant => {
+  const heatmapData = nearbyRestaurants.value.map(restaurant => {
     return {
       location: new google.maps.LatLng(restaurant.lat, restaurant.lng),
       weight: restaurant.popularity || 1
@@ -462,7 +530,7 @@ const getMarkerIcon = (restaurant) => {
 const centerMap = () => {
   if (!mapInstance.value) return;
   
-  mapInstance.value.setCenter({ lat: props.userLocation.lat, lng: props.userLocation.lng });
+  mapInstance.value.setCenter({ lat: userLocation.value.lat, lng: userLocation.value.lng });
   mapInstance.value.setZoom(props.initialZoom);
 };
 
