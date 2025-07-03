@@ -278,8 +278,9 @@ export default {
       
       try {
         const response = await axios.get('/api/users/profile');
-        commit('SET_PROFILE', response.data?.data?.user || response.data);
-        return response.data;
+        const userObj = response.data?.data?.user || response.data;
+        commit('SET_PROFILE', userObj);
+        return userObj;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch profile');
         throw error;
@@ -294,8 +295,9 @@ export default {
       
       try {
         const response = await axios.patch('/api/users/profile', profileData);
-        commit('SET_PROFILE', response.data?.data?.user || response.data);
-        return response.data;
+        const userObj = response.data?.data?.user || response.data;
+        commit('SET_PROFILE', userObj);
+        return userObj;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update profile');
         throw error;
@@ -515,14 +517,37 @@ export default {
     },
     
     // Avatar actions
-    async updateAvatar({ commit }, avatarUrl) {
+    async updateAvatar({ commit }, payload) {
+      // payload can be File/Blob (to upload) OR a direct URL (already uploaded)
       commit('SET_LOADING', true);
       commit('SET_ERROR', null);
-      
+
       try {
-        // Update the profile with the new avatar URL
-        commit('UPDATE_AVATAR', avatarUrl);
-        return avatarUrl;
+        // If payload is File/Blob -> upload
+        if (payload instanceof File || payload instanceof Blob) {
+          const formData = new FormData();
+          formData.append('image', payload);
+
+          const response = await axios.post('/api/users/profile/image', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
+            }
+          });
+
+          const updatedUser = response.data?.data?.user || response.data?.user || null;
+
+          if (updatedUser) {
+            commit('SET_PROFILE', updatedUser);
+            commit('auth/UPDATE_USER_PROFILE', updatedUser, { root: true });
+          }
+
+          return updatedUser;
+        } else {
+          // Otherwise assume payload is URL string
+          commit('UPDATE_AVATAR', payload);
+          commit('auth/UPDATE_USER_PROFILE', { avatar: payload }, { root: true });
+          return payload;
+        }
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update avatar');
         throw error;
