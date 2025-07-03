@@ -61,17 +61,25 @@ exports.getUsers = async (req, res, next) => {
  */
 exports.getProfile = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] },
-      include: [{
-        model: Address,
-        as: 'addresses'
-      }]
-    });
+    // Fetch basic user info (excluding password)
+    const user = await User.findByPk(req.user.id);
 
     if (!user) {
       return next(new AppError('User not found', 404));
     }
+
+    if (user.password !== undefined) {
+      delete user.password;
+    }
+
+    // Fetch this user's addresses separately
+    const addresses = await db.query(
+      'SELECT * FROM addresses WHERE userId = ? ORDER BY isDefault DESC, createdAt DESC',
+      [req.user.id]
+    );
+
+    // Attach addresses for convenience (mimicking include behavior)
+    user.addresses = addresses;
 
     res.status(200).json({
       status: 'success',

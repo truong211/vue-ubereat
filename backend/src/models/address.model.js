@@ -1,140 +1,144 @@
-const { DataTypes } = require('sequelize');
+const { query } = require('../config/database');
 
-module.exports = (sequelize, DataTypes) => {
-  const Address = sequelize.define('Address', {
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true
-    },
-    user_id: { // Renamed from userId
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: {
-        model: 'users', // Use table name string
-        key: 'id'
-      }
-    },
-    name: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    address_line_1: { // Renamed from addressLine1
-      type: DataTypes.STRING(255),
-      allowNull: false
-    },
-    address_line_2: { // Renamed from addressLine2
-      type: DataTypes.STRING(255),
-      allowNull: true
-    },
-    city: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    district: {
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    ward: {
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    state: {
-      type: DataTypes.STRING(100),
-      allowNull: false
-    },
-    postal_code: { // Renamed from postalCode
-      type: DataTypes.STRING(20),
-      allowNull: false
-    },
-    country: {
-      type: DataTypes.STRING(100),
-      allowNull: false,
-      defaultValue: 'Vietnam'
-    },
-    phone: {
-      type: DataTypes.STRING(15),
-      allowNull: true
-    },
-    is_default: { // Renamed from isDefault
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    },
-    type: {
-      type: DataTypes.ENUM('home', 'work', 'other'),
-      defaultValue: 'home'
-    },
-    instructions: {
-      type: DataTypes.TEXT,
-      allowNull: true
-    },
-    latitude: {
-      type: DataTypes.DECIMAL(10, 8),
-      allowNull: true
-    },
-    longitude: {
-      type: DataTypes.DECIMAL(11, 8),
-      allowNull: true
-    },
-    place_id: { // Renamed from placeId
-      type: DataTypes.STRING(100),
-      allowNull: true,
-      comment: 'Google Maps or other map provider place ID'
-    },
-    formatted_address: { // Renamed from formattedAddress
-      type: DataTypes.STRING(255),
-      allowNull: true,
-      comment: 'Fully formatted address from map provider'
-    },
-    has_elevator: { // Renamed from hasElevator
-      type: DataTypes.BOOLEAN,
-      defaultValue: true
-    },
-    floor: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    apartment_number: { // Renamed from apartmentNumber
-      type: DataTypes.STRING(20),
-      allowNull: true
-    },
-    delivery_notes: { // Renamed from deliveryNotes
-      type: DataTypes.TEXT,
-      allowNull: true,
-      comment: 'Additional notes for delivery, e.g., doorbell not working'
-    },
-    contact_name: { // Renamed from contactName
-      type: DataTypes.STRING(100),
-      allowNull: true
-    },
-    contact_phone: { // Renamed from contactPhone
-      type: DataTypes.STRING(15),
-      allowNull: true
+// A lightweight Address model that mimics common Sequelize methods but uses raw SQL queries under the hood.
+class Address {
+  constructor(data = {}) {
+    Object.assign(this, data);
+  }
+
+  // -------- Instance helpers --------
+  toJSON() {
+    return { ...this };
+  }
+
+  // Persist current state back to DB (update only – insert handled by create())
+  async save() {
+    if (!this.id) {
+      throw new Error('Cannot call save() on an Address without an id');
     }
-    // created_at, updated_at handled by timestamps + underscored
-  }, {
-    timestamps: true,
-    underscored: true, // Added underscored
-    tableName: 'addresses', // Table name is already correct
-    indexes: [
-      {
-        fields: ['user_id'], // Updated field name
-        name: 'idx_address_user'
-      },
-      {
-        fields: ['latitude', 'longitude'],
-        name: 'idx_address_location'
+
+    const { id, ...data } = this;
+    const setClauses = [];
+    const params = [];
+
+    for (const [key, value] of Object.entries(data)) {
+      // skip undefined so we do not overwrite with NULL unintentionally
+      if (value === undefined) continue;
+      setClauses.push(`${key} = ?`);
+      params.push(value);
+    }
+
+    if (setClauses.length === 0) return this; // nothing to update
+
+    params.push(id);
+    await query(`UPDATE addresses SET ${setClauses.join(', ')} WHERE id = ?`, params);
+    return this;
+  }
+
+  async destroy() {
+    if (!this.id) return 0;
+    const result = await query('DELETE FROM addresses WHERE id = ?', [this.id]);
+    return result.affectedRows || 0;
+  }
+
+  // -------- Static helpers --------
+  static async findByPk(id) {
+    if (!id) return null;
+    const rows = await query('SELECT * FROM addresses WHERE id = ? LIMIT 1', [id]);
+    return rows.length ? new Address(rows[0]) : null;
+  }
+
+  static async findOne(options = {}) {
+    const results = await Address.findAll({ ...options, limit: 1 });
+    return results.length ? results[0] : null;
+  }
+
+  static async findAll(options = {}) {
+    let sql = 'SELECT * FROM addresses';
+    const params = [];
+    const whereClauses = [];
+
+    if (options.where) {
+      Object.entries(options.where).forEach(([key, value]) => {
+        if (value === null) {
+          whereClauses.push(`${key} IS NULL`);
+        } else if (Array.isArray(value)) {
+          whereClauses.push(`${key} IN (?)`);
+          params.push(value);
+        } else {
+          whereClauses.push(`${key} = ?`);
+          params.push(value);
+        }
+      });
+    }
+
+    if (whereClauses.length) sql += ' WHERE ' + whereClauses.join(' AND ');
+
+    if (options.order) {
+      // Expecting [[column, 'ASC'|'DESC'], ...]
+      const orderStr = options.order.map(([col, dir]) => `${col} ${dir}`).join(', ');
+      sql += ' ORDER BY ' + orderStr;
+    }
+
+    if (options.limit) {
+      sql += ' LIMIT ?';
+      params.push(parseInt(options.limit));
+      if (options.offset) {
+        sql += ' OFFSET ?';
+        params.push(parseInt(options.offset));
       }
-    ]
-  });
+    }
 
-  // Define associations using the associate method pattern
-  Address.associate = function(models) {
-    Address.belongsTo(models.user, { 
-      foreignKey: 'user_id', 
-      as: 'user' 
+    const rows = await query(sql, params);
+    return rows.map(r => new Address(r));
+  }
+
+  static async create(data) {
+    const insertData = { ...data };
+
+    const columns = Object.keys(insertData).join(', ');
+    const placeholders = Object.keys(insertData).map(() => '?').join(', ');
+    const values = Object.values(insertData);
+
+    const result = await query(`INSERT INTO addresses (${columns}) VALUES (${placeholders})`, values);
+    return new Address({ id: result.insertId, ...data });
+  }
+
+  // update(data, options) – Sequelize-like signature (used in some controllers)
+  static async update(data, options = {}) {
+    const updateData = { ...data };
+
+    const setClauses = [];
+    const params = [];
+    Object.entries(updateData).forEach(([key, value]) => {
+      setClauses.push(`${key} = ?`);
+      params.push(value);
     });
-  };
 
-  return Address;
-};
+    if (setClauses.length === 0) return [0];
+
+    let sql = `UPDATE addresses SET ${setClauses.join(', ')}`;
+    const whereClauses = [];
+    if (options.where) {
+      Object.entries(options.where).forEach(([key, value]) => {
+        whereClauses.push(`${key} = ?`);
+        params.push(value);
+      });
+    }
+    if (whereClauses.length) sql += ' WHERE ' + whereClauses.join(' AND ');
+
+    const result = await query(sql, params);
+    return [result.affectedRows];
+  }
+
+  // Sequelize compatibility stubs
+  static init() {
+    return Address;
+  }
+  static associate() {}
+  static belongsTo() {}
+  static hasMany() {}
+  static belongsToMany() {}
+}
+
+module.exports = Address;

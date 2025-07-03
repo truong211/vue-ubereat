@@ -7,7 +7,7 @@ const db = require('../config/database');
 const User = {
   tableName: 'users',
   
-  findByPk: async (id) => {
+  findByPk: async (id, _options = {}) => {
     try {
       // Check if id is undefined or null, return null early
       if (id === undefined || id === null) {
