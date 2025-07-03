@@ -41,6 +41,7 @@ const recommendationRoutes = require('./routes/recommendation.routes');
 const adminRoutes = require('./routes/admin.routes');
 const faqRoutes = require('./routes/faq.routes');
 const deliveryConfigRoutes = require('./routes/deliveryConfig.routes');
+const profileRoutes = require('./routes/profile.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -145,6 +146,7 @@ app.use('/api/menu', menuRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/banners', bannerRoutes);
 app.use('/api/addresses', authMiddleware, addressRoutes);
+app.use('/api/v1/profile', profileRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/review-responses', reviewResponseRoutes);
 app.use('/api/faqs', faqRoutes);
