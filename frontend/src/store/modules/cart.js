@@ -26,7 +26,11 @@ function persistCart(state) {
       tax: state.tax,
       restaurantId: state.restaurantId,
       restaurantName: state.restaurantName,
-      deliveryAddress: state.deliveryAddress
+      deliveryAddress: state.deliveryAddress,
+      deliveryType: state.deliveryType,
+      scheduledTime: state.scheduledTime,
+      appliedPromotion: state.appliedPromotion,
+      discountAmount: state.discountAmount
     };
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
@@ -46,6 +50,12 @@ const state = {
   restaurantId: persisted.restaurantId || null,
   restaurantName: persisted.restaurantName || null,
   deliveryAddress: persisted.deliveryAddress || null,
+  // Delivery time
+  deliveryType: persisted.deliveryType || 'asap', // 'asap' | 'scheduled'
+  scheduledTime: persisted.scheduledTime || null,
+  // Promotions
+  appliedPromotion: persisted.appliedPromotion || null,
+  discountAmount: persisted.discountAmount || 0,
   // UI helpers
   loading: false,
   error: null
@@ -61,11 +71,15 @@ const getters = {
     const optTotal = (i.options || []).reduce((oSum, opt) => oSum + (opt.price || 0), 0);
     return tot + (i.price + optTotal) * i.quantity;
   }, 0),
-  total: (s, g) => g.subtotal + s.deliveryFee + s.tax,
+  total: (s, g) => g.subtotal + s.deliveryFee + s.tax - s.discountAmount,
   isCartEmpty: s => s.items.length === 0,
   getError: s => s.error,
   isLoading: s => s.loading,
-  deliveryAddress: s => s.deliveryAddress
+  deliveryAddress: s => s.deliveryAddress,
+  discountAmount: s => s.discountAmount,
+  appliedPromotion: s => s.appliedPromotion,
+  deliveryType: s => s.deliveryType,
+  scheduledTime: s => s.scheduledTime
 };
 
 // ---------------------------------------------------------------------------
@@ -85,6 +99,10 @@ const mutations = {
     state.restaurantId = payload.restaurantId || null;
     state.restaurantName = payload.restaurantName || null;
     state.deliveryAddress = payload.deliveryAddress || null;
+    state.deliveryType = payload.deliveryType || 'asap';
+    state.scheduledTime = payload.scheduledTime || null;
+    state.appliedPromotion = payload.appliedPromotion || null;
+    state.discountAmount = payload.discountAmount || 0;
   },
   ADD_ITEM(state, item) {
     // Merge if same id & same chosen options (very basic check)
@@ -118,6 +136,10 @@ const mutations = {
     state.restaurantId = null;
     state.restaurantName = null;
     state.deliveryAddress = null;
+    state.deliveryType = 'asap';
+    state.scheduledTime = null;
+    state.appliedPromotion = null;
+    state.discountAmount = 0;
   },
   UPDATE_DELIVERY_FEE(state, fee) {
     state.deliveryFee = fee;
@@ -130,6 +152,23 @@ const mutations = {
   },
   UPDATE_DELIVERY_ADDRESS(state, addr) {
     state.deliveryAddress = addr;
+  },
+  UPDATE_DELIVERY_TYPE(state, type) {
+    state.deliveryType = type;
+  },
+  SET_SCHEDULED_TIME(state, iso) {
+    state.scheduledTime = iso;
+  },
+  APPLY_PROMOTION(state, { promo, discount }) {
+    state.appliedPromotion = promo;
+    state.discountAmount = discount;
+  },
+  REMOVE_PROMOTION(state) {
+    state.appliedPromotion = null;
+    state.discountAmount = 0;
+  },
+  UPDATE_DISCOUNT_AMOUNT(state, amount) {
+    state.discountAmount = amount;
   }
 };
 
@@ -215,6 +254,10 @@ const actions = {
       if (state.items.length === 0) {
         commit('UPDATE_RESTAURANT_NAME', null);
         state.restaurantId = null;
+        state.deliveryType = 'asap';
+        state.scheduledTime = null;
+        state.appliedPromotion = null;
+        state.discountAmount = 0;
       }
       dispatch('saveCart');
     }
@@ -228,6 +271,53 @@ const actions = {
   // ---------------- Delivery address ----------------
   setDeliveryAddress({ commit, dispatch }, address) {
     commit('UPDATE_DELIVERY_ADDRESS', address);
+    dispatch('saveCart');
+  },
+
+  // ---------------- Delivery time ----------------
+  scheduleDelivery({ commit, dispatch }, isoDateTime) {
+    commit('UPDATE_DELIVERY_TYPE', 'scheduled');
+    commit('SET_SCHEDULED_TIME', isoDateTime);
+    dispatch('saveCart');
+  },
+  cancelScheduledDelivery({ commit, dispatch }) {
+    commit('UPDATE_DELIVERY_TYPE', 'asap');
+    commit('SET_SCHEDULED_TIME', null);
+    dispatch('saveCart');
+  },
+
+  // ---------------- Promotions ----------------
+  applyPromotion({ commit, dispatch, state }, code) {
+    const trimmed = (code || '').toUpperCase().trim();
+    // Mock promotion table
+    const PROMOS = {
+      'WELCOME10': { code: 'WELCOME10', type: 'percentage', value: 10 },
+      'FIVEOFF': { code: 'FIVEOFF', type: 'fixed_amount', value: 5 },
+      'FREEDEL': { code: 'FREEDEL', type: 'free_delivery', value: 0 }
+    };
+    const promo = PROMOS[trimmed];
+    if (!promo) {
+      throw new Error('Invalid promo code');
+    }
+    // Compute discount
+    let discount = 0;
+    const subtotal = state.items.reduce((tot, i) => {
+      const optTotal = (i.options || []).reduce((t, o) => t + (o.price || 0), 0);
+      return tot + (i.price + optTotal) * i.quantity;
+    }, 0);
+    if (promo.type === 'percentage') {
+      discount = (subtotal * promo.value) / 100;
+    } else if (promo.type === 'fixed_amount') {
+      discount = promo.value;
+    } else if (promo.type === 'free_delivery') {
+      discount = state.deliveryFee;
+    }
+    commit('APPLY_PROMOTION', { promo, discount });
+    dispatch('saveCart');
+    return promo;
+  },
+  removePromotion({ commit, dispatch }) {
+    commit('REMOVE_PROMOTION');
     dispatch('saveCart');
   }
 };
