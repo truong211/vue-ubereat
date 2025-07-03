@@ -155,6 +155,45 @@ router.patch(
 );
 
 /**
+ * @route PUT /api/users/addresses/:id
+ * @desc Update address
+ * @access Private
+ */
+router.put(
+  '/addresses/:id',
+  [
+    body('name')
+      .optional()
+      .notEmpty()
+      .withMessage('Address name cannot be empty'),
+    body('addressLine1')
+      .optional()
+      .notEmpty()
+      .withMessage('Address line 1 cannot be empty'),
+    body('city')
+      .optional()
+      .notEmpty()
+      .withMessage('City cannot be empty'),
+    body('state')
+      .optional()
+      .notEmpty()
+      .withMessage('State cannot be empty'),
+    body('postalCode')
+      .optional()
+      .notEmpty()
+      .withMessage('Postal code cannot be empty')
+  ],
+  userController.updateAddress
+);
+
+/**
+ * @route PUT /api/users/addresses/:id/default
+ * @desc Set address as default
+ * @access Private
+ */
+router.put('/addresses/:id/default', userController.setDefaultAddress);
+
+/**
  * @route DELETE /api/users/addresses/:id
  * @desc Delete address
  * @access Private
@@ -240,6 +279,39 @@ router.post(
 router.delete('/payment-methods/:id', (req, res) => {
   // Return success for now as this is a placeholder
   res.status(204).send();
+});
+
+/**
+ * @route PUT /api/users/payment-methods/:id
+ * @desc Update payment method (placeholder)
+ * @access Private
+ */
+router.put('/payment-methods/:id', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    data: {
+      paymentMethod: {
+        id: req.params.id,
+        ...req.body,
+        updatedAt: new Date()
+      }
+    }
+  });
+});
+
+/**
+ * @route PUT /api/users/payment-methods/:id/default
+ * @desc Set default payment method (placeholder)
+ * @access Private
+ */
+router.put('/payment-methods/:id/default', (req, res) => {
+  res.status(200).json({
+    status: 'success',
+    data: {
+      methodId: req.params.id,
+      message: 'Default payment method updated'
+    }
+  });
 });
 
 module.exports = router; 

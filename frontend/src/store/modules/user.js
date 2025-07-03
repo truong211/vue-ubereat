@@ -278,7 +278,7 @@ export default {
       
       try {
         const response = await axios.get('/api/users/profile');
-        commit('SET_PROFILE', response.data);
+        commit('SET_PROFILE', response.data?.data?.user || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch profile');
@@ -294,7 +294,7 @@ export default {
       
       try {
         const response = await axios.patch('/api/users/profile', profileData);
-        commit('SET_PROFILE', response.data);
+        commit('SET_PROFILE', response.data?.data?.user || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update profile');
@@ -311,7 +311,7 @@ export default {
       
       try {
         const response = await axios.get('/api/users/addresses');
-        commit('SET_ADDRESSES', response.data);
+        commit('SET_ADDRESSES', response.data?.data?.addresses || []);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch addresses');
@@ -327,7 +327,7 @@ export default {
       
       try {
         const response = await axios.post('/api/users/addresses', addressData);
-        commit('ADD_ADDRESS', response.data);
+        commit('ADD_ADDRESS', response.data?.data?.address || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to add address');
@@ -337,13 +337,17 @@ export default {
       }
     },
     
-    async updateAddress({ commit }, { id, addressData }) {
+    async updateAddress({ commit }, payload) {
+      // Accept both { id, addressData } and { id, ...fields }
+      const { id, addressData, ...rest } = payload;
+      const dataToSend = addressData || rest; // Prefer explicit addressData if provided
+
       commit('SET_LOADING_ADDRESSES', true);
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.put(`/api/users/addresses/${id}`, addressData);
-        commit('UPDATE_ADDRESS', response.data);
+        const response = await axios.put(`/api/users/addresses/${id}`, dataToSend);
+        commit('UPDATE_ADDRESS', response.data?.data?.address || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update address');
@@ -390,7 +394,7 @@ export default {
       
       try {
         const response = await axios.get('/api/users/payment-methods');
-        commit('SET_PAYMENT_METHODS', response.data);
+        commit('SET_PAYMENT_METHODS', response.data?.data?.paymentMethods || []);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch payment methods');
@@ -406,7 +410,7 @@ export default {
       
       try {
         const response = await axios.post('/api/users/payment-methods', methodData);
-        commit('ADD_PAYMENT_METHOD', response.data);
+        commit('ADD_PAYMENT_METHOD', response.data?.data?.paymentMethod || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to add payment method');
@@ -422,7 +426,7 @@ export default {
       
       try {
         const response = await axios.put(`/api/users/payment-methods/${id}`, methodData);
-        commit('UPDATE_PAYMENT_METHOD', response.data);
+        commit('UPDATE_PAYMENT_METHOD', response.data?.data?.paymentMethod || response.data);
         return response.data;
       } catch (error) {
         commit('SET_ERROR', error.response?.data?.message || 'Failed to update payment method');

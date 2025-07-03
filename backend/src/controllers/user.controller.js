@@ -470,3 +470,53 @@ exports.getOrderDetails = async (req, res, next) => {
     next(error);
   }
 };
+
+/**
+ * Set an address as default for current user
+ * @route PUT /api/users/addresses/:id/default
+ * @access Private
+ */
+exports.setDefaultAddress = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    // Check if the address exists and belongs to the current user
+    const [address] = await db.query(
+      'SELECT * FROM addresses WHERE id = ? AND userId = ? LIMIT 1',
+      [id, userId]
+    );
+
+    if (!address) {
+      return next(new AppError('Address not found', 404));
+    }
+
+    // Remove default flag from all user addresses first
+    await db.query(
+      'UPDATE addresses SET isDefault = false WHERE userId = ?',
+      [userId]
+    );
+
+    // Set the chosen address as default
+    await db.query(
+      'UPDATE addresses SET isDefault = true WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
+
+    // Fetch the updated address
+    const [updatedAddress] = await db.query(
+      'SELECT * FROM addresses WHERE id = ?',
+      [id]
+    );
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        address: updatedAddress
+      }
+    });
+  } catch (error) {
+    logger.error('Error setting default address:', error);
+    next(error);
+  }
+};
