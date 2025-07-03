@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const addressController = require('../controllers/address.controller');
 const { authMiddleware } = require('../middleware/auth.middleware');
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -92,7 +92,13 @@ router.delete('/:id', addressController.deleteAddress);
  * @desc Set an address as default
  * @access Private
  */
-router.patch('/:id/default', addressController.setDefaultAddress);
+router.patch(
+  '/:id/default',
+  [
+    param('id').isInt().withMessage('Invalid address ID')
+  ],
+  addressController.setDefaultAddress
+);
 
 /**
  * @route GET /api/addresses/places

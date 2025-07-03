@@ -401,36 +401,39 @@ exports.setDefaultAddress = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    
-    // Check if address exists
+
+    // Validate address ownership
     const [address] = await db.query(
       'SELECT * FROM addresses WHERE id = ? AND userId = ?',
       [id, userId]
     );
-    
+
     if (!address) {
       return next(new AppError('Address not found', 404));
     }
-    
-    // Remove default from all other addresses
-    await db.query(
-      'UPDATE addresses SET isDefault = false WHERE userId = ?',
-      [userId]
-    );
-    
-    // Set this address as default
-    await db.query(
-      'UPDATE addresses SET isDefault = true WHERE id = ?',
-      [id]
-    );
-    
-    // Get updated address
+
+    // Use DB transaction for atomic update
+    await db.transaction(async (connection) => {
+      // Remove default from all user's addresses
+      await connection.promise().query(
+        'UPDATE addresses SET isDefault = false WHERE userId = ?',
+        [userId]
+      );
+
+      // Set the selected address as default
+      await connection.promise().query(
+        'UPDATE addresses SET isDefault = true WHERE id = ?',
+        [id]
+      );
+    });
+
+    // Fetch updated address
     const [updatedAddress] = await db.query(
       'SELECT * FROM addresses WHERE id = ?',
       [id]
     );
-    
-    res.status(200).json({
+
+    return res.status(200).json({
       status: 'success',
       data: {
         address: updatedAddress
