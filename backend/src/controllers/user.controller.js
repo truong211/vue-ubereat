@@ -1,12 +1,13 @@
 const { validationResult } = require('express-validator');
-const User = require('../models/user.model');
-const Address = require('../models/address.model');
 const Order = require('../models/order.model');
 const { AppError } = require('../middleware/error.middleware');
 const fs = require('fs');
 const path = require('path');
 const db = require('../config/database');
 const logger = require('../utils/logger');
+const ProfileService = require('../services/profile.service');
+const Address = require('../models/address.model');
+const { User } = require('../models/sequelize');
 
 /**
  * Get users with optional role filtering
@@ -61,13 +62,7 @@ exports.getUsers = async (req, res, next) => {
  */
 exports.getProfile = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] },
-      include: [{
-        model: Address,
-        as: 'addresses'
-      }]
-    });
+    const user = await ProfileService.getProfile(req.user.id);
 
     if (!user) {
       return next(new AppError('User not found', 404));
@@ -96,34 +91,33 @@ exports.updateProfile = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fullName, phone, address } = req.body;
-    const userId = req.user.id;
-    
-    // Create update data object
-    const updateData = {};
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (phone !== undefined) updateData.phone = phone;
-    if (address !== undefined) updateData.address = address;
-    
-    // Use User.update method correctly - it expects (id, data) not ({data}, {where})
-    const updated = await User.update(userId, updateData);
-    
-    if (!updated) {
-      return next(new AppError('Failed to update user profile', 500));
-    }
-    
-    // Fetch the updated user record
-    const updatedUser = await User.findByPk(userId);
+    const { fullName, full_name, email, phone, avatar_url, avatarUrl } = req.body;
+
+    // Map camelCase to snake_case as needed
+    const payload = {
+      ...(fullName !== undefined && { full_name: fullName }),
+      ...(full_name !== undefined && { full_name }),
+      ...(email !== undefined && { email }),
+      ...(phone !== undefined && { phone }),
+      ...(avatarUrl !== undefined && { avatar_url: avatarUrl }),
+      ...(avatar_url !== undefined && { avatar_url }),
+    };
+
+    const updatedUser = await ProfileService.updateProfile(
+      req.user.id,
+      payload,
+      req.ip
+    );
 
     if (!updatedUser) {
-      return next(new AppError('User not found', 404));
+      return next(new AppError('Failed to update user profile', 500));
     }
 
     res.status(200).json({
       status: 'success',
       data: {
-        user: updatedUser
-      }
+        user: updatedUser,
+      },
     });
   } catch (error) {
     console.error('Profile update error:', error);
@@ -150,24 +144,17 @@ exports.uploadProfileImage = async (req, res, next) => {
     }
 
     // Delete old profile image if exists
-    if (user.profileImage) {
-      const oldImagePath = path.join(__dirname, '../../uploads/profiles', user.profileImage);
+    if (user.avatar_url) {
+      const oldImagePath = path.join(__dirname, '../../uploads/profiles', user.avatar_url);
       if (fs.existsSync(oldImagePath)) {
         fs.unlinkSync(oldImagePath);
       }
     }
 
-    // Use User.update method to update the profile image
-    const updated = await User.update(userId, {
-      profileImage: req.file.filename
-    });
-    
-    if (!updated) {
-      return next(new AppError('Failed to update profile image', 500));
-    }
-    
-    // Fetch the updated user record
-    const updatedUser = await User.findByPk(userId);
+    await user.update({ avatar_url: req.file.filename });
+
+    // Fetch updated user
+    const updatedUser = await ProfileService.getProfile(userId);
 
     res.status(200).json({
       status: 'success',
