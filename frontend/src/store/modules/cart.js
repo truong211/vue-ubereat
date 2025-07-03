@@ -25,7 +25,8 @@ function persistCart(state) {
       deliveryFee: state.deliveryFee,
       tax: state.tax,
       restaurantId: state.restaurantId,
-      restaurantName: state.restaurantName
+      restaurantName: state.restaurantName,
+      deliveryAddress: state.deliveryAddress
     };
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload));
   } catch (err) {
@@ -44,6 +45,7 @@ const state = {
   tax: persisted.tax || 0,
   restaurantId: persisted.restaurantId || null,
   restaurantName: persisted.restaurantName || null,
+  deliveryAddress: persisted.deliveryAddress || null,
   // UI helpers
   loading: false,
   error: null
@@ -62,7 +64,8 @@ const getters = {
   total: (s, g) => g.subtotal + s.deliveryFee + s.tax,
   isCartEmpty: s => s.items.length === 0,
   getError: s => s.error,
-  isLoading: s => s.loading
+  isLoading: s => s.loading,
+  deliveryAddress: s => s.deliveryAddress
 };
 
 // ---------------------------------------------------------------------------
@@ -81,6 +84,7 @@ const mutations = {
     state.tax = payload.tax || 0;
     state.restaurantId = payload.restaurantId || null;
     state.restaurantName = payload.restaurantName || null;
+    state.deliveryAddress = payload.deliveryAddress || null;
   },
   ADD_ITEM(state, item) {
     // Merge if same id & same chosen options (very basic check)
@@ -113,6 +117,7 @@ const mutations = {
     state.tax = 0;
     state.restaurantId = null;
     state.restaurantName = null;
+    state.deliveryAddress = null;
   },
   UPDATE_DELIVERY_FEE(state, fee) {
     state.deliveryFee = fee;
@@ -122,6 +127,9 @@ const mutations = {
   },
   UPDATE_RESTAURANT_NAME(state, name) {
     state.restaurantName = name;
+  },
+  UPDATE_DELIVERY_ADDRESS(state, addr) {
+    state.deliveryAddress = addr;
   }
 };
 
@@ -214,6 +222,12 @@ const actions = {
 
   clearCart({ commit, dispatch }) {
     commit('CLEAR_CART');
+    dispatch('saveCart');
+  },
+
+  // ---------------- Delivery address ----------------
+  setDeliveryAddress({ commit, dispatch }, address) {
+    commit('UPDATE_DELIVERY_ADDRESS', address);
     dispatch('saveCart');
   }
 };
