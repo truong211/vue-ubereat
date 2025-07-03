@@ -1,301 +1,220 @@
-import cartService from '@/services/cart.service';
-import { USE_MOCK_DATA } from '@/config';
-import axios from 'axios';
+// This module manages the cart entirely on the client side and persists it to
+// localStorage. All network-based cart logic has been removed so that the core
+// add / edit / remove functionality works out-of-the-box without requiring a
+// backend.
 
-// Create an api instance for consistent usage
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  headers: {
-    'Content-Type': 'application/json'
+// ---------------------------------------------------------------------------
+// Types & helpers
+// ---------------------------------------------------------------------------
+const CART_STORAGE_KEY = 'cart';
+
+function loadPersistedCart() {
+  try {
+    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn('Failed to parse cart from localStorage:', err);
+    return null;
   }
-});
+}
 
-// Add request interceptor to include auth token
-api.interceptors.request.use(
-  config => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
-    }
-    return config;
-  },
-  error => Promise.reject(error)
-);
+function persistCart(state) {
+  try {
+    const payload = {
+      items: state.items,
+      deliveryFee: state.deliveryFee,
+      tax: state.tax,
+      restaurantId: state.restaurantId,
+      restaurantName: state.restaurantName
+    };
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(payload));
+  } catch (err) {
+    console.warn('Failed to persist cart to localStorage:', err);
+  }
+}
 
+// ---------------------------------------------------------------------------
 // Initial state
+// ---------------------------------------------------------------------------
+const persisted = loadPersistedCart() || {};
+
 const state = {
-  items: [],
+  items: persisted.items || [],
+  deliveryFee: persisted.deliveryFee || 0,
+  tax: persisted.tax || 0,
+  restaurantId: persisted.restaurantId || null,
+  restaurantName: persisted.restaurantName || null,
+  // UI helpers
   loading: false,
-  error: null,
-  subtotal: 0,
-  deliveryFee: 0,
-  tax: 0,
-  total: 0
+  error: null
 };
 
+// ---------------------------------------------------------------------------
 // Getters
+// ---------------------------------------------------------------------------
 const getters = {
-  cartItems: state => state.items,
-  cartItemsCount: state => state.items.reduce((count, item) => count + item.quantity, 0),
-  cartSubtotal: state => state.subtotal,
-  cartDeliveryFee: state => state.deliveryFee,
-  cartTax: state => state.tax,
-  cartTotal: state => state.total,
-  isCartEmpty: state => state.items.length === 0,
-  isLoading: state => state.loading,
-  hasError: state => state.error !== null,
-  getError: state => state.error
+  cartItems: s => s.items,
+  cartItemsCount: s => s.items.reduce((sum, i) => sum + i.quantity, 0),
+  subtotal: s => s.items.reduce((tot, i) => {
+    const optTotal = (i.options || []).reduce((oSum, opt) => oSum + (opt.price || 0), 0);
+    return tot + (i.price + optTotal) * i.quantity;
+  }, 0),
+  total: (s, g) => g.subtotal + s.deliveryFee + s.tax,
+  isCartEmpty: s => s.items.length === 0,
+  getError: s => s.error,
+  isLoading: s => s.loading
 };
 
-// Actions
-const actions = {
-  // Fetch the user's cart
-  async fetchCart({ commit }) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      const response = await cartService.getCartItems();
-      console.log('Cart response:', response.data);
-      
-      if (!response.data || !response.data.data) {
-        commit('SET_CART_ITEMS', []);
-        commit('UPDATE_CART_TOTALS', {
-          subtotal: 0,
-          deliveryFee: 0,
-          tax: 0,
-          total: 0
-        });
-        return { items: [] };
-      }
-      
-      const cartData = response.data.data;
-      
-      // Set cart items
-      commit('SET_CART_ITEMS', cartData.items || []);
-      
-      // Update cart totals
-      commit('UPDATE_CART_TOTALS', {
-        subtotal: cartData.subtotal || 0,
-        deliveryFee: cartData.deliveryFee || 0,
-        tax: cartData.taxAmount || 0,
-        total: cartData.total || 0
-      });
-      
-      return cartData;
-    } catch (error) {
-      console.error('Error fetching cart:', error);
-      commit('SET_ERROR', 'Failed to load cart items');
-      commit('SET_CART_ITEMS', []);
-      commit('UPDATE_CART_TOTALS', {
-        subtotal: 0,
-        deliveryFee: 0,
-        tax: 0,
-        total: 0
-      });
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Add item to cart
-  async addToCart({ commit, dispatch }, { productId, quantity = 1, options = null }) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      await cartService.addToCart(productId, quantity, options);
-      // Refresh cart
-      return dispatch('fetchCart');
-    } catch (error) {
-      console.error('Error adding to cart:', error);
-      commit('SET_ERROR', 'Failed to add item to cart');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Update cart item
-  async updateCartItem({ commit, dispatch }, { itemId, quantity }) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      await cartService.updateQuantity(itemId, quantity);
-      // Refresh cart
-      return dispatch('fetchCart');
-    } catch (error) {
-      console.error('Error updating cart item:', error);
-      commit('SET_ERROR', 'Failed to update cart item');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Remove item from cart
-  async removeFromCart({ commit, dispatch }, itemId) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      await cartService.removeFromCart(itemId);
-      // Refresh cart
-      return dispatch('fetchCart');
-    } catch (error) {
-      console.error('Error removing from cart:', error);
-      commit('SET_ERROR', 'Failed to remove item from cart');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Clear entire cart
-  async clearCart({ commit }) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      await cartService.clearCart();
-      commit('CLEAR_CART');
-    } catch (error) {
-      console.error('Error clearing cart:', error);
-      commit('SET_ERROR', 'Failed to clear cart');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Validate cart
-  async validateCart({ commit }) {
-    commit('SET_LOADING', true);
-    commit('SET_ERROR', null);
-    
-    try {
-      const response = await cartService.validateCart();
-      return response.data;
-    } catch (error) {
-      console.error('Error validating cart:', error);
-      commit('SET_ERROR', 'Failed to validate cart');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Apply promotion code
-  async applyPromotion({ commit, dispatch }, code) {
-    try {
-      commit('SET_LOADING', true);
-      const response = await api.post('/api/cart/promotion', { code });
-      await dispatch('fetchCart'); // Refresh cart with applied promotion
-      return response.data.data.promotion;
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to apply promotion code');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Remove promotion code
-  async removePromotion({ commit, dispatch }) {
-    try {
-      commit('SET_LOADING', true);
-      await api.delete('/api/cart/promotion');
-      await dispatch('fetchCart'); // Refresh cart without promotion
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to remove promotion code');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Set special instructions for the order
-  async setSpecialInstructions({ commit, dispatch }, instructions) {
-    try {
-      commit('SET_LOADING', true);
-      await api.post('/api/cart/instructions', { instructions });
-      await dispatch('fetchCart'); // Refresh cart with instructions
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to set instructions');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Set delivery address
-  async setDeliveryAddress({ commit, dispatch }, addressId) {
-    try {
-      commit('SET_LOADING', true);
-      await api.post('/api/cart/address', { addressId });
-      await dispatch('fetchCart'); // Refresh cart with delivery address
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to set delivery address');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Schedule delivery
-  async scheduleDelivery({ commit, dispatch }, scheduledTime) {
-    try {
-      commit('SET_LOADING', true);
-      await api.post('/api/cart/schedule', { scheduledTime });
-      await dispatch('fetchCart'); // Refresh cart with scheduled delivery
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to schedule delivery');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  },
-  
-  // Cancel scheduled delivery
-  async cancelScheduledDelivery({ commit, dispatch }) {
-    try {
-      commit('SET_LOADING', true);
-      await api.delete('/api/cart/schedule');
-      await dispatch('fetchCart'); // Refresh cart without scheduled delivery
-    } catch (error) {
-      commit('SET_ERROR', error.response?.data?.message || 'Failed to cancel scheduled delivery');
-      throw error;
-    } finally {
-      commit('SET_LOADING', false);
-    }
-  }
-};
-
+// ---------------------------------------------------------------------------
 // Mutations
+// ---------------------------------------------------------------------------
 const mutations = {
-  SET_CART_ITEMS(state, items) {
-    state.items = items;
+  SET_LOADING(state, val) {
+    state.loading = val;
   },
-  SET_LOADING(state, loading) {
-    state.loading = loading;
+  SET_ERROR(state, err) {
+    state.error = err;
   },
-  SET_ERROR(state, error) {
-    state.error = error;
+  SET_CART(state, payload) {
+    state.items = payload.items || [];
+    state.deliveryFee = payload.deliveryFee || 0;
+    state.tax = payload.tax || 0;
+    state.restaurantId = payload.restaurantId || null;
+    state.restaurantName = payload.restaurantName || null;
   },
-  UPDATE_CART_TOTALS(state, { subtotal, deliveryFee, tax, total }) {
-    state.subtotal = subtotal;
-    state.deliveryFee = deliveryFee;
-    state.tax = tax;
-    state.total = total;
+  ADD_ITEM(state, item) {
+    // Merge if same id & same chosen options (very basic check)
+    const match = state.items.find(i => i.id === item.id && JSON.stringify(i.options) === JSON.stringify(item.options));
+    if (match) {
+      match.quantity += item.quantity;
+    } else {
+      state.items.push(item);
+    }
+  },
+  UPDATE_ITEM_QUANTITY(state, { itemId, quantity }) {
+    const item = state.items.find(i => i.id === itemId);
+    if (!item) return;
+    item.quantity = Math.max(0, quantity);
+    if (item.quantity === 0) {
+      state.items = state.items.filter(i => i.id !== itemId);
+    }
+  },
+  UPDATE_ITEM(state, { itemId, data }) {
+    const idx = state.items.findIndex(i => i.id === itemId);
+    if (idx === -1) return;
+    state.items[idx] = { ...state.items[idx], ...data };
+  },
+  REMOVE_ITEM(state, itemId) {
+    state.items = state.items.filter(i => i.id !== itemId);
   },
   CLEAR_CART(state) {
     state.items = [];
-    state.subtotal = 0;
     state.deliveryFee = 0;
     state.tax = 0;
-    state.total = 0;
+    state.restaurantId = null;
+    state.restaurantName = null;
+  },
+  UPDATE_DELIVERY_FEE(state, fee) {
+    state.deliveryFee = fee;
+  },
+  UPDATE_TAX(state, tax) {
+    state.tax = tax;
+  },
+  UPDATE_RESTAURANT_NAME(state, name) {
+    state.restaurantName = name;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+const actions = {
+  // ---------- Persistence helpers ----------
+  loadCart({ commit }) {
+    const cart = loadPersistedCart();
+    if (cart) commit('SET_CART', cart);
+  },
+  saveCart({ state }) {
+    persistCart(state);
+  },
+
+  // ---------- Core CRUD ----------
+  addToCart({ commit, dispatch, state }, payload) {
+    /*
+      Expected payload from components:
+      {
+        productId, quantity, options, notes, name, price, image, restaurantId, restaurantName
+      }
+    */
+    const item = {
+      id: payload.productId || payload.id,
+      restaurantId: payload.restaurantId || state.restaurantId || null,
+      name: payload.name || 'Item',
+      price: payload.price || 0,
+      image: payload.image || null,
+      quantity: payload.quantity || 1,
+      options: payload.options || [],
+      notes: payload.notes || null
+    };
+
+    // Ensure cart only contains items from one restaurant
+    if (state.restaurantId && state.restaurantId !== item.restaurantId) {
+      commit('CLEAR_CART');
+    }
+
+    commit('ADD_ITEM', item);
+    if (!state.restaurantName && payload.restaurantName) {
+      commit('UPDATE_RESTAURANT_NAME', payload.restaurantName);
+    }
+    if (!state.restaurantId) {
+      state.restaurantId = item.restaurantId;
+    }
+
+    dispatch('saveCart');
+  },
+
+  updateQuantity({ commit, dispatch, state }, payload) {
+    // Support legacy signature { index, change }
+    if (payload.index !== undefined) {
+      const item = state.items[payload.index];
+      if (!item) return;
+      const newQty = item.quantity + (payload.change || 0);
+      commit('UPDATE_ITEM_QUANTITY', { itemId: item.id, quantity: newQty });
+    } else {
+      commit('UPDATE_ITEM_QUANTITY', { itemId: payload.itemId, quantity: payload.quantity });
+    }
+    dispatch('saveCart');
+  },
+
+  updateCartItem({ commit, dispatch }, { id, ...data }) {
+    // Accept updates for options / quantity / notes etc.
+    commit('UPDATE_ITEM', { itemId: id, data });
+    dispatch('saveCart');
+  },
+
+  getCartItem({ state }, itemId) {
+    return state.items.find(i => i.id === itemId);
+  },
+
+  removeFromCart({ commit, dispatch, state }, idOrIndex) {
+    let itemId = idOrIndex;
+    if (typeof idOrIndex === 'number') {
+      itemId = state.items[idOrIndex]?.id;
+    }
+    if (itemId) {
+      commit('REMOVE_ITEM', itemId);
+      // Reset restaurant info if cart becomes empty
+      if (state.items.length === 0) {
+        commit('UPDATE_RESTAURANT_NAME', null);
+        state.restaurantId = null;
+      }
+      dispatch('saveCart');
+    }
+  },
+
+  clearCart({ commit, dispatch }) {
+    commit('CLEAR_CART');
+    dispatch('saveCart');
   }
 };
 
