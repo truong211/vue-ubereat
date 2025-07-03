@@ -5,6 +5,9 @@
 
 import axios from 'axios'
 import { API_URL } from '@/config'
+import { userProfileService } from '@/services/userProfile.service';
+import { addressService } from '@/services/address.service';
+import { orderService } from '@/services/order.service';
 
 export default {
   namespaced: true,
@@ -29,7 +32,11 @@ export default {
     loadingVouchers: false,
     
     // Error state
-    error: null
+    error: null,
+    
+    // New fields
+    recentOrders: [],
+    orderStatistics: null
   },
   
   getters: {
@@ -92,7 +99,39 @@ export default {
         const endDate = new Date(voucher.endDate);
         return endDate < now;
       });
-    }
+    },
+    
+    // New getters
+    email: (state) => state.profile?.email || '',
+    phone: (state) => state.profile?.phone || '',
+    profileImage: (state) => state.profile?.profileImage || null,
+    preferredLanguage: (state) => state.profile?.preferredLanguage || 'vi',
+    notificationPreferences: (state) => {
+      try {
+        return typeof state.profile?.notificationPreferences === 'string' 
+          ? JSON.parse(state.profile.notificationPreferences)
+          : state.profile?.notificationPreferences || {};
+      } catch {
+        return {};
+      }
+    },
+    
+    // Address getters
+    addressCount: (state) => state.addresses.length,
+    homeAddresses: (state) => state.addresses.filter(addr => addr.type === 'home'),
+    workAddresses: (state) => state.addresses.filter(addr => addr.type === 'work'),
+    
+    // Order getters
+    totalOrdersCount: (state) => state.orderStatistics?.totalOrders || 0,
+    totalSpent: (state) => state.orderStatistics?.totalSpent || 0,
+    favoriteRestaurants: (state) => state.orderStatistics?.favoriteRestaurants || [],
+    
+    // Loading state getters
+    isLoading: (state) => state.loading,
+    loadingAddresses: (state) => state.loadingAddresses,
+    loadingPaymentMethods: (state) => state.loadingPaymentMethods,
+    loadingVouchers: (state) => state.loadingVouchers,
+    error: (state) => state.error
   },
   
   mutations: {
@@ -267,6 +306,23 @@ export default {
           avatar: avatarUrl
         };
       }
+    },
+    
+    // New mutations
+    SET_RECENT_ORDERS(state, orders) {
+      state.recentOrders = orders;
+    },
+    
+    SET_ORDER_STATISTICS(state, statistics) {
+      state.orderStatistics = statistics;
+    },
+    
+    CLEAR_USER_DATA(state) {
+      state.profile = null;
+      state.addresses = [];
+      state.recentOrders = [];
+      state.orderStatistics = null;
+      state.error = null;
     }
   },
   
@@ -277,11 +333,11 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get('/api/users/profile');
-        commit('SET_PROFILE', response.data);
-        return response.data;
+        const response = await userProfileService.getProfile();
+        commit('SET_PROFILE', response.data.data.profile);
+        return response.data.data.profile;
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch profile');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể tải thông tin người dùng');
         throw error;
       } finally {
         commit('SET_LOADING', false);
@@ -293,11 +349,11 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.patch('/api/users/profile', profileData);
-        commit('SET_PROFILE', response.data);
-        return response.data;
+        const response = await userProfileService.updateProfile(profileData);
+        commit('SET_PROFILE', response.data.data.profile);
+        return response.data.data.profile;
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to update profile');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể cập nhật thông tin');
         throw error;
       } finally {
         commit('SET_LOADING', false);
@@ -310,11 +366,11 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.get('/api/users/addresses');
-        commit('SET_ADDRESSES', response.data);
-        return response.data;
+        const response = await addressService.getUserAddresses();
+        commit('SET_ADDRESSES', response.data.data.addresses);
+        return response.data.data.addresses;
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to fetch addresses');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể tải danh sách địa chỉ');
         throw error;
       } finally {
         commit('SET_LOADING_ADDRESSES', false);
@@ -326,11 +382,11 @@ export default {
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.post('/api/users/addresses', addressData);
-        commit('ADD_ADDRESS', response.data);
-        return response.data;
+        const response = await addressService.createAddress(addressData);
+        commit('ADD_ADDRESS', response.data.data.address);
+        return response.data.data.address;
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to add address');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể tạo địa chỉ');
         throw error;
       } finally {
         commit('SET_LOADING_ADDRESSES', false);
@@ -338,48 +394,48 @@ export default {
     },
     
     async updateAddress({ commit }, { id, addressData }) {
-      commit('SET_LOADING_ADDRESSES', true);
+      commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       
       try {
-        const response = await axios.put(`/api/users/addresses/${id}`, addressData);
-        commit('UPDATE_ADDRESS', response.data);
-        return response.data;
+        const response = await addressService.updateAddress(id, addressData);
+        commit('UPDATE_ADDRESS', response.data.data.address);
+        return response.data.data.address;
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to update address');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể cập nhật địa chỉ');
         throw error;
       } finally {
-        commit('SET_LOADING_ADDRESSES', false);
+        commit('SET_LOADING', false);
       }
     },
     
     async deleteAddress({ commit }, addressId) {
-      commit('SET_LOADING_ADDRESSES', true);
+      commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       
       try {
-        await axios.delete(`/api/users/addresses/${addressId}`);
+        await addressService.deleteAddress(addressId);
         commit('REMOVE_ADDRESS', addressId);
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to delete address');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể xóa địa chỉ');
         throw error;
       } finally {
-        commit('SET_LOADING_ADDRESSES', false);
+        commit('SET_LOADING', false);
       }
     },
     
     async setDefaultAddress({ commit }, addressId) {
-      commit('SET_LOADING_ADDRESSES', true);
+      commit('SET_LOADING', true);
       commit('SET_ERROR', null);
       
       try {
-        await axios.put(`/api/users/addresses/${addressId}/default`);
+        await addressService.setDefaultAddress(addressId);
         commit('SET_DEFAULT_ADDRESS', addressId);
       } catch (error) {
-        commit('SET_ERROR', error.response?.data?.message || 'Failed to set default address');
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể đặt địa chỉ mặc định');
         throw error;
       } finally {
-        commit('SET_LOADING_ADDRESSES', false);
+        commit('SET_LOADING', false);
       }
     },
     
@@ -577,6 +633,43 @@ export default {
       } finally {
         commit('SET_LOADING', false);
       }
+    },
+    
+    // New actions
+    async fetchRecentOrders({ commit }, limit = 5) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        const response = await orderService.getUserOrders({ limit });
+        commit('SET_RECENT_ORDERS', response.data.data.orders);
+        return response.data.data.orders;
+      } catch (error) {
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể tải đơn hàng gần đây');
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+    
+    async fetchOrderStatistics({ commit }) {
+      commit('SET_LOADING', true);
+      commit('SET_ERROR', null);
+      
+      try {
+        const response = await orderService.getOrderStatistics();
+        commit('SET_ORDER_STATISTICS', response.data.data);
+        return response.data.data;
+      } catch (error) {
+        commit('SET_ERROR', error.response?.data?.message || 'Không thể tải thống kê đơn hàng');
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+    
+    clearUserData({ commit }) {
+      commit('CLEAR_USER_DATA');
     }
   }
 } 

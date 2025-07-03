@@ -5,82 +5,94 @@
 
 import axios from 'axios'
 
-class AddressService {
-  /**
-   * Get all addresses for the current user
-   * @returns {Promise<Array>} User's saved addresses
-   */
-  async getUserAddresses() {
-    try {
-      const response = await axios.get('/api/user/addresses')
-      return response.data
-    } catch (error) {
-      console.error('Failed to get user addresses:', error)
-      return []
-    }
+const API_BASE_URL = process.env.VUE_APP_API_BASE_URL || 'http://localhost:3000'
+
+// Create axios instance with base configuration
+const apiClient = axios.create({
+  baseURL: `${API_BASE_URL}/api/user`,
+  headers: {
+    'Content-Type': 'application/json'
   }
+})
+
+// Add authorization header interceptor
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('authToken')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// Add response interceptor for error handling
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Unauthorized - redirect to login
+      localStorage.removeItem('authToken')
+      window.location.href = '/auth/login'
+    }
+    return Promise.reject(error)
+  }
+)
+
+export const addressService = {
+  /**
+   * Get all user addresses
+   */
+  getUserAddresses() {
+    return apiClient.get('/addresses')
+  },
 
   /**
-   * Create a new address
+   * Create new address
    * @param {Object} addressData - Address data
-   * @returns {Promise<Object>} Created address
    */
-  async createAddress(addressData) {
-    try {
-      const response = await axios.post('/api/user/addresses', addressData)
-      return response.data
-    } catch (error) {
-      console.error('Failed to create address:', error)
-      throw error
-    }
-  }
+  createAddress(addressData) {
+    return apiClient.post('/addresses', addressData)
+  },
 
   /**
-   * Update an existing address
-   * @param {number} id - Address ID
+   * Get single address
+   * @param {string|number} id - Address ID
+   */
+  getAddress(id) {
+    return apiClient.get(`/addresses/${id}`)
+  },
+
+  /**
+   * Update address
+   * @param {string|number} id - Address ID
    * @param {Object} addressData - Updated address data
-   * @returns {Promise<Object>} Updated address
    */
-  async updateAddress(id, addressData) {
-    try {
-      const response = await axios.put(`/api/user/addresses/${id}`, addressData)
-      return response.data
-    } catch (error) {
-      console.error('Failed to update address:', error)
-      throw error
-    }
-  }
+  updateAddress(id, addressData) {
+    return apiClient.put(`/addresses/${id}`, addressData)
+  },
 
   /**
-   * Delete an address
-   * @param {number} id - Address ID
-   * @returns {Promise<boolean>} Success status
+   * Delete address
+   * @param {string|number} id - Address ID
    */
-  async deleteAddress(id) {
-    try {
-      await axios.delete(`/api/user/addresses/${id}`)
-      return true
-    } catch (error) {
-      console.error('Failed to delete address:', error)
-      throw error
-    }
-  }
+  deleteAddress(id) {
+    return apiClient.delete(`/addresses/${id}`)
+  },
 
   /**
-   * Set an address as default
-   * @param {number} id - Address ID
-   * @returns {Promise<Object>} Updated address
+   * Set address as default
+   * @param {string|number} id - Address ID
    */
-  async setDefaultAddress(id) {
-    try {
-      const response = await axios.put(`/api/user/addresses/${id}/default`)
-      return response.data
-    } catch (error) {
-      console.error('Failed to set address as default:', error)
-      throw error
-    }
+  setDefaultAddress(id) {
+    return apiClient.patch(`/addresses/${id}/default`)
   }
+}
 
+class AddressService {
   /**
    * Get user's current location
    * @returns {Promise<Object>} Location coordinates
