@@ -5,6 +5,9 @@ const axios = require('axios');
 const config = require('../config/config');
 const logger = require('../utils/logger');
 
+// Maximum addresses allowed per user (configurable via env)
+const MAX_ADDRESSES_PER_USER = parseInt(process.env.MAX_ADDRESSES_PER_USER || '5', 10);
+
 /**
  * Helper function to get coordinates from address using external mapping service
  */
@@ -136,6 +139,13 @@ exports.createAddress = async (req, res, next) => {
       apartmentNumber,
       hasElevator
     } = req.body;
+    
+    // Enforce per-user address limit
+    const [addressCountResult] = await db.query('SELECT COUNT(*) AS cnt FROM addresses WHERE userId = ?', [userId]);
+    const currentAddressCount = addressCountResult ? addressCountResult.cnt || 0 : 0;
+    if (currentAddressCount >= MAX_ADDRESSES_PER_USER) {
+      return next(new AppError(`You can only save up to ${MAX_ADDRESSES_PER_USER} addresses`, 400));
+    }
     
     // If latitude and longitude are not provided, try to get them
     let locationData = {};
