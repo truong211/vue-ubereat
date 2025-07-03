@@ -408,6 +408,11 @@ export default defineComponent({
         // Prepare the payload for the cart
         const payload = {
           productId: props.item.id,
+          name: props.item.name,
+          price: props.item.price,
+          image: props.item.image,
+          restaurantId: (props.item.restaurantId || props.item.restaurant_id || null),
+          restaurantName: props.item.restaurantName || props.item.restaurant_name || null,
           quantity: quantity.value,
           options: Object.keys(customizations).length > 0 ? customizations : undefined,
           notes: specialInstructions.value.trim() || undefined
