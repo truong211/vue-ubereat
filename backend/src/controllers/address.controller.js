@@ -225,6 +225,12 @@ exports.createAddress = async (req, res, next) => {
  */
 exports.updateAddress = async (req, res, next) => {
   try {
+    // Validate body (from express-validator rules defined in route)
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
     const { id } = req.params;
     const userId = req.user.id;
     

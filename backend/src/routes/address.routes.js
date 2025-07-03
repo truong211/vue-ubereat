@@ -53,7 +53,32 @@ router.post(
  * @desc Update an address
  * @access Private
  */
-router.patch('/:id', addressController.updateAddress);
+router.patch(
+  '/:id',
+  [
+    body('name')
+      .optional()
+      .notEmpty()
+      .withMessage('Address name cannot be empty'),
+    body('addressLine1')
+      .optional()
+      .notEmpty()
+      .withMessage('Address line 1 cannot be empty'),
+    body('city')
+      .optional()
+      .notEmpty()
+      .withMessage('City cannot be empty'),
+    body('state')
+      .optional()
+      .notEmpty()
+      .withMessage('State cannot be empty'),
+    body('postalCode')
+      .optional()
+      .notEmpty()
+      .withMessage('Postal code cannot be empty')
+  ],
+  addressController.updateAddress
+);
 
 /**
  * @route DELETE /api/addresses/:id
