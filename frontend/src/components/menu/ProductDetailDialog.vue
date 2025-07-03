@@ -308,7 +308,7 @@ export default {
   
   methods: {
     ...mapActions({
-      addCartItem: 'cart/addItem'
+      addToCartAction: 'cart/addToCart'
     }),
     
     closeDialog() {
@@ -403,9 +403,14 @@ export default {
           });
         }
         
-        // Add item to cart
-        await this.addCartItem({
-          product: this.product,
+        // Build payload expected by cart/addToCart
+        await this.addToCartAction({
+          productId: this.product.id,
+          name: this.product.name,
+          price: this.product.price,
+          image: this.product.image_url,
+          restaurantId: this.product.restaurant_id,
+          restaurantName: this.product.restaurant_name,
           quantity: this.selectedOptions.quantity,
           options,
           notes: this.selectedOptions.instructions
