@@ -60,19 +60,21 @@ router.get('/profile', userController.getProfile);
  */
 router.patch(
   '/profile',
+  // Optional avatar upload (field name: avatar)
+  upload.single('avatar'),
   [
     body('fullName')
       .optional()
       .isLength({ min: 3, max: 100 })
       .withMessage('Full name must be between 3 and 100 characters'),
+    body('email')
+      .optional()
+      .isEmail()
+      .withMessage('Please provide a valid email address'),
     body('phone')
       .optional()
       .isMobilePhone()
-      .withMessage('Please provide a valid phone number'),
-    body('address')
-      .optional()
-      .isLength({ min: 5 })
-      .withMessage('Address must be at least 5 characters')
+      .withMessage('Please provide a valid phone number')
   ],
   userController.updateProfile
 );

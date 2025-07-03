@@ -99,40 +99,83 @@ exports.getProfile = async (req, res, next) => {
  */
 exports.updateProfile = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { fullName, phone, address } = req.body;
+    const { fullName, email, phone } = req.body;
     const userId = req.user.id;
-    
-    // Create update data object
+
+    // Prepare update data
     const updateData = {};
     if (fullName !== undefined) updateData.fullName = fullName;
+    if (email !== undefined) updateData.email = email.trim().toLowerCase();
     if (phone !== undefined) updateData.phone = phone;
-    if (address !== undefined) updateData.address = address;
-    
-    // Use User.update method correctly - it expects (id, data) not ({data}, {where})
-    const updated = await User.update(userId, updateData);
-    
-    if (!updated) {
-      return next(new AppError('Failed to update user profile', 500));
-    }
-    
-    // Fetch the updated user record
-    const updatedUser = await User.findByPk(userId);
 
-    if (!updatedUser) {
-      return next(new AppError('User not found', 404));
-    }
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        user: updatedUser
+    // Check duplicates (email / phone)
+    if (updateData.email) {
+      const existingEmail = await User.findOne({ email: updateData.email });
+      if (existingEmail && existingEmail.id !== userId) {
+        // Remove uploaded avatar if exists to avoid orphan file
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return next(new AppError('Email already in use', 400));
       }
-    });
+    }
+
+    if (updateData.phone) {
+      const existingPhone = await User.findOne({ phone: updateData.phone });
+      if (existingPhone && existingPhone.id !== userId) {
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return next(new AppError('Phone number already in use', 400));
+      }
+    }
+
+    // Handle avatar upload
+    if (req.file) {
+      updateData.profileImage = req.file.filename;
+    }
+
+    try {
+      const updated = await User.update(userId, updateData);
+
+      if (!updated) {
+        // Rollback uploaded avatar if update failed
+        if (req.file) {
+          fs.unlinkSync(req.file.path);
+        }
+        return next(new AppError('Failed to update user profile', 500));
+      }
+
+      // If avatar replaced, delete old file
+      if (req.file) {
+        const currentUser = await User.findByPk(userId);
+        if (currentUser && currentUser.profileImage && currentUser.profileImage !== req.file.filename) {
+          const oldPath = path.join(__dirname, '../../uploads/profiles', currentUser.profileImage);
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        }
+      }
+
+      const updatedUser = await User.findByPk(userId);
+
+      if (updatedUser && updatedUser.password !== undefined) {
+        delete updatedUser.password;
+      }
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          user: updatedUser
+        }
+      });
+    } catch (err) {
+      // Cleanup file on error
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      next(err);
+    }
   } catch (error) {
     console.error('Profile update error:', error);
     next(error);
