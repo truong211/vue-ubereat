@@ -121,6 +121,10 @@ const store = createStore({
     clearNotifications({ commit }) {
       commit('clearNotifications')
     },
+    // Load persisted cart from localStorage (delegates to cart module)
+    loadCart({ dispatch }) {
+      return dispatch('cart/loadCart')
+    },
     // Generic WebSocket message sender
     sendWebSocketMessage(_, { type, payload }) {
       websocketService.send(type, payload)
