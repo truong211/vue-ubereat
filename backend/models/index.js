@@ -32,6 +32,9 @@ db.DeliveryConfig = require('../src/models/deliveryConfig.model');
 // db.Notification = require('./notification');
 // db.ReviewResponse = require('./reviewResponse');
 
+db.UserProfile = require('./userProfile');
+db.Address = require('./address');
+
 // Note: As you convert more models from Sequelize to SQL,
 // uncomment the lines above and add them to this file.
 
