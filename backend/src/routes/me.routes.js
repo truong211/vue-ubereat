@@ -48,4 +48,6 @@ router.patch(
 
 router.delete('/addresses/:id', meController.deleteAddress);
 
+router.get('/orders', meController.listOrders);
+
 module.exports = router;

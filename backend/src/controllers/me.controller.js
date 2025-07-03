@@ -2,6 +2,7 @@ const { validationResult } = require('express-validator');
 const UserProfile = require('../../models/userProfile');
 const Address = require('../../models/address');
 const { AppError } = require('../middleware/error.middleware');
+const Order = require('../models/order.model');
 
 /**
  * GET /api/v1/me
@@ -177,6 +178,57 @@ exports.deleteAddress = async (req, res, next) => {
 
     await Address.destroy({ id });
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.listOrders = async (req, res, next) => {
+  try {
+    const userId = req.user && (req.user.id || req.user.user_id || req.user.userId);
+    if (!userId) {
+      return next(new AppError('User not authenticated', 401));
+    }
+
+    const {
+      status,
+      page = 1,
+      pageSize = 10,
+      sort = 'DESC'
+    } = req.query;
+
+    const where = { userId };
+    if (status) where.status = status;
+
+    const limit = Number(pageSize);
+    const offset = (Number(page) - 1) * limit;
+
+    const totalCount = await Order.count(where);
+
+    const orders = await Order.findAll({
+      where,
+      order: `createdAt ${sort.toUpperCase() === 'ASC' ? 'ASC' : 'DESC'}`,
+      limit,
+      offset
+    });
+
+    // Map to minimal fields
+    const data = orders.map(o => ({
+      id: o.id,
+      date: o.createdAt || o.created_at || o.created_at,
+      status: o.status,
+      totalAmount: o.totalAmount || o.total_amount
+    }));
+
+    res.status(200).json({
+      status: 'success',
+      page: Number(page),
+      pageSize: limit,
+      total: totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      results: data.length,
+      data
+    });
   } catch (err) {
     next(err);
   }
