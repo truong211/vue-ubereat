@@ -231,8 +231,7 @@ CREATE TABLE IF NOT EXISTS cart (
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
-  UNIQUE KEY cart_user_product (userId, productId)
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE
 );
 
 -- Create user_favorites table
@@ -702,6 +701,33 @@ CREATE TABLE IF NOT EXISTS order_details (
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (orderId) REFERENCES orders(id) ON DELETE CASCADE
+);
+
+-- Create product_options table
+CREATE TABLE IF NOT EXISTS product_options (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  productId INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  type ENUM('single', 'multiple') DEFAULT 'single',
+  isRequired BOOLEAN DEFAULT FALSE,
+  displayOrder INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
+  INDEX idx_product_option_product (productId)
+);
+
+-- Create product_option_choices table
+CREATE TABLE IF NOT EXISTS product_option_choices (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  optionId INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  price DECIMAL(10, 2) DEFAULT 0,
+  displayOrder INT DEFAULT 0,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (optionId) REFERENCES product_options(id) ON DELETE CASCADE,
+  INDEX idx_option_choice_option (optionId)
 );
 
 -- Insert admin user
