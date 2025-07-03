@@ -109,38 +109,7 @@
                   </div>
                   
                   <div class="promo-code">
-                    <div class="promo-input">
-                      <v-text-field
-                        v-model="promoCode"
-                        label="Promo Code"
-                        placeholder="Enter promo code"
-                        variant="outlined"
-                        density="comfortable"
-                      ></v-text-field>
-                      <v-btn
-                        color="primary"
-                        variant="text"
-                        :loading="applyingPromo"
-                        @click="applyPromoCode"
-                      >
-                        Apply
-                      </v-btn>
-                    </div>
-                    
-                    <v-alert
-                      v-if="promoMessage"
-                      :type="promoSuccess ? 'success' : 'error'"
-                      variant="tonal"
-                      density="compact"
-                      class="mt-2"
-                    >
-                      {{ promoMessage }}
-                    </v-alert>
-                    
-                    <div v-if="discount > 0" class="summary-row discount-row">
-                      <span>Discount</span>
-                      <span>-${{ discount.toFixed(2) }}</span>
-                    </div>
+                    <PromoCodeForm />
                   </div>
                   
                   <v-divider class="my-4"></v-divider>
@@ -187,10 +156,13 @@
 <script>
 import { computed, ref } from 'vue';
 import { useStore } from 'vuex';
+import DeliveryTimeSelector from '@/components/cart/DeliveryTimeSelector.vue';
+import PromoCodeForm from '@/components/cart/PromoCodeForm.vue';
 import promotionService from '@/services/promotion.service';
 
 export default {
   name: 'CartView',
+  components: { DeliveryTimeSelector, PromoCodeForm },
   
   setup() {
     const store = useStore();
