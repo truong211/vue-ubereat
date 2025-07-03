@@ -415,13 +415,13 @@ exports.setDefaultAddress = async (req, res, next) => {
     // Use DB transaction for atomic update
     await db.transaction(async (connection) => {
       // Remove default from all user's addresses
-      await connection.promise().query(
+      await connection.query(
         'UPDATE addresses SET isDefault = false WHERE userId = ?',
         [userId]
       );
 
       // Set the selected address as default
-      await connection.promise().query(
+      await connection.query(
         'UPDATE addresses SET isDefault = true WHERE id = ?',
         [id]
       );

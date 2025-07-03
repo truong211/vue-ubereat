@@ -96,34 +96,52 @@ exports.updateProfile = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fullName, phone, address } = req.body;
+    const { fullName, phone, address, email } = req.body;
     const userId = req.user.id;
-    
-    // Create update data object
+
+    // Uniqueness checks for email / phone if they are being changed
+    if (email) {
+      const [existingEmail] = await db.query('SELECT id FROM users WHERE email = ? AND id <> ?', [email, userId]);
+      if (existingEmail) {
+        return next(new AppError('Email is already in use', 409));
+      }
+    }
+
+    if (phone) {
+      const [existingPhone] = await db.query('SELECT id FROM users WHERE phone = ? AND id <> ?', [phone, userId]);
+      if (existingPhone) {
+        return next(new AppError('Phone number is already in use', 409));
+      }
+    }
+
+    // Build update object
     const updateData = {};
     if (fullName !== undefined) updateData.fullName = fullName;
     if (phone !== undefined) updateData.phone = phone;
     if (address !== undefined) updateData.address = address;
-    
-    // Use User.update method correctly - it expects (id, data) not ({data}, {where})
+    if (email !== undefined) updateData.email = email;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ status: 'error', message: 'No valid fields provided' });
+    }
+
+    // Update DB
     const updated = await User.update(userId, updateData);
-    
+
     if (!updated) {
       return next(new AppError('Failed to update user profile', 500));
     }
-    
-    // Fetch the updated user record
+
+    // Fetch fresh record
     const updatedUser = await User.findByPk(userId);
 
     if (!updatedUser) {
       return next(new AppError('User not found', 404));
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
-      data: {
-        user: updatedUser
-      }
+      data: { user: updatedUser }
     });
   } catch (error) {
     console.error('Profile update error:', error);
@@ -149,32 +167,27 @@ exports.uploadProfileImage = async (req, res, next) => {
       return next(new AppError('User not found', 404));
     }
 
-    // Delete old profile image if exists
-    if (user.profileImage) {
-      const oldImagePath = path.join(__dirname, '../../uploads/profiles', user.profileImage);
-      if (fs.existsSync(oldImagePath)) {
-        fs.unlinkSync(oldImagePath);
+    // Determine previous avatar path
+    const previousAvatar = user.avatarUrl || user.profileImage;
+    if (previousAvatar) {
+      const oldPath = path.join(__dirname, '../../uploads/profiles', previousAvatar);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
       }
     }
 
-    // Use User.update method to update the profile image
-    const updated = await User.update(userId, {
-      profileImage: req.file.filename
-    });
-    
+    // Persist new avatar (filename only; client can prepend /uploads/profiles)
+    const updated = await User.update(userId, { avatarUrl: req.file.filename });
+
     if (!updated) {
       return next(new AppError('Failed to update profile image', 500));
     }
-    
-    // Fetch the updated user record
+
     const updatedUser = await User.findByPk(userId);
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
-      data: {
-        user: updatedUser,
-        message: 'Profile image updated successfully'
-      }
+      data: { user: updatedUser, message: 'Profile image updated successfully' }
     });
   } catch (error) {
     // Delete uploaded file if error occurs

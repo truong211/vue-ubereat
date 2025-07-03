@@ -28,7 +28,11 @@ router.put(
     body('phone')
       .optional()
       .isMobilePhone()
-      .withMessage('Please provide a valid phone number')
+      .withMessage('Please provide a valid phone number'),
+    body('email')
+      .optional()
+      .isEmail()
+      .withMessage('Please provide a valid email address')
   ],
   userController.updateProfile
 );
