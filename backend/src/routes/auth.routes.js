@@ -50,6 +50,17 @@ router.post(
   authController.checkPhone
 );
 
+// Đăng ký bằng số điện thoại
+router.post(
+  '/register-phone',
+  [
+    body('name').notEmpty().withMessage('Name is required'),
+    body('phone').notEmpty().withMessage('Phone number is required'),
+    body('password').notEmpty().withMessage('Password is required').isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+  ],
+  authController.registerPhone
+);
+
 // Regular auth routes
 router.post(
   '/register',
@@ -98,8 +109,9 @@ router.post(
 
 router.post(
   '/verify-phone-otp',
-  protect,
   [
+    body('userId').optional(),
+    body('phone').optional(),
     body('otp').notEmpty().withMessage('OTP is required').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits')
   ],
   authController.verifyPhoneOTP

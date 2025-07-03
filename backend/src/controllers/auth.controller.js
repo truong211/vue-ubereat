@@ -424,18 +424,26 @@ exports.verifyEmail = async (req, res) => {
 
 exports.verifyPhoneOTP = async (req, res) => {
   try {
-    const { phone, otp } = req.body;
-    
-    // Find user by phone
-    const user = await User.findOne({ phone });
+    const { userId, phone, otp } = req.body;
+
+    if (!otp) {
+      return res.status(400).json({ message: 'OTP is required' });
+    }
+
+    let user;
+    if (userId) {
+      user = await User.findByPk(userId);
+    } else if (phone) {
+      user = await User.findOne({ where: { phone } });
+    }
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
     
     // Check if OTP is valid and not expired
-    if (!user.phoneVerificationOtp || 
-        user.phoneVerificationOtp !== otp || 
+    if (!user.phoneVerificationOtp ||
+        user.phoneVerificationOtp !== otp ||
         user.phoneVerificationExpires < Date.now()) {
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
@@ -452,9 +460,34 @@ exports.verifyPhoneOTP = async (req, res) => {
     user.phoneVerificationOtp = null;
     user.phoneVerificationExpires = null;
     
-    await user.save();
+    await User.update(
+      {
+        isPhoneVerified: user.isPhoneVerified,
+        isVerified: user.isVerified,
+        phoneVerificationOtp: null,
+        phoneVerificationExpires: null
+      },
+      { where: { id: user.id } }
+    );
     
-    res.status(200).json({ message: 'Phone verified successfully' });
+    // Optionally generate tokens for immediate login if desired
+    const token = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    const refreshToken = jwt.sign(
+      { id: user.id, userId: user.id, role: user.role },
+      JWT_REFRESH_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Phone verified successfully',
+      token,
+      refreshToken
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1116,5 +1149,69 @@ exports.getJwtVersion = async (req, res) => {
       success: false,
       message: 'Error checking JWT version'
     });
+  }
+};
+
+// Add new registerPhone controller
+exports.registerPhone = async (req, res) => {
+  try {
+    const { name, phone, password } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required' });
+    }
+
+    // Check if phone already exists
+    const existing = await User.findOne({ where: { phone } });
+    if (existing) {
+      return res.status(400).json({ message: 'Phone number already registered. Please use a different phone number.' });
+    }
+
+    // Generate username from phone
+    let username = `user_${phone.slice(-4)}`;
+    // just in case ensure length >=3
+    if (username.length < 3) {
+      username += Math.random().toString(36).substring(2, 5);
+    }
+
+    // Create user (email null)
+    const user = await User.create({
+      fullName: name,
+      phone,
+      username,
+      password,
+      isPhoneVerified: false,
+      isEmailVerified: false,
+      role: 'customer'
+    });
+
+    // Generate OTP and expiry (15 mins)
+    const otp = generateOTP();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Save OTP to user
+    await User.update(
+      {
+        phoneVerificationOtp: otp,
+        phoneVerificationExpires: expiry
+      },
+      { where: { id: user.id } }
+    );
+
+    // Send SMS
+    try {
+      await sendPhoneVerificationOTP(phone, otp);
+    } catch (smsErr) {
+      console.error('Error sending OTP SMS:', smsErr);
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Registration successful! Please verify your phone using the OTP sent via SMS.',
+      userId: user.id
+    });
+  } catch (err) {
+    console.error('Phone registration error:', err);
+    return res.status(500).json({ message: 'Error registering by phone' });
   }
 };
