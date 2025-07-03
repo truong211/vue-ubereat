@@ -29,18 +29,24 @@ exports.getCart = async (req, res, next) => {
       }
     }
 
-    // Get delivery address if set in session
+    // Get delivery address & scheduled time from first cart item (all items share same values)
     let deliveryAddress = null;
-    if (req.session && req.session.deliveryAddressId) {
-      deliveryAddress = await Address.findByPk(req.session.deliveryAddressId);
-      // Only return the address if it belongs to the current user
-      if (deliveryAddress && deliveryAddress.user_id !== req.user.id) {
-        deliveryAddress = null;
+    let scheduledDelivery = null;
+    if (cart.length > 0) {
+      const firstItem = cart[0];
+      if (firstItem.deliveryAddressId) {
+        deliveryAddress = await Address.findByPk(firstItem.deliveryAddressId);
+        if (deliveryAddress && deliveryAddress.user_id !== req.user.id) {
+          deliveryAddress = null;
+        }
+      }
+      if (firstItem.scheduledTime) {
+        scheduledDelivery = {
+          time: firstItem.scheduledTime,
+          isScheduled: true
+        };
       }
     }
-
-    // Get scheduled delivery time if set
-    const scheduledDelivery = req.session?.scheduledDelivery || null;
 
     // Group cart items by restaurant
     const cartByRestaurant = cart.reduce((acc, item) => {
@@ -313,12 +319,21 @@ exports.addToCart = async (req, res, next) => {
       });
     } else {
       // Create new cart item
+      let deliveryAddressId = null;
+      let scheduledTime = null;
+      if (existingCartItems.length > 0) {
+        deliveryAddressId = existingCartItems[0].deliveryAddressId || null;
+        scheduledTime = existingCartItems[0].scheduledTime || null;
+      }
+
       const cartItem = await Cart.create({
         userId: req.user.id,
         productId,
         quantity: parseInt(quantity),
         options: validatedOptions,
-        notes
+        notes,
+        deliveryAddressId,
+        scheduledTime
       });
 
       return res.status(201).json({
@@ -379,12 +394,11 @@ exports.setDeliveryAddress = async (req, res, next) => {
       return next(new AppError('Address not found', 404));
     }
     
-    // Store in session
-    if (!req.session) {
-      req.session = {};
-    }
-    
-    req.session.deliveryAddressId = addressId;
+    // Update all cart items for the user with the selected address
+    await db.query(
+      `UPDATE ${Cart.tableName} SET deliveryAddressId = ? WHERE userId = ?`,
+      [addressId, req.user.id]
+    );
     
     res.status(200).json({
       status: 'success',
@@ -404,38 +418,39 @@ exports.setDeliveryAddress = async (req, res, next) => {
  */
 exports.scheduleDelivery = async (req, res, next) => {
   try {
-    const { scheduledTime } = req.body;
+    const { type = 'asap', scheduledTime } = req.body;
     
-    // Validate the scheduled time is in the future
-    const now = new Date();
-    const scheduledDate = new Date(scheduledTime);
-    
-    if (scheduledDate <= now) {
-      return next(new AppError('Scheduled time must be in the future', 400));
+    let scheduledDate = null;
+    if (type === 'scheduled') {
+      if (!scheduledTime) {
+        return next(new AppError('scheduledTime is required for scheduled delivery', 400));
+      }
+      scheduledDate = new Date(scheduledTime);
+
+      const now = new Date();
+      if (scheduledDate <= new Date(now.getTime() + 30 * 60000)) { // at least 30 minutes ahead
+        return next(new AppError('Scheduled time must be at least 30 minutes in the future', 400));
+      }
+
+      const maxScheduleWindow = new Date();
+      maxScheduleWindow.setDate(maxScheduleWindow.getDate() + 7);
+      if (scheduledDate > maxScheduleWindow) {
+        return next(new AppError('Cannot schedule delivery more than 7 days in advance', 400));
+      }
     }
-    
-    // Maximum scheduling window (e.g., 7 days in advance)
-    const maxScheduleWindow = new Date();
-    maxScheduleWindow.setDate(maxScheduleWindow.getDate() + 7);
-    
-    if (scheduledDate > maxScheduleWindow) {
-      return next(new AppError('Cannot schedule delivery more than 7 days in advance', 400));
-    }
-    
-    // Store in session
-    if (!req.session) {
-      req.session = {};
-    }
-    
-    req.session.scheduledDelivery = {
-      time: scheduledTime,
-      isScheduled: true
-    };
+
+    // Update all cart items
+    await db.query(
+      `UPDATE ${Cart.tableName} SET scheduledTime = ? WHERE userId = ?`,
+      [scheduledDate, req.user.id]
+    );
+
+    const responseData = type === 'scheduled' ? { time: scheduledDate, isScheduled: true } : { isScheduled: false };
     
     res.status(200).json({
       status: 'success',
       data: {
-        scheduledDelivery: req.session.scheduledDelivery
+        scheduledDelivery: responseData
       }
     });
   } catch (error) {
@@ -450,10 +465,11 @@ exports.scheduleDelivery = async (req, res, next) => {
  */
 exports.cancelScheduledDelivery = async (req, res, next) => {
   try {
-    // Remove from session
-    if (req.session) {
-      delete req.session.scheduledDelivery;
-    }
+    // Clear scheduled time in DB
+    await db.query(
+      `UPDATE ${Cart.tableName} SET scheduledTime = NULL WHERE userId = ?`,
+      [req.user.id]
+    );
     
     res.status(200).json({
       status: 'success',

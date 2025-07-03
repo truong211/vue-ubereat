@@ -276,6 +276,25 @@ db.authenticate()
         } catch (err) {
           console.error('Error updating notifications table:', err);
         }
+
+        // Ensure new columns exist in cart table
+        try {
+          // Check deliveryAddressId column
+          const colAddrRes = await db.query(`SHOW COLUMNS FROM cart LIKE 'deliveryAddressId'`);
+          if (!colAddrRes || colAddrRes.length === 0) {
+            await db.query(`ALTER TABLE cart ADD COLUMN deliveryAddressId INT NULL, ADD FOREIGN KEY (deliveryAddressId) REFERENCES addresses(id) ON DELETE SET NULL`);
+            console.log('Added deliveryAddressId column to cart table');
+          }
+
+          // Check scheduledTime column
+          const colSchedRes = await db.query(`SHOW COLUMNS FROM cart LIKE 'scheduledTime'`);
+          if (!colSchedRes || colSchedRes.length === 0) {
+            await db.query(`ALTER TABLE cart ADD COLUMN scheduledTime DATETIME NULL`);
+            console.log('Added scheduledTime column to cart table');
+          }
+        } catch (err) {
+          console.error('Error updating cart table:', err);
+        }
       } catch (err) {
         console.error('Error creating missing tables:', err);
       }

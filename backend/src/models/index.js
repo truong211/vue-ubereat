@@ -15,6 +15,8 @@ const DeliveryFeeTier = require('./deliveryFeeTier.model');
 const Cart = require('./cart.model');
 const Address = require('./address.model');
 const Promotion = require('./promotion.model');
+const ProductOption = require('./productOption.model');
+const ProductOptionChoice = require('./productOptionChoice.model');
 
 // Add custom association methods instead of using Sequelize-style associations
 // These will be used by the controllers to fetch related data
@@ -52,5 +54,7 @@ module.exports = {
   DeliveryFeeTier,
   Cart,
   Address,
-  Promotion
+  Promotion,
+  ProductOption,
+  ProductOptionChoice
 }; 
