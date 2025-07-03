@@ -61,22 +61,31 @@ exports.getUsers = async (req, res, next) => {
  */
 exports.getProfile = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: { exclude: ['password'] },
-      include: [{
-        model: Address,
-        as: 'addresses'
-      }]
-    });
+    // Fetch user by primary key using raw SQL model
+    const user = await User.findByPk(req.user.id);
 
     if (!user) {
       return next(new AppError('User not found', 404));
     }
 
+    // Remove sensitive fields
+    const { password, password_hash, passwordHash, resetPasswordToken, ...safeUser } = user;
+
+    // Fetch addresses for user via Address model
+    let addresses = [];
+    try {
+      addresses = await Address.findAll({ where: { user_id: user.id } });
+    } catch (err) {
+      console.error('Error fetching addresses for profile:', err);
+    }
+
     res.status(200).json({
       status: 'success',
       data: {
-        user
+        user: {
+          ...safeUser,
+          addresses
+        }
       }
     });
   } catch (error) {
@@ -96,33 +105,39 @@ exports.updateProfile = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fullName, phone, address } = req.body;
+    const { fullName, phone, address, avatarUrl, email } = req.body;
     const userId = req.user.id;
-    
-    // Create update data object
+
+    // Build update data only with provided fields
     const updateData = {};
     if (fullName !== undefined) updateData.fullName = fullName;
     if (phone !== undefined) updateData.phone = phone;
     if (address !== undefined) updateData.address = address;
-    
-    // Use User.update method correctly - it expects (id, data) not ({data}, {where})
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+    if (email !== undefined) updateData.email = email;
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        status: 'fail',
+        message: 'No valid fields provided to update'
+      });
+    }
+
+    // Perform update using raw SQL model
     const updated = await User.update(userId, updateData);
-    
+
     if (!updated) {
       return next(new AppError('Failed to update user profile', 500));
     }
-    
-    // Fetch the updated user record
-    const updatedUser = await User.findByPk(userId);
 
-    if (!updatedUser) {
-      return next(new AppError('User not found', 404));
-    }
+    // Fetch updated user
+    const updatedUser = await User.findByPk(userId);
+    const { password, password_hash, passwordHash, resetPasswordToken, ...safeUser } = updatedUser;
 
     res.status(200).json({
       status: 'success',
       data: {
-        user: updatedUser
+        user: safeUser
       }
     });
   } catch (error) {
