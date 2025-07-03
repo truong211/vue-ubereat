@@ -443,29 +443,47 @@ exports.deleteAddress = async (req, res, next) => {
  */
 exports.getOrders = async (req, res, next) => {
   try {
-    const orders = await Order.findAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          association: 'restaurant',
-          attributes: ['id', 'name', 'logo']
-        },
-        {
-          association: 'orderDetails',
-          include: [
-            {
-              association: 'product',
-              attributes: ['id', 'name', 'image']
-            }
-          ]
-        }
-      ],
-      order: [['createdAt', 'DESC']]
-    });
+    const userId = req.user.id;
+    const {
+      status,
+      page = 1,
+      pageSize = 10
+    } = req.query;
+
+    const limit = parseInt(pageSize);
+    const offset = (parseInt(page) - 1) * limit;
+
+    // Build WHERE clause
+    const whereParts = ['o.userId = ?'];
+    const params = [userId];
+    if (status) {
+      whereParts.push('o.status = ?');
+      params.push(status);
+    }
+
+    const whereSql = whereParts.join(' AND ');
+
+    // Total count for pagination
+    const countSql = `SELECT COUNT(*) as total FROM orders o WHERE ${whereSql}`;
+    const [{ total }] = await db.query(countSql, params);
+
+    // Main query with restaurant info
+    const ordersSql = `
+      SELECT o.*, r.name AS restaurantName, r.logo AS restaurantLogo
+      FROM orders o
+      LEFT JOIN restaurants r ON o.restaurantId = r.id
+      WHERE ${whereSql}
+      ORDER BY o.createdAt DESC
+      LIMIT ? OFFSET ?`;
+
+    const orders = await db.query(ordersSql, [...params, limit, offset]);
 
     res.status(200).json({
       status: 'success',
-      results: orders.length,
+      page: parseInt(page),
+      pageSize: limit,
+      total,
+      totalPages: Math.ceil(total / limit),
       data: {
         orders
       }
@@ -483,33 +501,31 @@ exports.getOrders = async (req, res, next) => {
 exports.getOrderDetails = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const userId = req.user.id;
 
-    const order = await Order.findOne({
-      where: { id, userId: req.user.id },
-      include: [
-        {
-          association: 'restaurant',
-          attributes: ['id', 'name', 'logo', 'address', 'phone']
-        },
-        {
-          association: 'orderDetails',
-          include: [
-            {
-              association: 'product',
-              attributes: ['id', 'name', 'description', 'image', 'price']
-            }
-          ]
-        },
-        {
-          association: 'driver',
-          attributes: ['id', 'fullName', 'phone', 'profileImage']
-        }
-      ]
-    });
+    // Fetch order + restaurant
+    const [order] = await db.query(
+      `SELECT o.*, r.name AS restaurantName, r.logo AS restaurantLogo, r.address AS restaurantAddress, r.phone AS restaurantPhone
+       FROM orders o
+       LEFT JOIN restaurants r ON o.restaurantId = r.id
+       WHERE o.id = ? AND o.userId = ?`,
+      [id, userId]
+    );
 
     if (!order) {
       return next(new AppError('Order not found', 404));
     }
+
+    // Fetch order items with product info
+    const items = await db.query(
+      `SELECT oi.*, p.name AS productName, p.image AS productImage, p.description AS productDescription, p.price AS productPrice
+       FROM order_items oi
+       LEFT JOIN products p ON oi.productId = p.id
+       WHERE oi.orderId = ?`,
+      [id]
+    );
+
+    order.items = items;
 
     res.status(200).json({
       status: 'success',
