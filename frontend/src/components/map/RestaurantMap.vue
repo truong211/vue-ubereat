@@ -152,6 +152,7 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { loadGoogleMapsApi } from '@/services/googleMapsLoader';
 
 // Props
 const props = defineProps({
@@ -216,7 +217,7 @@ const initMap = async () => {
     
     // Ensure Google Maps API is loaded
     if (!window.google || !window.google.maps) {
-      await loadGoogleMapsAPI();
+      await loadGoogleMapsApi();
     }
     
     // Create map instance
@@ -265,19 +266,6 @@ const initMap = async () => {
     console.error('Error initializing map:', error);
     loading.value = false;
   }
-};
-
-// Load Google Maps API
-const loadGoogleMapsAPI = () => {
-  return new Promise((resolve, reject) => {
-    // This is a placeholder. In a real application, you would load the Google Maps API here
-    // For this example, we'll assume it's already loaded or would be loaded via a script tag
-    if (window.google && window.google.maps) {
-      resolve();
-    } else {
-      reject(new Error('Google Maps API not loaded'));
-    }
-  });
 };
 
 // Add user marker
