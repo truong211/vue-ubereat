@@ -405,34 +405,61 @@ exports.deleteAddress = async (req, res, next) => {
  */
 exports.getOrders = async (req, res, next) => {
   try {
-    const orders = await Order.findAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          association: 'restaurant',
-          attributes: ['id', 'name', 'logo']
-        },
-        {
-          association: 'orderDetails',
-          include: [
-            {
-              association: 'product',
-              attributes: ['id', 'name', 'image']
-            }
-          ]
-        }
-      ],
-      order: [['createdAt', 'DESC']]
-    });
+    // Pagination & filtering params
+    const page = parseInt(req.query.page || '1', 10);
+    const limit = parseInt(req.query.limit || '10', 10);
+    const status = req.query.status; // optional, comma separated
 
-    res.status(200).json({
+    const offset = (page - 1) * limit;
+
+    // Build WHERE conditions
+    const conditions = ['o.userId = ?'];
+    const params = [req.user.id];
+
+    if (status) {
+      const arr = status.split(',').map(s => s.trim());
+      const placeholders = arr.map(() => '?').join(',');
+      conditions.push(`o.status IN (${placeholders})`);
+      params.push(...arr);
+    }
+
+    const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    // Total count for pagination
+    const countSql = `SELECT COUNT(*) AS total FROM orders o ${whereClause}`;
+    const [countResult] = await db.query(countSql, params);
+    const total = countResult ? countResult.total || 0 : 0;
+
+    // Fetch page of orders with restaurant info
+    const dataSql = `
+      SELECT 
+        o.id, o.orderNumber, o.status, o.totalAmount, o.createdAt, o.restaurantId,
+        r.name AS restaurantName, r.logo AS restaurantLogo
+      FROM orders o
+      JOIN restaurants r ON o.restaurantId = r.id
+      ${whereClause}
+      ORDER BY o.createdAt DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const dataParams = [...params, limit, offset];
+    const orders = await db.query(dataSql, dataParams);
+
+    return res.status(200).json({
       status: 'success',
       results: orders.length,
       data: {
-        orders
+        items: orders,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
       }
     });
   } catch (error) {
+    logger.error('Error fetching orders:', error);
     next(error);
   }
 };
