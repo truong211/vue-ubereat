@@ -531,7 +531,7 @@ exports.requestPasswordReset = async (req, res) => {
     const { email } = req.body;
     
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ where: { email } });
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -540,15 +540,16 @@ exports.requestPasswordReset = async (req, res) => {
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
     
-    // Hash token and save to user
-    user.resetPasswordToken = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
-      
-    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
-    
-    await user.save();
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Persist hashed token & expiry
+    await User.update(
+      {
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+      },
+      { where: { id: user.id } }
+    );
     
     // Send reset email
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
@@ -579,34 +580,43 @@ exports.requestPasswordReset = async (req, res) => {
 
 exports.resetPassword = async (req, res) => {
   try {
-    const { otp, userId, newPassword } = req.body;
-    
-    // Find user
-    const user = await User.findByPk(userId);
-    
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Token and newPassword are required' });
+    }
+
+    // Hash the received token to compare with DB
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with matching reset token and non-expired
+    const user = await User.findOne({
+      where: {
+        resetPasswordToken: hashedToken,
+        resetPasswordExpires: { gte: Date.now() }
+      }
+    });
+
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(400).json({ message: 'Invalid or expired token' });
     }
-    
-    // Check if OTP is valid and not expired
-    if (!user.resetPasswordToken || 
-        user.resetPasswordToken !== otp || 
-        user.resetPasswordExpires < Date.now()) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
-    }
-    
+
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Update password and clear OTP
-    user.password = hashedPassword;
-    user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
-    
-    await user.save();
-    
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update user: set new password, clear reset fields
+    await User.update(
+      {
+        password: hashedPassword,
+        resetPasswordToken: null,
+        resetPasswordExpires: null
+      },
+      { where: { id: user.id } }
+    );
+
     res.status(200).json({ message: 'Password reset successful' });
   } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ message: error.message });
   }
 };
