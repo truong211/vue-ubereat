@@ -41,6 +41,7 @@ const recommendationRoutes = require('./routes/recommendation.routes');
 const adminRoutes = require('./routes/admin.routes');
 const faqRoutes = require('./routes/faq.routes');
 const deliveryConfigRoutes = require('./routes/deliveryConfig.routes');
+const mapRoutes = require('./routes/map.routes');
 
 // Import middleware
 const { errorHandler, notFound } = require('./middleware/error.middleware');
@@ -149,6 +150,7 @@ app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/review-responses', reviewResponseRoutes);
 app.use('/api/faqs', faqRoutes);
 app.use('/api/delivery-configs', deliveryConfigRoutes);
+app.use('/api/map', mapRoutes);
 
 // Admin routes with debugging middleware
 app.use('/api/admin', (req, res, next) => {

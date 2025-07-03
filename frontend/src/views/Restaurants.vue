@@ -208,10 +208,17 @@
     </div>
 
     <div v-else>
-      <!-- Results Count -->
+      <!-- Results Count and View Toggle -->
       <div class="d-flex align-center mb-4">
         <h2 class="text-h6">{{ filteredRestaurants.length }} Restaurants Available</h2>
         <v-spacer></v-spacer>
+        
+        <!-- View Mode Toggle -->
+        <v-btn-toggle v-model="viewMode" mandatory class="mr-4">
+          <v-btn icon="mdi-view-grid" value="grid" size="small"></v-btn>
+          <v-btn icon="mdi-map" value="map" size="small"></v-btn>
+        </v-btn-toggle>
+        
         <v-select
           v-model="filters.sortBy"
           :items="[
@@ -228,8 +235,18 @@
         ></v-select>
       </div>
 
+      <!-- Map View -->
+      <div v-if="viewMode === 'map'">
+        <RestaurantMapView
+          :user-location="userCurrentLocation"
+          :restaurants="filteredRestaurants"
+          @restaurant-selected="handleRestaurantSelected"
+          @location-updated="handleLocationUpdated"
+        />
+      </div>
+
       <!-- Restaurant Grid -->
-      <v-row>
+      <v-row v-show="viewMode === 'grid'">
         <v-col
           v-for="restaurant in filteredRestaurants"
           :key="restaurant.id"
@@ -388,6 +405,7 @@ import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRestaurantSearch } from '../composables/useRestaurantSearch'
 import { useToast } from 'vue-toastification'
+import RestaurantMapView from '../components/RestaurantMapView.vue'
 
 const router = useRouter()
 const toast = useToast()
@@ -410,6 +428,8 @@ const showLocationSuggestions = ref(false)
 const isLocating = ref(false)
 const locationDialog = ref(false)
 const tempLocationQuery = ref('')
+const viewMode = ref('grid') // 'grid' or 'map'
+const userCurrentLocation = ref(null)
 
 // Popular cities for quick selection
 const popularCities = [
@@ -459,6 +479,17 @@ function getDeliveryTimeText() {
 
 function viewRestaurant(id) {
   router.push(`/restaurant/${id}`)
+}
+
+function handleRestaurantSelected(restaurant) {
+  // Handle restaurant selection from map
+  console.log('Restaurant selected:', restaurant)
+  // Could show additional details or navigate
+}
+
+function handleLocationUpdated(location) {
+  // Handle location updates from map
+  userCurrentLocation.value = location
 }
 
 function selectSuggestion(suggestion) {

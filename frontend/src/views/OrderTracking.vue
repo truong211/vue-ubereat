@@ -53,8 +53,17 @@
 
           <!-- Live Map with Driver Location -->
           <div class="map-wrapper mb-4">
-            <h3 class="text-h6 mb-2">Vị trí tài xế</h3>
-            <div class="live-map">
+            <div class="d-flex align-center mb-2">
+              <h3 class="text-h6">Vị trí tài xế</h3>
+              <v-spacer></v-spacer>
+              <v-btn-toggle v-model="trackingMode" mandatory size="small">
+                <v-btn value="basic" icon="mdi-map-outline"></v-btn>
+                <v-btn value="enhanced" icon="mdi-map-marker-radius"></v-btn>
+              </v-btn-toggle>
+            </div>
+            
+            <!-- Basic Map View -->
+            <div v-if="trackingMode === 'basic'" class="live-map">
               <LiveMap
                 v-if="mapDataReady"
                 :driver-location="driverLocation"
@@ -68,6 +77,17 @@
                 <v-progress-circular indeterminate color="primary"></v-progress-circular>
                 <span class="ml-2">Đang tải bản đồ...</span>
               </div>
+            </div>
+            
+            <!-- Enhanced Tracking View -->
+            <div v-else-if="trackingMode === 'enhanced'">
+              <EnhancedDeliveryTracking
+                v-if="order?.id"
+                :order-id="order.id.toString()"
+                :user-role="'customer'"
+                @status-updated="handleStatusUpdate"
+                @location-updated="handleLocationUpdate"
+              />
             </div>
             
             <!-- Driver Info Card -->
@@ -196,6 +216,7 @@ import { useOrderStore } from '@/store/order'
 import { useNotificationStore } from '@/store/notification'
 import { formatCurrency } from '@/utils/format'
 import LiveMap from '@/components/LiveMap.vue'
+import EnhancedDeliveryTracking from '@/components/EnhancedDeliveryTracking.vue'
 import io from 'socket.io-client'
 
 // Router
@@ -223,6 +244,7 @@ const showChatDialog = ref(false)
 const showNotification = ref(false)
 const notificationMessage = ref('')
 const notificationColor = ref('primary')
+const trackingMode = ref('basic')
 
 // Computed
 const orderId = computed(() => route.params.id)
@@ -372,6 +394,20 @@ const fetchOrder = async () => {
 const onMapReady = (mapInstance) => {
   // We can store the map instance if needed for future manipulation
   console.log('Map is ready')
+}
+
+const handleStatusUpdate = (data) => {
+  // Handle status updates from enhanced tracking
+  console.log('Status updated:', data)
+  fetchOrder() // Refresh order data
+}
+
+const handleLocationUpdate = (data) => {
+  // Handle location updates from enhanced tracking
+  console.log('Location updated:', data)
+  if (data.location) {
+    driverLocation.value = data.location
+  }
 }
 
 const refreshData = () => {
