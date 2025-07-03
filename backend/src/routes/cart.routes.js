@@ -38,7 +38,8 @@ router.post('/address', [
 
 // Schedule delivery
 router.post('/schedule', [
-  check('scheduledTime').isISO8601().withMessage('Invalid date format')
+  check('type').optional().isIn(['asap', 'scheduled']).withMessage('type must be asap or scheduled'),
+  check('scheduledTime').optional().isISO8601().withMessage('Invalid date format')
 ], cartController.scheduleDelivery);
 
 // Cancel scheduled delivery

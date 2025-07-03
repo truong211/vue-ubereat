@@ -90,19 +90,27 @@ class Cart {
    * @returns {Promise<Object>} - Created cart item
    */
   static async create(data) {
-    const { userId, productId, quantity, options, notes } = data;
-    
-    // Convert options to JSON string if it's an object
-    const optionsStr = options ? JSON.stringify(options) : null;
-    
-    const sql = `
-      INSERT INTO ${this.tableName} (userId, productId, quantity, options, notes, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-      RETURNING *
-    `;
-    
-    const result = await query(sql, [userId, productId, quantity, optionsStr, notes]);
-    return result[0];
+    // Dynamically build query based on provided keys
+    const columns = Object.keys(data);
+    const placeholdersArr = columns.map(() => '?');
+    const values = columns.map((key) => {
+      if (key === 'options') {
+        return data[key] ? JSON.stringify(data[key]) : null;
+      }
+      return data[key];
+    });
+
+    // Add timestamps
+    columns.push('createdAt', 'updatedAt');
+    placeholdersArr.push('NOW()', 'NOW()');
+
+    const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholdersArr.join(', ')})`;
+
+    const result = await query(sql, values);
+    // After insert, fetch the record
+    const insertedId = result.insertId || (result[0] && result[0].id);
+    const [created] = await query(`SELECT * FROM ${this.tableName} WHERE id = ?`, [insertedId]);
+    return created;
   }
 
   /**
@@ -112,19 +120,20 @@ class Cart {
    * @returns {Promise<Object>} - Updated cart item
    */
   static async update(id, data) {
-    const entries = Object.entries(data);
-    const setClauses = entries.map(([key]) => `${key} = ?`).join(', ');
-    const values = entries.map(([_, value]) => value);
-    
-    values.push(id); // Add the ID for the WHERE clause
-    
-    const sql = `
-      UPDATE ${this.tableName} 
-      SET ${setClauses}, updatedAt = NOW() 
-      WHERE id = ?
-    `;
-    
-    await query(sql, values);
+    if (Object.keys(data).length === 0) return this.findByPk(id);
+
+    const setClauses = Object.keys(data).map((key) => `${key} = ?`).join(', ');
+    const values = Object.values(data).map((v, idx) => {
+      const key = Object.keys(data)[idx];
+      if (key === 'options') {
+        return v ? JSON.stringify(v) : null;
+      }
+      return v;
+    });
+
+    values.push(id);
+
+    await query(`UPDATE ${this.tableName} SET ${setClauses}, updatedAt = NOW() WHERE id = ?`, values);
     return this.findByPk(id);
   }
 

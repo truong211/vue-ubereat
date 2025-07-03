@@ -228,10 +228,13 @@ CREATE TABLE IF NOT EXISTS cart (
   quantity INT NOT NULL DEFAULT 1,
   options JSON,
   notes TEXT,
+  deliveryAddressId INT,
+  scheduledTime DATETIME,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE
+  FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
+  FOREIGN KEY (deliveryAddressId) REFERENCES addresses(id) ON DELETE SET NULL
 );
 
 -- Create user_favorites table
