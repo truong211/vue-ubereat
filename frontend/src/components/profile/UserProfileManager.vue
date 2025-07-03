@@ -6,33 +6,12 @@
         <v-col cols="12" md="3">
           <v-card class="mb-6">
             <v-card-text class="text-center">
-              <!-- Profile Avatar -->
-              <div class="mb-4 position-relative d-inline-block">
-                <v-avatar size="120">
-                  <v-img
-                    v-if="user.avatar"
-                    :src="user.avatar"
-                    alt="User avatar"
-                  ></v-img>
-                  <v-icon v-else size="48" icon="mdi-account"></v-icon>
-                </v-avatar>
-                <v-btn
-                  icon="mdi-camera"
-                  variant="tonal"
-                  size="x-small"
-                  color="primary"
-                  class="avatar-edit-button"
-                  @click="triggerFileInput"
-                >
-                </v-btn>
-                <input
-                  type="file"
-                  ref="fileInput"
-                  accept="image/*"
-                  class="d-none"
-                  @change="handleAvatarUpload"
-                />
-              </div>
+              <!-- Profile Avatar (with preview & validation) -->
+              <avatar-upload
+                v-model="avatarProxy"
+                :current-avatar="user.avatar"
+                class="mb-4"
+              />
               
               <h2 class="text-h6 mb-1">{{ user.name || 'Người dùng' }}</h2>
               <p class="text-medium-emphasis">{{ user.email }}</p>
@@ -80,7 +59,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useStore } from 'vuex';
 import { useToast } from 'vue-toastification';
 import PersonalInfo from './sections/PersonalInfo.vue';
@@ -93,13 +72,14 @@ export default {
   components: {
     PersonalInfo,
     AddressManager,
-    OrderHistory
+    OrderHistory,
+    AvatarUpload: () => import('@/components/user/AvatarUpload.vue')
   },
   
   setup() {
     const store = useStore();
     const toast = useToast();
-    const fileInput = ref(null);
+    const avatarProxy = ref('');
     const activeTab = ref('personal');
     
     const user = computed(() => store.state.auth.user || {});
@@ -123,43 +103,24 @@ export default {
       }
     ];
 
-    // Methods
-    const triggerFileInput = () => {
-      fileInput.value.click();
-    };
-    
-    const handleAvatarUpload = async (event) => {
-      const file = event.target.files[0];
-      if (!file) return;
+    // Initialize avatar with current user avatar
+    onMounted(() => {
+      avatarProxy.value = store.state.auth.user?.avatar || '';
+    });
 
-      // Validate file type
-      if (!file.type.match('image.*')) {
-        toast.error('Vui lòng chọn file hình ảnh');
-        return;
+    // Watcher: when avatarProxy updates (after AvatarUpload emits), update store
+    watch(avatarProxy, (newVal, oldVal) => {
+      if (newVal && newVal !== oldVal) {
+        // If AvatarUpload already uploaded and returns URL, propagate to auth
+        store.commit('auth/UPDATE_USER_PROFILE', { avatar: newVal }, { root: true });
       }
+    });
 
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('Kích thước ảnh không được vượt quá 5MB');
-        return;
-      }
-
-      try {
-        await store.dispatch('user/updateAvatar', file);
-        toast.success('Cập nhật ảnh đại diện thành công');
-      } catch (error) {
-        console.error('Failed to upload avatar:', error);
-        toast.error('Không thể cập nhật ảnh đại diện');
-      }
-    };
-    
     return {
       activeTab,
       user,
       menuItems,
-      fileInput,
-      triggerFileInput,
-      handleAvatarUpload
+      avatarProxy
     };
   }
 };

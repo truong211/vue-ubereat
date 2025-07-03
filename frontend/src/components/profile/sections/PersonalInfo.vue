@@ -153,8 +153,11 @@ export default {
       loading.value = true;
       try {
         const userData = await store.dispatch('user/fetchProfile');
-        formData.firstName = userData.firstName || '';
-        formData.lastName = userData.lastName || '';
+        // Attempt to split full name into parts
+        const fullName = userData.fullName || userData.name || '';
+        const nameParts = fullName.split(' ');
+        formData.firstName = nameParts.slice(0, -1).join(' ') || fullName;
+        formData.lastName = nameParts.slice(-1).join('') || '';
         formData.email = userData.email || '';
         formData.phone = userData.phone || '';
       } catch (err) {
@@ -183,9 +186,9 @@ export default {
       successMessage.value = '';
       
       try {
+        const fullName = `${formData.firstName} ${formData.lastName}`.trim();
         await store.dispatch('user/updateProfile', {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
+          fullName,
           phone: formData.phone
         });
         
