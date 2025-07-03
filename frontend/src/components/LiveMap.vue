@@ -13,7 +13,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, defineProps, defineEmits } from 'vue'
+import { ref, onMounted, onUnmounted, watch, defineProps, defineEmits, computed } from 'vue'
+import { useDriverTracking } from '@/composables/useDriverTracking'
 
 const props = defineProps({
   deliveryAddress: {
@@ -28,6 +29,10 @@ const props = defineProps({
     type: Object,
     default: null
   },
+  orderId: {
+    type: [String, Number],
+    default: null
+  },
   routePoints: {
     type: Array,
     default: () => []
@@ -39,6 +44,17 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['map-ready'])
+
+// If orderId provided, use websocket driver tracking composable
+const driverTracking = props.orderId && props.deliveryAddress ? useDriverTracking(props.orderId, props.deliveryAddress) : null
+
+// Prefer live driver location from tracking
+const currentDriverLocation = computed(() => {
+  return driverTracking && driverTracking.driverLocation.value ? driverTracking.driverLocation.value : props.driverLocation
+})
+const currentEta = computed(() => {
+  return driverTracking && driverTracking.eta.value ? driverTracking.eta.value.durationText : props.eta
+})
 
 // Refs
 const mapContainer = ref(null)
@@ -104,7 +120,7 @@ const initMap = async () => {
     // Draw route if we have both driver and delivery locations
     if (props.routePoints && props.routePoints.length > 0) {
       drawRoute()
-    } else if (props.driverLocation && props.deliveryAddress) {
+    } else if (currentDriverLocation.value && props.deliveryAddress) {
       drawDirectRoute()
     }
     
@@ -133,6 +149,9 @@ const loadGoogleMapsScript = () => {
 
 const updateMapMarkers = () => {
   if (!map.value) return
+  
+  // Compute driver position source
+  const driverPosSource = currentDriverLocation.value
   
   // Update restaurant marker
   if (props.restaurantLocation) {
@@ -181,10 +200,10 @@ const updateMapMarkers = () => {
   }
   
   // Update driver marker
-  if (props.driverLocation) {
+  if (driverPosSource) {
     const driverPos = { 
-      lat: props.driverLocation.lat, 
-      lng: props.driverLocation.lng 
+      lat: driverPosSource.lat, 
+      lng: driverPosSource.lng 
     }
     
     if (!markers.value.driver) {
@@ -295,11 +314,11 @@ const drawRoute = () => {
 }
 
 const drawDirectRoute = () => {
-  if (!map.value || !props.driverLocation || !props.deliveryAddress) return
+  if (!map.value || !currentDriverLocation.value || !props.deliveryAddress) return
   
   // Draw a direct line between driver and delivery address
   const path = [
-    new google.maps.LatLng(props.driverLocation.lat, props.driverLocation.lng),
+    new google.maps.LatLng(currentDriverLocation.value.lat, currentDriverLocation.value.lng),
     new google.maps.LatLng(props.deliveryAddress.lat, props.deliveryAddress.lng)
   ]
   
@@ -328,13 +347,13 @@ const drawDirectRoute = () => {
 }
 
 // Watchers
-watch(() => props.driverLocation, () => {
+watch(currentDriverLocation, () => {
   if (map.value) {
     updateMapMarkers()
     
     if (props.routePoints && props.routePoints.length > 0) {
       drawRoute()
-    } else if (props.driverLocation && props.deliveryAddress) {
+    } else if (currentDriverLocation.value && props.deliveryAddress) {
       drawDirectRoute()
     }
   }

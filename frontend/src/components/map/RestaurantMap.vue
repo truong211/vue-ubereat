@@ -47,9 +47,15 @@
               </div>
               <div class="text-caption mt-1">
                 <v-icon size="x-small" class="mr-1">mdi-clock-outline</v-icon>
-                <span>{{ selectedRestaurant.deliveryTime }} phút</span>
+                <span v-if="routeInfo">{{ routeInfo.durationText }}</span>
+                <span v-else>{{ selectedRestaurant.deliveryTime }} phút</span>
                 <v-icon size="x-small" class="ml-2 mr-1">mdi-map-marker</v-icon>
                 <span>{{ formatDistance(selectedRestaurant.distance) }}</span>
+              </div>
+              <!-- optional distance from Directions instead of spherical calc -->
+              <div v-if="routeInfo && routeInfo.distanceText" class="text-caption mt-1">
+                <v-icon size="x-small" class="mr-1">mdi-road-variant</v-icon>
+                <span>{{ routeInfo.distanceText }}</span>
               </div>
             </div>
           </div>
@@ -63,6 +69,22 @@
               Xem chi tiết
             </v-btn>
           </div>
+          <!-- Turn-by-turn panel -->
+          <v-expansion-panels v-if="routeInfo && routeInfo.steps && routeInfo.steps.length" density="compact" class="mt-2">
+            <v-expansion-panel>
+              <v-expansion-panel-title>Hướng dẫn chi tiết</v-expansion-panel-title>
+              <v-expansion-panel-text>
+                <v-list density="compact">
+                  <v-list-item v-for="(step, idx) in routeInfo.steps" :key="idx" class="px-1">
+                    <v-list-item-content>
+                      <div v-html="step.instructions"></div>
+                      <small class="text-grey">{{ (step.distance/1000).toFixed(1) }} km • {{ Math.round(step.duration/60) }} phút</small>
+                    </v-list-item-content>
+                  </v-list-item>
+                </v-list>
+              </v-expansion-panel-text>
+            </v-expansion-panel>
+          </v-expansion-panels>
         </v-card>
       </div>
 
@@ -152,6 +174,10 @@
 <script setup>
 import { ref, onMounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import { loadGoogleMapsApi } from '@/services/googleMapsLoader';
+import { useGeolocation } from '@/composables/useGeolocation';
+import { fetchNearbyRestaurants } from '@/services/restaurantService';
+import mapService from '@/services/map.service.js';
 
 // Props
 const props = defineProps({
@@ -204,6 +230,19 @@ const displayRadius = ref(5);
 const showDeliveryRadii = ref(true);
 const clusterMarkers = ref(true);
 
+// Reactive user location (initial prop or geolocation result)
+const userLocation = ref({ ...props.userLocation });
+
+// Restaurants actually displayed on map
+const nearbyRestaurants = ref([...props.restaurants]);
+
+// Geolocation composable
+const { getCurrentPosition } = useGeolocation();
+
+// Route info & polyline
+const routeInfo = ref(null);
+const routePath = ref(null);
+
 // Format distance
 const formatDistance = (distance) => {
   return `${distance.toFixed(1)} km`;
@@ -216,12 +255,31 @@ const initMap = async () => {
     
     // Ensure Google Maps API is loaded
     if (!window.google || !window.google.maps) {
-      await loadGoogleMapsAPI();
+      await loadGoogleMapsApi();
+    }
+    
+    // Try to obtain current user position if permission is granted
+    try {
+      const pos = await getCurrentPosition();
+      userLocation.value = pos;
+    } catch (e) {
+      // ignore – fallback to provided prop
+    }
+    
+    // Fetch nearby restaurants from backend (or mock)
+    try {
+      nearbyRestaurants.value = await fetchNearbyRestaurants({
+        lat: userLocation.value.lat,
+        lng: userLocation.value.lng,
+        radiusKm: displayRadius.value
+      });
+    } catch (e) {
+      console.warn('Could not fetch restaurants:', e);
     }
     
     // Create map instance
     const mapOptions = {
-      center: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+      center: { lat: userLocation.value.lat, lng: userLocation.value.lng },
       zoom: props.initialZoom,
       mapTypeControl: false,
       streetViewControl: false,
@@ -238,7 +296,7 @@ const initMap = async () => {
     addUserMarker();
     
     // Add restaurant markers
-    addRestaurantMarkers();
+    await addRestaurantMarkers();
     
     // Create heatmap layer
     createHeatmap();
@@ -267,19 +325,6 @@ const initMap = async () => {
   }
 };
 
-// Load Google Maps API
-const loadGoogleMapsAPI = () => {
-  return new Promise((resolve, reject) => {
-    // This is a placeholder. In a real application, you would load the Google Maps API here
-    // For this example, we'll assume it's already loaded or would be loaded via a script tag
-    if (window.google && window.google.maps) {
-      resolve();
-    } else {
-      reject(new Error('Google Maps API not loaded'));
-    }
-  });
-};
-
 // Add user marker
 const addUserMarker = () => {
   if (!mapInstance.value) return;
@@ -291,7 +336,7 @@ const addUserMarker = () => {
   
   // Create user marker
   userMarker.value = new google.maps.Marker({
-    position: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+    position: { lat: userLocation.value.lat, lng: userLocation.value.lng },
     map: mapInstance.value,
     icon: {
       path: google.maps.SymbolPath.CIRCLE,
@@ -313,7 +358,7 @@ const addUserMarker = () => {
     fillColor: '#4285F4',
     fillOpacity: 0.1,
     map: mapInstance.value,
-    center: { lat: props.userLocation.lat, lng: props.userLocation.lng },
+    center: { lat: userLocation.value.lat, lng: userLocation.value.lng },
     radius: displayRadius.value * 1000 // Convert to meters
   });
   
@@ -321,7 +366,7 @@ const addUserMarker = () => {
 };
 
 // Add restaurant markers
-const addRestaurantMarkers = () => {
+const addRestaurantMarkers = async () => {
   if (!mapInstance.value) return;
   
   // Clear existing markers
@@ -330,8 +375,23 @@ const addRestaurantMarkers = () => {
   // Create markers array
   const markersArray = [];
   
-  // Add marker for each restaurant
-  props.restaurants.forEach(restaurant => {
+  // Reference point for distance calculations
+  const userLatLng = new google.maps.LatLng(userLocation.value.lat, userLocation.value.lng);
+  
+  // Add marker for each restaurant within radius
+  nearbyRestaurants.value.forEach(restaurant => {
+    // Filter by radius
+    const distanceMeters = google.maps.geometry.spherical.computeDistanceBetween(
+      userLatLng,
+      new google.maps.LatLng(restaurant.lat, restaurant.lng)
+    );
+    
+    // Skip restaurants outside selected radius
+    if (distanceMeters > displayRadius.value * 1000) return;
+    
+    // Persist the computed distance (km) for UI use
+    restaurant.distance = distanceMeters / 1000;
+    
     const marker = new google.maps.Marker({
       position: { lat: restaurant.lat, lng: restaurant.lng },
       title: restaurant.name,
@@ -345,6 +405,19 @@ const addRestaurantMarkers = () => {
     marker.addListener('click', () => {
       selectedRestaurant.value = restaurant;
       emit('restaurant-selected', restaurant);
+
+      // Fetch directions and draw route
+      nextTick(async () => {
+        try {
+          await mapService.initialize();
+          const route = await mapService.getRoute(userLocation.value, restaurant);
+          routeInfo.value = route;
+          drawRoutePath(route.points);
+        } catch (err) {
+          console.error('Failed to load route', err);
+          routeInfo.value = null;
+        }
+      });
     });
     
     // Add delivery radius circle if option is enabled
@@ -366,6 +439,11 @@ const addRestaurantMarkers = () => {
     markersArray.push(marker);
   });
   
+  // Lazily load MarkerClusterer library if needed
+  if (clusterMarkers.value && !window.MarkerClusterer) {
+    await loadMarkerClusterer();
+  }
+  
   // Add markers to map
   if (clusterMarkers.value && window.MarkerClusterer) {
     // If clustering is enabled and the library is available
@@ -383,12 +461,30 @@ const addRestaurantMarkers = () => {
   markers.value = markersArray;
 };
 
+// Helper to load MarkerClusterer library on demand
+const loadMarkerClusterer = () => {
+  return new Promise((resolve, reject) => {
+    if (window.MarkerClusterer) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/markerclusterer.js';
+    script.async = true;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
+
 // Create heatmap layer
 const createHeatmap = () => {
   if (!mapInstance.value || !window.google.maps.visualization) return;
   
   // Create heatmap data points
-  const heatmapData = props.restaurants.map(restaurant => {
+  const heatmapData = nearbyRestaurants.value.map(restaurant => {
     return {
       location: new google.maps.LatLng(restaurant.lat, restaurant.lng),
       weight: restaurant.popularity || 1
@@ -474,7 +570,7 @@ const getMarkerIcon = (restaurant) => {
 const centerMap = () => {
   if (!mapInstance.value) return;
   
-  mapInstance.value.setCenter({ lat: props.userLocation.lat, lng: props.userLocation.lng });
+  mapInstance.value.setCenter({ lat: userLocation.value.lat, lng: userLocation.value.lng });
   mapInstance.value.setZoom(props.initialZoom);
 };
 
@@ -517,6 +613,28 @@ const getMapStyles = () => {
   ];
 };
 
+// Draw the selected route polyline on the map
+const drawRoutePath = (points) => {
+  if (!mapInstance.value || !points || !points.length) return;
+
+  // Clear existing route
+  if (routePath.value) {
+    routePath.value.setMap(null);
+    routePath.value = null;
+  }
+
+  const gPoints = points.map(p => new google.maps.LatLng(p.lat, p.lng));
+  routePath.value = new google.maps.Polyline({
+    path: gPoints,
+    geodesic: true,
+    strokeColor: '#4285F4',
+    strokeOpacity: 0.9,
+    strokeWeight: 5
+  });
+
+  routePath.value.setMap(mapInstance.value);
+};
+
 // Watch for changes
 watch(() => props.restaurants, () => {
   // When restaurants change, redraw markers
@@ -537,6 +655,15 @@ watch(() => props.userLocation, () => {
 watch(mapMode, () => {
   // When map mode changes, update display
   updateMapMode();
+});
+
+// Watch for restaurant deselection to clear route
+watch(selectedRestaurant, (newVal, oldVal) => {
+  if (!newVal && routePath.value) {
+    routePath.value.setMap(null);
+    routePath.value = null;
+    routeInfo.value = null;
+  }
 });
 
 // Initialize map on mount
