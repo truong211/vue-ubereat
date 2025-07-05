@@ -72,6 +72,16 @@
             <v-window-item value="orders">
               <order-history />
             </v-window-item>
+            
+            <!-- Social Accounts Tab -->
+            <v-window-item value="social">
+              <social-accounts />
+            </v-window-item>
+            
+            <!-- Account Settings Tab -->
+            <v-window-item value="settings">
+              <account-settings />
+            </v-window-item>
           </v-window>
         </v-col>
       </v-row>
@@ -86,6 +96,8 @@ import { useToast } from 'vue-toastification';
 import PersonalInfo from './sections/PersonalInfo.vue';
 import AddressManager from './AddressManager.vue';
 import OrderHistory from './sections/OrderHistory.vue';
+import SocialAccounts from './sections/SocialAccounts.vue';
+import AccountSettings from './sections/AccountSettings.vue';
 
 export default {
   name: 'UserProfileManager',
@@ -93,7 +105,9 @@ export default {
   components: {
     PersonalInfo,
     AddressManager,
-    OrderHistory
+    OrderHistory,
+    SocialAccounts,
+    AccountSettings
   },
   
   setup() {
@@ -120,6 +134,16 @@ export default {
         title: 'Lịch sử đơn hàng',
         icon: 'mdi-history',
         value: 'orders'
+      },
+      {
+        title: 'Liên kết mạng xã hội',
+        icon: 'mdi-share-variant',
+        value: 'social'
+      },
+      {
+        title: 'Cài đặt tài khoản',
+        icon: 'mdi-cog',
+        value: 'settings'
       }
     ];
 

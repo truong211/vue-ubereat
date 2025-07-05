@@ -124,9 +124,10 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter, useRoute } from 'vue-router';
+import { loginWithSocial, initSocialAuth } from '@/services/social-auth';
 
 export default {
   name: 'Login',
@@ -186,14 +187,13 @@ export default {
         socialLoading.value.google = true;
         message.value = '';
 
-        // Your implementation will depend on how you set up Google Auth
-        // This is a placeholder - you'll need to implement the actual OAuth flow
-        const result = await window.gapi.auth2.getAuthInstance().signIn();
-        const accessToken = result.getAuthResponse().id_token;
-
+        // Use the social auth service
+        const result = await loginWithSocial('google');
+        
+        // Store the tokens and user data
         await store.dispatch('auth/loginWithSocial', {
           provider: 'google',
-          accessToken
+          accessToken: result.token
         });
 
         // Redirect after successful login
@@ -212,27 +212,17 @@ export default {
         socialLoading.value.facebook = true;
         message.value = '';
 
-        // Your implementation will depend on how you set up Facebook Auth
-        // This is a placeholder - you'll need to implement the actual OAuth flow
-        const response = await new Promise((resolve) => {
-          window.FB.login((response) => {
-            resolve(response);
-          }, { scope: 'email,public_profile' });
+        // Use the social auth service
+        const result = await loginWithSocial('facebook');
+        
+        // Store the tokens and user data
+        await store.dispatch('auth/loginWithSocial', {
+          provider: 'facebook', 
+          accessToken: result.token
         });
 
-        if (response.status === 'connected') {
-          const accessToken = response.authResponse.accessToken;
-
-          await store.dispatch('auth/loginWithSocial', {
-            provider: 'facebook',
-            accessToken
-          });
-
-          // Redirect after successful login
-          router.push(redirectPath.value);
-        } else {
-          throw new Error('Facebook login failed');
-        }
+        // Redirect after successful login
+        router.push(redirectPath.value);
       } catch (error) {
         message.value = 'Đăng nhập bằng Facebook thất bại. Vui lòng thử lại.';
         messageType.value = 'error';
@@ -247,6 +237,15 @@ export default {
       message.value = route.query.error;
       messageType.value = 'error';
     }
+
+    // Initialize social auth when component mounts
+    onMounted(async () => {
+      try {
+        await initSocialAuth();
+      } catch (error) {
+        console.warn('Failed to initialize social auth:', error);
+      }
+    });
 
     return {
       form,

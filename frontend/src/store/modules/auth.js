@@ -352,16 +352,28 @@ const actions = {
     commit('AUTH_REQUEST')
     
     return new Promise((resolve, reject) => {
-      axios.post(`/api/auth/login/${provider}`, { accessToken })
+      // Determine the correct endpoint
+      const endpoint = provider === 'google' ? '/api/auth/login/google' : '/api/auth/login/facebook';
+      const payload = provider === 'google' 
+        ? { idToken: accessToken } 
+        : { accessToken };
+
+      axios.post(endpoint, payload)
         .then(response => {
-          const { token, user } = response.data
+          const { token, refreshToken, user } = response.data
           
           localStorage.setItem('token', token)
+          if (refreshToken) {
+            localStorage.setItem('refresh_token', refreshToken)
+          }
           localStorage.setItem('user', JSON.stringify(user))
           
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
           
           commit('AUTH_SUCCESS', { token, user })
+          if (refreshToken) {
+            commit('SET_TOKENS', { accessToken: token, refreshToken })
+          }
           resolve(response.data)
         })
         .catch(err => {

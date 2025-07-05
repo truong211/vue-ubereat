@@ -1141,3 +1141,149 @@ exports.getJwtVersion = async (req, res) => {
     });
   }
 };
+
+// Link social account to existing user
+exports.linkSocialAccount = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const { idToken, accessToken } = req.body;
+    const userId = req.user.id;
+
+    // Verify the social token based on provider
+    let userData;
+    if (provider === 'google') {
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID
+      });
+      const payload = ticket.getPayload();
+      userData = {
+        email: payload.email,
+        name: payload.name,
+        picture: payload.picture,
+        socialId: payload.sub
+      };
+    } else if (provider === 'facebook') {
+      const response = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${accessToken}`);
+      const data = await response.json();
+      
+      if (data.error) {
+        return res.status(401).json({ message: 'Invalid Facebook token' });
+      }
+      
+      userData = {
+        email: data.email,
+        name: data.name,
+        picture: data.picture?.data?.url,
+        socialId: data.id
+      };
+    } else {
+      return res.status(400).json({ message: 'Unsupported provider' });
+    }
+
+    // Check if this social account is already linked to another user
+    const existingSocialUser = await User.findOne({
+      where: {
+        socialProvider: provider,
+        socialId: userData.socialId
+      }
+    });
+
+    if (existingSocialUser && existingSocialUser.id !== userId) {
+      return res.status(400).json({ 
+        message: 'This social account is already linked to another user' 
+      });
+    }
+
+    // Update the current user with social account info
+    await User.update(
+      {
+        socialProvider: provider,
+        socialId: userData.socialId,
+        profileImage: userData.picture || null
+      },
+      { where: { id: userId } }
+    );
+
+    // Get the updated user
+    const updatedUser = await User.findByPk(userId);
+
+    res.status(200).json({
+      success: true,
+      message: `${provider} account linked successfully`,
+      account: {
+        provider,
+        email: userData.email,
+        name: userData.name,
+        linkedAt: new Date()
+      },
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.fullName,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        avatar: updatedUser.profileImage
+      }
+    });
+  } catch (error) {
+    console.error('Link social account error:', error);
+    res.status(500).json({ message: 'Failed to link social account' });
+  }
+};
+
+// Unlink social account from user
+exports.unlinkSocialAccount = async (req, res) => {
+  try {
+    const { provider } = req.params;
+    const userId = req.user.id;
+
+    // Update user to remove social account info
+    await User.update(
+      {
+        socialProvider: null,
+        socialId: null
+      },
+      { where: { id: userId } }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `${provider} account unlinked successfully`
+    });
+  } catch (error) {
+    console.error('Unlink social account error:', error);
+    res.status(500).json({ message: 'Failed to unlink social account' });
+  }
+};
+
+// Get linked social accounts for user
+exports.getLinkedAccounts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const user = await User.findByPk(userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const linkedAccounts = [];
+    
+    // Check if user has linked social accounts
+    if (user.socialProvider && user.socialId) {
+      linkedAccounts.push({
+        provider: user.socialProvider,
+        email: user.email, // Assuming email is the same
+        linkedAt: user.updatedAt
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      linkedAccounts
+    });
+  } catch (error) {
+    console.error('Get linked accounts error:', error);
+    res.status(500).json({ message: 'Failed to get linked accounts' });
+  }
+};

@@ -20,7 +20,19 @@ router.get(
   authController.facebookCallback
 );
 
-// Direct social login
+// Direct social login - routes expected by frontend
+router.post(
+  '/login/google',
+  [body('idToken').notEmpty().withMessage('Google ID token is required')],
+  authController.googleLogin
+);
+router.post(
+  '/login/facebook',
+  [body('accessToken').notEmpty().withMessage('Facebook access token is required')],
+  authController.facebookLogin
+);
+
+// Legacy routes for backward compatibility
 router.post(
   '/google-login',
   [body('idToken').notEmpty().withMessage('Google ID token is required')],
@@ -130,6 +142,11 @@ router.post(
 
 // Add a new endpoint to explicitly refresh a token (with simpler URL)
 router.post('/refresh', authController.refreshToken);
+
+// Social account management routes
+router.post('/link/:provider', protect, authController.linkSocialAccount);
+router.post('/unlink/:provider', protect, authController.unlinkSocialAccount);
+router.get('/linked-accounts', protect, authController.getLinkedAccounts);
 
 router.patch('/profile', protect, authController.updateProfile);
 
