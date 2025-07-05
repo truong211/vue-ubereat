@@ -101,31 +101,51 @@ CREATE TABLE IF NOT EXISTS user_promotion_usage (
   UNIQUE KEY uk_user_promotion (user_id, promotion_id)
 );
 
--- Sample data for testing product options
-INSERT IGNORE INTO product_options (product_id, name, type, required, display_order) VALUES
-(1, 'Size', 'single', true, 1),
-(1, 'Toppings', 'multiple', false, 2),
-(2, 'Size', 'single', true, 1),
-(3, 'Spice Level', 'single', false, 1);
+-- Create sample restaurant if none exist (for testing purposes)
+INSERT IGNORE INTO users (id, username, email, fullName, role, isActive) VALUES
+(999, 'sample_restaurant', 'sample@restaurant.com', 'Sample Restaurant Owner', 'restaurant', true);
 
-INSERT IGNORE INTO product_option_choices (option_id, name, price, display_order) VALUES
--- Size options for product 1
-(1, 'Small', 0.00, 1),
-(1, 'Medium', 2.50, 2),
-(1, 'Large', 5.00, 3),
--- Toppings for product 1
-(2, 'Extra Cheese', 1.50, 1),
-(2, 'Mushrooms', 1.00, 2),
-(2, 'Pepperoni', 2.00, 3),
-(2, 'Olives', 1.00, 4),
--- Size options for product 2
-(3, 'Regular', 0.00, 1),
-(3, 'Large', 3.00, 2),
--- Spice level for product 3
-(4, 'Mild', 0.00, 1),
-(4, 'Medium', 0.00, 2),
-(4, 'Hot', 0.00, 3),
-(4, 'Extra Hot', 0.50, 4);
+INSERT IGNORE INTO restaurants (id, userId, name, description, address, phone, email, cuisineType, priceRange, deliveryFee, minOrderAmount, estimatedDeliveryTime, isActive) VALUES
+(999, 999, 'Sample Restaurant', 'A test restaurant for cart functionality', '123 Test Street, Test City', '0123456789', 'sample@restaurant.com', 'International', '$$', 25000.00, 50000.00, 30, true);
+
+-- Create sample products if they don't exist (for testing product options)
+INSERT IGNORE INTO products (id, restaurantId, name, description, price, image, isAvailable) VALUES
+(1, 999, 'Pizza Margherita', 'Classic pizza with tomato sauce, mozzarella, and basil', 150000.00, 'pizza.jpg', true),
+(2, 999, 'Burger Deluxe', 'Premium beef burger with lettuce, tomato, and cheese', 120000.00, 'burger.jpg', true),
+(3, 999, 'Spicy Noodles', 'Traditional noodles with customizable spice levels', 80000.00, 'noodles.jpg', true);
+
+-- Sample data for testing product options (only if products exist)
+INSERT IGNORE INTO product_options (product_id, name, type, required, display_order) 
+SELECT * FROM (
+  SELECT 1 as product_id, 'Size' as name, 'single' as type, true as required, 1 as display_order
+  UNION ALL SELECT 1, 'Toppings', 'multiple', false, 2
+  UNION ALL SELECT 2, 'Size', 'single', true, 1
+  UNION ALL SELECT 3, 'Spice Level', 'single', false, 1
+) AS sample_options
+WHERE EXISTS (SELECT 1 FROM products WHERE id = sample_options.product_id);
+
+-- Insert option choices only for existing product options
+INSERT IGNORE INTO product_option_choices (option_id, name, price, display_order)
+SELECT * FROM (
+  -- Size options for product 1
+  SELECT 1 as option_id, 'Small' as name, 0.00 as price, 1 as display_order
+  UNION ALL SELECT 1, 'Medium', 2.50, 2
+  UNION ALL SELECT 1, 'Large', 5.00, 3
+  -- Toppings for product 1
+  UNION ALL SELECT 2, 'Extra Cheese', 1.50, 1
+  UNION ALL SELECT 2, 'Mushrooms', 1.00, 2
+  UNION ALL SELECT 2, 'Pepperoni', 2.00, 3
+  UNION ALL SELECT 2, 'Olives', 1.00, 4
+  -- Size options for product 2
+  UNION ALL SELECT 3, 'Regular', 0.00, 1
+  UNION ALL SELECT 3, 'Large', 3.00, 2
+  -- Spice level for product 3
+  UNION ALL SELECT 4, 'Mild', 0.00, 1
+  UNION ALL SELECT 4, 'Medium', 0.00, 2
+  UNION ALL SELECT 4, 'Hot', 0.00, 3
+  UNION ALL SELECT 4, 'Extra Hot', 0.50, 4
+) AS sample_choices
+WHERE EXISTS (SELECT 1 FROM product_options WHERE id = sample_choices.option_id);
 
 -- Sample promotions for testing
 INSERT IGNORE INTO promotions (code, name, description, type, value, min_order_amount, max_discount_amount, start_date, end_date, max_redemptions) VALUES

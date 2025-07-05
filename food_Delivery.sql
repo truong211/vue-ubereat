@@ -233,7 +233,8 @@ CREATE TABLE IF NOT EXISTS cart (
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (productId) REFERENCES products(id) ON DELETE CASCADE,
   INDEX idx_cart_user (userId),
-  INDEX idx_cart_product (productId)
+  INDEX idx_cart_product (productId),
+  INDEX idx_cart_user_product (userId, productId)
 );
 
 -- Create user_favorites table
