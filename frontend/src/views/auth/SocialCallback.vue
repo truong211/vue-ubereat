@@ -9,7 +9,7 @@
 
 <script>
 import { useRoute, useRouter } from 'vue-router';
-import { useAuthStore } from '@/store/auth';
+import { useStore } from 'vuex';
 import { onMounted } from 'vue';
 
 export default {
@@ -17,30 +17,36 @@ export default {
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const authStore = useAuthStore();
+    const store = useStore();
 
     onMounted(async () => {
       try {
-        // Get the token and refreshToken from URL parameters
+        // Get the token from URL parameters
         const token = route.query.token;
-        const refreshToken = route.query.refreshToken;
+        const error = route.query.error;
 
-        if (!token || !refreshToken) {
-          throw new Error('Missing authentication tokens');
+        if (error) {
+          throw new Error(error);
         }
 
-        // Save the tokens in the store
-        await authStore.setTokens(token, refreshToken);
+        if (!token) {
+          throw new Error('Missing authentication token');
+        }
+
+        // The token should be processed by the login action
+        // Set the token in local storage and axios headers
+        localStorage.setItem('token', token);
         
-        // Fetch the user info using the new token
-        await authStore.fetchUserProfile();
+        // Load user data using the token
+        await store.dispatch('auth/loadUser');
         
         // Redirect to home or dashboard based on user role
-        if (authStore.user?.role === 'admin') {
+        const user = store.getters['auth/user'];
+        if (user?.role === 'admin') {
           router.push('/admin/dashboard');
-        } else if (authStore.user?.role === 'restaurant') {
+        } else if (user?.role === 'restaurant') {
           router.push('/restaurant/dashboard');
-        } else if (authStore.user?.role === 'driver') {
+        } else if (user?.role === 'driver') {
           router.push('/driver/dashboard');
         } else {
           router.push('/');
@@ -49,7 +55,7 @@ export default {
         console.error('Social login error:', error);
         // Redirect to login with error
         router.push({ 
-          path: '/login',
+          path: '/auth/login',
           query: { error: 'Authentication failed. Please try again.' }
         });
       }
